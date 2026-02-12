@@ -6,6 +6,8 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  logo: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+  favicon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
   palette:
     # Palette toggle for light mode
     - media: "(prefers-color-scheme: light)"
@@ -37,6 +39,7 @@ nav:
   - Starting:
     - Installation: installation.md
     - Configuration: configuration.md
+    - GitHub Actions: github-actions.md
   - Architecture: architecture.md
 
 markdown_extensions:

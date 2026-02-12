@@ -1,6 +1,12 @@
 # Smart Proxy Documentation
 
-Welcome to the **Smart Proxy** documentation. This project provides an intelligent reverse proxy for Kubernetes and OpenShift environments, enabling advanced features like auto-sleeping deployments, dependency management, and seamless routing.
+Welcome to the **Smart Proxy** documentation. This project provides an intelligent reveSmart Proxy sits between your users and your applications, enabling advanced features like auto-sleeping deployments, dependency chains, and unified route patching.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png" alt="Smart Proxy Logo" width="200"/>
+</p>
+
+![Smart Proxy Demo](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/SmartProxy.gif)
 
 ## Key Features
 

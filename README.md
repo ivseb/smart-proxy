@@ -10,6 +10,7 @@ Smart Proxy sits between your users and your applications, enabling advanced tra
 [![Docker Pulls](https://img.shields.io/docker/pulls/isebben/smart-proxy)](https://hub.docker.com/r/isebben/smart-proxy)
 [![License](https://img.shields.io/github/license/ivseb/smart-proxy)](https://github.com/ivseb/smart-proxy/blob/main/LICENSE)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/ivseb/smart-proxy)](https://github.com/ivseb/smart-proxy/releases)
+[![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://ivseb.github.io/smart-proxy/)
 
 ## Features
 
