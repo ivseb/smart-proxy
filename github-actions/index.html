@@ -8,11 +8,13 @@
       
       
       
-        <link rel="canonical" href="https://ivseb.github.io/smart-proxy/architecture/">
+        <link rel="canonical" href="https://ivseb.github.io/smart-proxy/github-actions/">
       
       
-        <link rel="prev" href="../github-actions/">
+        <link rel="prev" href="../configuration/">
       
+      
+        <link rel="next" href="../architecture/">
       
       
         
@@ -23,7 +25,7 @@
     
     
       
-        <title>Architecture - Smart Proxy</title>
+        <title>GitHub Actions - Smart Proxy</title>
       
     
     
@@ -74,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#architecture" class="md-skip">
+        <a href="#configurazione-github-actions" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +111,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Architecture
+              GitHub Actions
             
           </span>
         </div>
@@ -282,18 +284,20 @@
       
   
   
+    
   
   
+  
     
     
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
         
           
           <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
@@ -314,7 +318,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             
@@ -385,41 +389,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../github-actions/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    GitHub Actions
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
     
   
   
@@ -439,7 +408,7 @@
   <span class="md-ellipsis">
     
   
-    Architecture
+    GitHub Actions
   
 
     
@@ -457,7 +426,7 @@
   <span class="md-ellipsis">
     
   
-    Architecture
+    GitHub Actions
   
 
     
@@ -483,10 +452,32 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#workflow" class="md-nav__link">
+  <a href="#1-token-dockerhub" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Workflow
+        1. Token DockerHub
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-configurazione-github" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Configurazione GitHub
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-github-pages-token-automatico" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. GitHub Pages (Token Automatico)
       
     </span>
   </a>
@@ -497,6 +488,41 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -521,43 +547,58 @@
   
 
 
-<h1 id="architecture">Architecture</h1>
-<p>Smart Proxy acts as a "Man-in-the-Middle" for your Kubernetes Ingresses and OpenShift Routes.</p>
-<h2 id="workflow">Workflow</h2>
+<h1 id="configurazione-github-actions">Configurazione GitHub Actions</h1>
+<p>Per far funzionare correttamente le pipeline di CI/CD (pubblicazione Docker image e Helm Chart), è necessario configurare alcuni <strong>Secret</strong> nel repository GitHub.</p>
+<h2 id="1-token-dockerhub">1. Token DockerHub</h2>
+<p>La action <code>.github/workflows/docker-publish.yml</code> ha bisogno delle credenziali per poter inviare l'immagine compilata su DockerHub.</p>
 <ol>
-<li>
-<p><strong>Patching</strong>: When you "Patch" a route via the Admin UI, Smart Proxy modifies the Ingress/Route to point to its own service (<code>smart-proxy</code>) instead of the original application service.</p>
-<ul>
-<li>The original configuration is saved in annotations (<code>smart-proxy/original-service</code>).</li>
-<li>The <code>smart-proxy/patched</code> annotation is set to <code>true</code>.</li>
-</ul>
-</li>
-<li>
-<p><strong>Request Handling</strong>:</p>
-<ul>
-<li>Users access <code>app.example.com</code>.</li>
-<li>Traffic hits <code>smart-proxy</code>.</li>
-<li>The proxy checks the <code>Host</code> header to find the corresponding configuration.</li>
-</ul>
-</li>
-<li>
-<p><strong>Idle Detection</strong>:</p>
-<ul>
-<li>If the target deployment is scaled to 0 (sleeping), the proxy holds the request and triggers a scale-up.</li>
-<li>It shows a "Waking Up" page to the user.</li>
-<li>Once the deployment is ready, it proxies the request.</li>
-<li>A timer tracks inactivity. If no requests occur within the <code>IdleTimeout</code>, the proxy scales the deployment back to 0.</li>
-</ul>
-</li>
-<li>
-<p><strong>Dependencies</strong>:</p>
-<ul>
-<li>If a route has dependencies configured, the proxy ensures all dependent services are running before forwarding traffic.</li>
-<li>Usage of one service keeps the entire chain alive.</li>
-<li>When the main service idles, dependencies can optionally be stopped as well.</li>
-</ul>
-</li>
+<li>Vai su <a href="https://hub.docker.com/">hub.docker.com</a> -&gt; <strong>Account Settings</strong> -&gt; <strong>Security</strong>.</li>
+<li>Clicca su <strong>New Access Token</strong>.</li>
+<li>Dai una descrizione (es. "GitHub Actions") e permessi <strong>Read &amp; Write</strong>.</li>
+<li>Copia il token generato.</li>
 </ol>
+<h2 id="2-configurazione-github">2. Configurazione GitHub</h2>
+<ol>
+<li>Vai nel tuo repository GitHub: <code>https://github.com/ivseb/smart-proxy</code>.</li>
+<li>Clicca su <strong>Settings</strong> (in alto a destra).</li>
+<li>Nel menu a sinistra, espandi <strong>Secrets and variables</strong> e clicca su <strong>Actions</strong>.</li>
+<li>Clicca sul pulsante verde <strong>New repository secret</strong>.</li>
+<li>Aggiungi le seguenti variabili:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Nome Secret</th>
+<th style="text-align: left;">Valore</th>
+<th style="text-align: left;">Descrizione</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>DOCKERHUB_USERNAME</code></td>
+<td style="text-align: left;"><code>isebben</code></td>
+<td style="text-align: left;">Il tuo username DockerHub.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>DOCKERHUB_TOKEN</code></td>
+<td style="text-align: left;"><code>dckr_pat_...</code></td>
+<td style="text-align: left;">Il token copiato al passo precedente.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-github-pages-token-automatico">3. GitHub Pages (Token Automatico)</h2>
+<p>Per la pubblicazione della documentazione e del chart Helm, utilizziamo il <code>GITHUB_TOKEN</code> che è generato automaticamente da GitHub per ogni esecuzione.</p>
+<p>Tuttavia, devi abilitare i permessi di scrittura:</p>
+<ol>
+<li>Vai su <strong>Settings</strong> -&gt; <strong>Actions</strong> -&gt; <strong>General</strong>.</li>
+<li>Scorri fino a <strong>Workflow permissions</strong>.</li>
+<li>Seleziona <strong>Read and write permissions</strong>.</li>
+<li>Clicca <strong>Save</strong>.</li>
+</ol>
+<p>Inoltre conferma che GitHub Pages sia attivo (dopo la prima esecuzione della action):
+1.  Vai su <strong>Settings</strong> -&gt; <strong>Pages</strong>.
+2.  Assicurati che <strong>Build and deployment</strong> sia impostato su <strong>Deploy from a branch</strong>.
+3.  Il branch dovrebbe essere <code>gh-pages</code> (verrà creato automaticamente dalla action).</p>
 
 
 
