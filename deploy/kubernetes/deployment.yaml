@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: smart-proxy
+  namespace: smart-proxy
+  labels:
+    app: smart-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: smart-proxy
+  template:
+    metadata:
+      labels:
+        app: smart-proxy
+    spec:
+      serviceAccountName: smart-proxy-sa
+      containers:
+        - name: smart-proxy
+          image: quay.io/your-user/smart-proxy:latest # Change this
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: proxy
+            - containerPort: 8081
+              name: admin
+          resources:
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {} # For persistence, use a PVC

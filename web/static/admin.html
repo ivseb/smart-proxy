@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Proxy Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        window.mermaid = mermaid;
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Custom scrollbar for listboxes */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-gray-100 min-h-screen flex">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
+        <div class="p-6 text-xl font-bold tracking-wider text-blue-400">
+            SMART PROXY
+        </div>
+        <nav class="flex-1 px-4 space-y-2">
+            <a href="#" onclick="switchTab('dashboard')" id="nav-dashboard"
+                class="nav-item block px-4 py-3 rounded-lg bg-gray-700 text-white shadow-lg shadow-blue-500/20">
+                Dashboard
+            </a>
+            <a href="#" onclick="switchTab('patching')" id="nav-patching"
+                class="nav-item block px-4 py-3 rounded-lg text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
+                Ingress Patching
+            </a>
+            <a href="#" onclick="switchTab('visualizer')" id="nav-visualizer"
+                class="nav-item block px-4 py-3 rounded-lg text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
+                Visualizer
+            </a>
+            <a href="#" onclick="switchTab('logs')" id="nav-logs"
+                class="nav-item block px-4 py-3 rounded-lg text-gray-400 hover:bg-gray-700 hover:text-white transition-colors">
+                System Logs
+            </a>
+        </nav>
+        <div class="p-4 border-t border-gray-700 text-xs text-gray-500 text-center">
+            v2.5.0 (Patching & Visuals)
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-8 overflow-y-auto">
+
+        <!-- DASHBOARD VIEW -->
+        <div id="view-dashboard" class="view-section">
+            <header class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold">Dashboard</h1>
+                    <p class="text-gray-400 mt-1">Real-time infrastructure overview</p>
+                </div>
+                <button onclick="openModal()"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-medium shadow-lg shadow-blue-500/30 transition-all hover:scale-105">
+                    + New Route
+                </button>
+            </header>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-gray-400 font-medium">Active Routes</h3>
+                        <span class="text-green-400 bg-green-400/10 p-2 rounded-lg">●</span>
+                    </div>
+                    <div class="text-4xl font-bold" id="totalRoutes">0</div>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-gray-400 font-medium">Total Requests</h3>
+                        <span class="text-blue-400 bg-blue-400/10 p-2 rounded-lg">⚡</span>
+                    </div>
+                    <div class="text-4xl font-bold" id="totalRequests">0</div>
+                </div>
+                <div class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-gray-400 font-medium">System Status</h3>
+                        <span class="text-purple-400 bg-purple-400/10 p-2 rounded-lg">♥</span>
+                    </div>
+                    <div class="text-xl font-semibold text-green-400">Operational</div>
+                </div>
+            </div>
+
+            <!-- Chart Section -->
+            <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 mb-8">
+                <h2 class="text-xl font-semibold mb-6">Traffic Real-time</h2>
+                <div class="h-64">
+                    <canvas id="trafficChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Routes Table -->
+            <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
+                    <h2 class="text-xl font-semibold">Configured Routes</h2>
+                </div>
+                <table class="w-full text-left">
+                    <thead class="bg-gray-750 text-gray-400 uppercase text-xs">
+                        <tr>
+                            <th class="px-6 py-3">Host</th>
+                            <th class="px-6 py-3">Path</th>
+                            <th class="px-6 py-3">Target</th>
+                            <th class="px-6 py-3">Dependencies</th>
+                            <th class="px-6 py-3">Requests</th>
+                            <th class="px-6 py-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700" id="routesTableBody">
+                        <!-- Javascript will populate this -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- PATCHING VIEW -->
+        <div id="view-patching" class="view-section hidden">
+            <header class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold">Ingress Patching</h1>
+                    <p class="text-gray-400 mt-1">Intercept existing Ingresses with Smart Proxy</p>
+                </div>
+                <button onclick="fetchIngresses()"
+                    class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                    Refresh List
+                </button>
+            </header>
+
+            <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-750 text-gray-400 uppercase text-xs">
+                        <tr>
+                            <th class="px-6 py-3">Ingress Name</th>
+                            <th class="px-6 py-3">Host</th>
+                            <th class="px-6 py-3">Status</th>
+                            <th class="px-6 py-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700" id="ingressTableBody">
+                        <tr>
+                            <td colspan="4" class="px-6 py-4 text-center text-gray-400">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- VISUALIZER VIEW -->
+        <div id="view-visualizer" class="view-section hidden">
+            <header class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold">Dependency Visualizer</h1>
+                    <p class="text-gray-400 mt-1">Graphical view of your service chains</p>
+                </div>
+                <button onclick="renderGraph()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg">
+                    Refresh Graph
+                </button>
+            </header>
+
+            <div
+                class="bg-gray-800 rounded-xl p-6 border border-gray-700 overflow-hidden text-center min-h-[500px] flex items-center justify-center">
+                <div id="mermaidGraph" class="mermaid">
+                    graph TD;
+                    Loading...
+                </div>
+            </div>
+        </div>
+
+        <!-- LOGS VIEW -->
+        <div id="view-logs" class="view-section hidden">
+            <header class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-bold">System Logs</h1>
+                    <p class="text-gray-400 mt-1">Live application events</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span class="flex h-3 w-3 relative">
+                        <span
+                            class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    <span class="text-sm text-green-400 font-mono">LIVE</span>
+                </div>
+            </header>
+
+            <div class="bg-gray-900 rounded-xl border border-gray-700 overflow-hidden font-mono text-sm p-4 h-[600px] overflow-y-auto custom-scroll shadow-inner relative"
+                id="logsContainer">
+                <div class="absolute top-2 right-4 text-xs text-gray-600">tail -f service.log</div>
+                <!-- Logs will be appended here -->
+                <div class="text-gray-500 italic">Connecting to log stream...</div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal (New Route) -->
+    <div id="routeModal" class="fixed inset-0 bg-black/80 hidden items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div
+            class="bg-gray-800 rounded-2xl w-full max-w-2xl border border-gray-700 shadow-2xl transform transition-all flex flex-col max-h-[90vh]">
+            <div class="p-6 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-2xl font-bold">Route Configuration</h2>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-white">✕</button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-6">
+                <h2 class="text-xl font-bold mb-4">Route Configuration</h2>
+
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-1">Host</label>
+                        <input type="text" id="inputHost" placeholder="e.g. app.local"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 text-sm mb-1">Path</label>
+                        <input type="text" id="inputPath" value="/"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <!-- Removed Namespace Select -->
+
+                <div class="mb-4">
+                    <label class="block text-gray-400 text-sm mb-1">Target Deployment</label>
+                    <div class="flex space-x-2">
+                        <select id="inputDeployment" onchange="autoFillService()"
+                            class="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                            <option value="">Select Deployment...</option>
+                        </select>
+                        <button onclick="loadDeploymentsUI()" title="Refresh"
+                            class="bg-gray-700 hover:bg-gray-600 px-3 rounded-lg text-gray-300">↻</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-1">Service Name</label>
+                        <input type="text" id="inputService" placeholder="e.g. my-svc"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-400 mb-1">Port</label>
+                        <input type="number" id="inputPort" value="80"
+                            class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    </div>
+                </div>
+
+                <!-- Dependency Selector (Dual List) -->
+                <div class="mb-4">
+                    <label class="block text-gray-400 text-sm mb-1">Dependencies (Start Order)</label>
+                    <div class="bg-gray-800 p-3 rounded-lg border border-gray-700">
+                        <div id="depList" class="space-y-2 mb-2">
+                            <!-- Selected Dependencies List -->
+                        </div>
+                        <div class="flex space-x-2">
+                            <select id="inputDepSelect"
+                                class="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm">
+                                <option value="">Add Dependency...</option>
+                            </select>
+                            <button onclick="addDependency()"
+                                class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-sm">+</button>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">Appended to the end of the start chain.</p>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-1">Idle Timeout</label>
+                    <input type="text" id="inputTimeout" value="30m"
+                        class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+
+                <div class="flex items-center">
+                    <input type="checkbox" id="inputBadge"
+                        class="w-4 h-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500 focus:ring-2">
+                    <label for="inputBadge" class="ml-2 text-sm font-medium text-gray-400">Inject Proxy Badge (HTML
+                        only)</label>
+                </div>
+
+            </div>
+            <div class="p-6 border-t border-gray-700 flex justify-end space-x-3">
+                <button onclick="closeModal()" class="px-4 py-2 text-gray-300 hover:text-white">Cancel</button>
+                <button onclick="createRoute()"
+                    class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-medium shadow-lg shadow-blue-500/30">Save
+                    Route</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Logic ---
+        const API_BASE = '/api';
+        let globalRoutes = [];
+        let globalStats = { TotalRequests: 0, RouteStats: {} };
+        let availableDeps = []; // This will now be `availableDeployments`
+        let selectedDeps = []; // Array of strings
+
+        // --- View Switching ---
+        function switchTab(viewName) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById('view-' + viewName).classList.remove('hidden');
+
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.remove('bg-gray-700', 'text-white', 'shadow-lg');
+                el.classList.add('text-gray-400');
+            });
+            const activeNav = document.getElementById('nav-' + viewName);
+            activeNav.classList.remove('text-gray-400');
+            activeNav.classList.add('bg-gray-700', 'text-white', 'shadow-lg');
+
+            if (viewName === 'visualizer') renderGraph();
+            // Start/Stop interval based on view? Or just let global fetch handle it?
+            // Global fetch runs every 2s. We just need to ensure fetched data is used.
+            if (viewName === 'patching') {
+                fetchIngresses();
+                // Start dedicated polling for patching if needed, or rely on global loop?
+                // Let's add specific polling for patching view only when active
+                startPatchingPoll();
+            } else {
+                stopPatchingPoll();
+            }
+
+            if (viewName === 'logs') {
+                connectLogs();
+            } else {
+                disconnectLogs();
+            }
+        }
+        window.switchTab = switchTab;
+
+        let patchingInterval = null;
+        function startPatchingPoll() {
+            if (patchingInterval) return;
+            patchingInterval = setInterval(fetchIngresses, 2000);
+        }
+        function stopPatchingPoll() {
+            if (patchingInterval) {
+                clearInterval(patchingInterval);
+                patchingInterval = null;
+            }
+        }
+
+        // --- Logs SSE ---
+        let logEventSource = null;
+        function connectLogs() {
+            if (logEventSource) return;
+            const container = document.getElementById('logsContainer');
+            container.innerHTML = '<div class="text-gray-500 italic mb-2">Connecting to log stream...</div>';
+
+            logEventSource = new EventSource('/api/logs');
+
+            logEventSource.onmessage = (event) => {
+                const entry = JSON.parse(event.data);
+                const line = document.createElement('div');
+                line.className = 'mb-1 hover:bg-gray-800/50 px-2 rounded';
+
+                // Colorize
+                let msgColor = 'text-gray-300';
+                if (entry.message.includes('Error')) msgColor = 'text-red-400';
+                if (entry.message.includes('Warning')) msgColor = 'text-yellow-400';
+                if (entry.message.includes('Request')) msgColor = 'text-blue-300';
+
+                // Format timestamp
+                const ts = new Date(entry.timestamp).toLocaleTimeString();
+
+                line.innerHTML = `<span class="text-gray-500 mr-2">[${ts}]</span><span class="${msgColor}">${entry.message}</span>`;
+                container.appendChild(line);
+
+                // Auto scroll
+                container.scrollTop = container.scrollHeight;
+            };
+
+            logEventSource.onerror = () => {
+                const line = document.createElement('div');
+                line.className = 'text-red-500 italic';
+                line.innerText = "Connection lost. Reconnecting...";
+                container.appendChild(line);
+                logEventSource.close();
+                logEventSource = null;
+                setTimeout(connectLogs, 2000);
+            };
+        }
+
+        function disconnectLogs() {
+            if (logEventSource) {
+                logEventSource.close();
+                logEventSource = null;
+            }
+        }
+
+        // --- Fetch & Dashboard ---
+        async function fetchData() {
+            try {
+                const resRoutes = await fetch(`${API_BASE}/routes`);
+                globalRoutes = await resRoutes.json();
+
+                const resStats = await fetch(`${API_BASE}/stats`);
+                globalStats = await resStats.json();
+                if (!globalStats.RouteStats) globalStats.RouteStats = {};
+
+                updateDashboard();
+            } catch (e) { console.error(e); }
+        }
+
+        function updateDashboard() {
+            document.getElementById('totalRoutes').innerText = globalRoutes.length;
+            document.getElementById('totalRequests').innerText = globalStats.TotalRequests || 0;
+
+            const tbody = document.getElementById('routesTableBody');
+            tbody.innerHTML = '';
+
+            globalRoutes.forEach(r => {
+                const requests = globalStats.RouteStats[r.id] || 0;
+
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-white/5 transition-colors';
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-bold text-white">${r.host}</td>
+                    <td class="px-6 py-4 text-blue-300">${r.path}</td>
+                    <td class="px-6 py-4 flex items-center space-x-2">
+                        <span>${getStatusIcon(r.status)}</span>
+                        <span>${r.deployment}</span>
+                    </td>
+                    <td class="px-6 py-4">${r.target_service}:${r.target_port}</td>
+                    <td class="px-6 py-4">
+                        <div class="flex flex-col space-y-1">
+                            ${(r.dependencies || []).map(d => `
+                                <div class="text-xs flex items-center space-x-1">
+                                    <span>${getStatusIcon(r.dependency_status ? r.dependency_status[d] : 'Unknown')}</span>
+                                    <span>${d}</span>
+                                </div>
+                            `).join('')}
+                            ${(!r.dependencies || r.dependencies.length === 0) ? '<span class="text-gray-600 text-xs">-</span>' : ''}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 font-bold text-green-400">${requests}</td>
+                    <td class="px-6 py-4 text-right flex justify-end items-center space-x-2">
+                        <!-- Stop Button -->
+                         <button onclick="stopDeployment('${r.namespace}', '${r.deployment}')" title="Stop Pods"
+                            class="text-orange-400 hover:text-orange-300 hover:bg-orange-400/10 p-2 rounded-lg transition-colors">🛑</button>
+                        
+                        <button onclick="editRoute('${r.id}')" class="text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 p-2 rounded-lg transition-colors">✏️</button>
+                        <button onclick="deleteRoute('${r.id}')" class="text-red-400 hover:text-red-300 hover:bg-red-400/10 p-2 rounded-lg transition-colors">🗑️</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            updateChart();
+        }
+
+        async function deleteRoute(id) {
+            if (!confirm('Are you sure?')) return;
+            await fetch(`${API_BASE}/routes?id=${id}`, { method: 'DELETE' });
+            fetchData();
+        }
+        window.deleteRoute = deleteRoute;
+
+        async function stopDeployment(ns, dep) {
+            if (!confirm(`Are you sure you want to STOP (Scale to 0) ${dep}?`)) return;
+            await fetch(`${API_BASE}/k8s/stop-deployment?namespace=${ns}&deployment=${dep}`, { method: 'POST' });
+            // UI update handled by metrics/logs eventually, or just simple alert
+            // No direct feedback needed as poll will show status in Ingress view if relevant
+        }
+        window.stopDeployment = stopDeployment;
+
+        async function editRoute(id) {
+            const route = globalRoutes.find(r => r.id === id);
+            if (!route) return;
+
+            openModal();
+            document.getElementById('routeModal').dataset.editId = id;
+
+            document.getElementById('inputHost').value = route.host;
+            document.getElementById('inputPath').value = route.path;
+            document.getElementById('inputService').value = route.target_service;
+            document.getElementById('inputPort').value = route.target_port;
+
+            // Timeout conversion (ns -> human)
+            let timeoutStr = "30m";
+            if (route.idle_timeout) {
+                const ns = route.idle_timeout;
+                if (ns >= 60 * 1e9) timeoutStr = (ns / (60 * 1e9)) + "m";
+                else timeoutStr = (ns / 1e9) + "s";
+            }
+            document.getElementById('inputTimeout').value = timeoutStr;
+
+            // Load Deployments then select
+            await loadDeployments(); // Ensure availableDeployments is populated
+            document.getElementById('inputDeployment').value = route.deployment;
+            autoFillService(); // Set service name based on deployment
+
+            document.getElementById('inputBadge').checked = route.inject_badge || false;
+
+            selectedDeps = route.dependencies || [];
+            renderDepLists();
+        }
+        window.editRoute = editRoute;
+
+        // --- Patching Logic ---
+        async function fetchIngresses() {
+            const tbody = document.getElementById('ingressTableBody');
+            tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-400">Loading...</td></tr>';
+
+            try {
+                const res = await fetch(`${API_BASE}/k8s/ingresses`);
+                const ingresses = await res.json();
+
+                tbody.innerHTML = '';
+                if (ingresses.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No Ingresses found in namespace.</td></tr>';
+                    return;
+                }
+
+                ingresses.forEach(ing => {
+                    const statusHtml = ing.patched
+                        ? '<span class="text-green-400 bg-green-400/10 px-2 py-1 rounded text-xs font-bold border border-green-400/20">PATCHED (Active)</span>'
+                        : '<span class="text-gray-400 bg-gray-700 px-2 py-1 rounded text-xs">Standard</span>';
+
+                    const actionBtn = ing.patched
+                        ? `<button onclick="unpatchIngress('${ing.name}')" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-sm border border-gray-600">Unpatch</button>`
+                        : `<button onclick="patchIngress('${ing.name}')" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-sm shadow-md shadow-blue-500/20">⚡ Patch</button>`;
+
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-white/5 transition-colors border-b border-gray-800 last:border-0';
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 font-medium">${ing.name}</td>
+                        <td class="px-6 py-4 text-gray-300">${ing.host || '*'}</td>
+                        <td class="px-6 py-4">${statusHtml}</td>
+                        <td class="px-6 py-4 text-right">${actionBtn}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+            } catch (e) {
+                console.error(e);
+                tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-red-400">Error fetching ingresses.</td></tr>';
+            }
+        }
+        window.fetchIngresses = fetchIngresses;
+
+        async function patchIngress(name) {
+            if (!confirm(`Patching will redirect traffic for ${name} through Smart Proxy. Confirm?`)) return;
+            await fetch(`${API_BASE}/patch-ingress?name=${name}`, { method: 'POST' });
+            fetchIngresses();
+            fetchData(); // Refresh list to show new route
+        }
+        window.patchIngress = patchIngress;
+
+        async function unpatchIngress(name) {
+            if (!confirm(`Restore original backend for ${name}?`)) return;
+            await fetch(`${API_BASE}/unpatch-ingress?name=${name}`, { method: 'POST' });
+            fetchIngresses();
+            fetchData();
+        }
+        window.unpatchIngress = unpatchIngress;
+
+        function openModal() {
+            document.getElementById('routeModal').classList.remove('hidden');
+            document.getElementById('routeModal').classList.add('flex');
+
+            // Clear Edit ID state
+            delete document.getElementById('routeModal').dataset.editId;
+
+            // Clear inputs if not editing (editId logic handled in editRoute, here meant as NEW route)
+            if (!document.getElementById('routeModal').dataset.editId) {
+                document.getElementById('inputHost').value = '';
+                document.getElementById('inputPath').value = '/';
+                document.getElementById('inputService').value = '';
+                document.getElementById('inputPort').value = '80';
+                document.getElementById('inputBadge').checked = false;
+                selectedDeps = [];
+            }
+            loadDeploymentsUI(); // Load deployments and render dependency lists
+        }
+        function closeModal() {
+            document.getElementById('routeModal').classList.add('hidden');
+        }
+        window.openModal = openModal;
+        window.closeModal = closeModal;
+
+        function getStatusIcon(status) {
+            switch (status) {
+                case 'Ready': return '🟢';
+                case 'Scaling': return '🟡';
+                case 'Sleep': return '💤';
+                case 'Error': return '🔴';
+                default: return '❓';
+            }
+        }
+
+        let availableDeployments = []; // Store fetched deployments
+        let globalNamespace = ""; // Store current namespace
+
+        async function loadDeployments() {
+            try {
+                // If we haven't found the namespace yet, find it.
+                if (!globalNamespace) {
+                    const nsResp = await fetch(`${API_BASE}/k8s/namespaces`);
+                    const namespaces = await nsResp.json();
+                    // Filter basic ones to find a likely user namespace
+                    const targetNs = namespaces.find(n => n !== 'kube-system' && n !== 'kube-public' && n !== 'kube-node-lease' && n !== 'ingress-nginx') || 'default';
+                    globalNamespace = targetNs;
+                }
+
+                const depResp = await fetch(`${API_BASE}/k8s/deployments?namespace=${globalNamespace}`);
+                const deps = await depResp.json();
+
+                // Filter out smart-proxy
+                availableDeployments = deps.filter(d => d !== 'smart-proxy');
+
+                // We don't populate the dropdown here directly anymore, renderDepLists does it
+                renderDepLists();
+
+                // Auto-fill service if empty (first time)
+                if (availableDeployments.length > 0 && document.getElementById('inputService').value === '') {
+                    // This might be annoying if editing? Check if empty.
+                    // Actually, let's not auto-fill blindly if we have a value.
+                    // But if it's new, we might want to. 
+                    // Let's leave it to the user or onchange.
+                }
+
+            } catch (e) {
+                console.error("Failed to load deps", e);
+                availableDeployments = [];
+                renderDepLists();
+            }
+        }
+        window.loadDeployments = loadDeployments;
+
+        // Dependencies List UI
+        function renderDepLists() {
+            const listAvail = document.getElementById('listAvailable');
+            const listSel = document.getElementById('listSelected');
+
+            // Filter available: Items NOT in selectedDeps
+            const visibleAvail = availableDeps.filter(d => !selectedDeps.includes(d));
+
+            listAvail.innerHTML = visibleAvail.map(d =>
+                `<div onclick="selectAvail('${d}')" class="p-2 bg-gray-700/50 hover:bg-gray-600 rounded cursor-pointer text-sm transition-colors border border-transparent hover:border-blue-500/50" data-val="${d}">${d}</div>`
+            ).join('');
+
+            listSel.innerHTML = selectedDeps.map(d =>
+                `<div onclick="selectSelected('${d}')" class="p-2 bg-blue-900/30 hover:bg-blue-900/50 rounded cursor-pointer text-sm border border-blue-500/30 flex justify-between items-center" data-val="${d}">
+                    <span>${d}</span>
+                    <span class="text-xs text-blue-300">Move up?</span> <!-- Simplify: just click to remove/move back for now -->
+                  </div>`
+            ).join('');
+        }
+
+        let tempSelectedAvail = null;
+        let tempSelectedSel = null;
+
+        // Wrapper to emulate click selection then 'move' button
+        // For simplicity in this vanilla JS: 'move' buttons will assume last clicked item?
+        // Or simpler: Click available -> moves to right immediately. Click selected -> moves to left.
+        window.selectAvail = (d) => {
+            selectedDeps.push(d);
+            renderDepLists();
+        };
+        window.selectSelected = (d) => {
+            selectedDeps = selectedDeps.filter(x => x !== d);
+            renderDepLists();
+        };
+        // We can hide the arrows if we do click-to-move
+        window.moveDep = (dir) => { /* No-op with click-to-move */ };
+
+
+        async function createRoute() {
+            const payload = {
+                host: document.getElementById('inputHost').value,
+                path: document.getElementById('inputPath').value,
+                namespace: globalNamespace, // Use Global NS
+                deployment: document.getElementById('inputDeployment').value,
+                target_service: document.getElementById('inputService').value,
+                target_port: parseInt(document.getElementById('inputPort').value),
+                dependencies: selectedDeps,
+                inject_badge: document.getElementById('inputBadge').checked
+            };
+
+            const editId = document.getElementById('routeModal').dataset.editId;
+            if (editId) {
+                payload.id = editId;
+            }
+
+            // Duration hack
+            const timeoutStr = document.getElementById('inputTimeout').value;
+            let ns = 30 * 60 * 1e9;
+            if (timeoutStr.endsWith('m')) ns = parseInt(timeoutStr) * 60 * 1e9;
+            if (timeoutStr.endsWith('s')) ns = parseInt(timeoutStr) * 1e9;
+            payload.idle_timeout = ns;
+
+            await fetch(`${API_BASE}/routes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            closeModal();
+            fetchData();
+        }
+        window.createRoute = createRoute;
+
+        // --- Visualizer (Mermaid) ---
+        async function renderGraph() {
+            if (!globalRoutes.length) {
+                document.getElementById('mermaidGraph').innerHTML = "No routes configured.";
+                return;
+            }
+            if (window.mermaid) window.mermaid.initialize({ startOnLoad: false, theme: 'dark' });
+
+            let graphDefinition = 'graph TD;\n';
+            globalRoutes.forEach((r, idx) => {
+                const safeId = "route" + idx;
+                const label = r.host ? `${r.host}${r.path}` : r.path;
+                graphDefinition += `${safeId}["${label}<br/>(${r.deployment})"]\n`;
+                if (r.dependencies && r.dependencies.length > 0) {
+                    r.dependencies.forEach((dep, depIdx) => {
+                        const depId = safeId + "_dep" + depIdx;
+                        graphDefinition += `${depId}[("${dep}")] --> ${safeId}\n`;
+                    });
+                }
+            });
+
+            const element = document.getElementById('mermaidGraph');
+            element.removeAttribute('data-processed');
+            element.innerHTML = graphDefinition;
+            try { await window.mermaid.run({ nodes: [element] }); } catch (e) { console.error(e); }
+        }
+        window.renderGraph = renderGraph;
+
+        // --- Chart ---
+        const ctx = document.getElementById('trafficChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: Array(20).fill(''), datasets: [{ label: 'Requests', data: Array(20).fill(0), borderColor: '#3b82f6', tension: 0.4, borderWidth: 2, pointBackgroundColor: '#fff' }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { grid: { color: 'rgba(255, 255, 255, 0.1)' }, beginAtZero: true }, x: { grid: { display: false } } } }
+        });
+
+        let lastTotalRequests = -1;
+        function updateChart() {
+            const currentTotal = globalStats.TotalRequests || 0;
+            if (lastTotalRequests === -1) { lastTotalRequests = currentTotal; return; }
+            const delta = currentTotal - lastTotalRequests;
+            lastTotalRequests = currentTotal;
+            const data = chart.data.datasets[0].data;
+            data.shift(); data.push(delta);
+            chart.update();
+        }
+
+        fetchData();
+        setInterval(fetchData, 2000);
+    </script>
+</body>
+
+</html>

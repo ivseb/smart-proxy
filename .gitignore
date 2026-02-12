@@ -1,0 +1,24 @@
+# Binaries
+bin/
+main
+smart-proxy
+
+# Node
+node_modules/
+web/dashboard/node_modules/
+web/dashboard/dist/
+
+# IDEs
+.idea/
+.vscode/
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Helm
+charts/smart-proxy/*.tgz
+
+# Temp
+tmp/

@@ -1,0 +1,73 @@
+name: Publish Docs & Charts
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'charts/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      # 1. Helper to package charts
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+
+      - name: Run chart-releaser
+        uses: helm/chart-releaser-action@v1.5.0
+        with:
+          charts_dir: charts
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          CR_SKIP_EXISTING: true
+
+      # 2. Build MkDocs Site
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.x
+
+      - name: Install MkDocs Material
+        run: pip install mkdocs-material
+
+      - name: Build MkDocs
+        run: mkdocs build
+
+      # 3. Deploy to GitHub Pages
+      # We deploy the 'site' dir (docs) to root, and charts are handled by CR action (gh-pages branch)
+      # Actually, CR action pushes to gh-pages branch index.yaml.
+      # MkDocs also deploys to gh-pages. This is a conflict if not careful.
+      # Strategy: Use a single gh-pages branch.
+      # CR Action manages /index.yaml and /smart-proxy-x.x.x.tgz
+      # MkDocs manages everything else.
+      # Better approach: Publish docs to 'gh-pages'.
+      # Let CR action publish releases to 'gh-pages' as well?
+      # Common pattern: Docs at root, charts at /charts or root.
+
+      - name: Deploy Docs
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: true # Keep Helm repo files
