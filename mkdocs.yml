@@ -39,7 +39,6 @@ nav:
   - Starting:
     - Installation: installation.md
     - Configuration: configuration.md
-    - GitHub Actions: github-actions.md
   - Architecture: architecture.md
 
 markdown_extensions:
