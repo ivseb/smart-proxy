@@ -56,9 +56,7 @@ extra:
     - icon: fontawesome/brands/linkedin
       link: https://linkedin.com/in/ivseb
 
-  # Google Search Console Verification
-  # meta:
-  #   google-site-verification: "YOUR_GOOGLE_VERIFICATION_CODE"
+  # Google Search Console Verification (Handled via HTML file)
 
 nav:
   - Home: index.md
