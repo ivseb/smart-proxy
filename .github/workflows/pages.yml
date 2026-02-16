@@ -48,8 +48,8 @@ jobs:
         with:
           python-version: 3.x
 
-      - name: Install MkDocs Material
-        run: pip install mkdocs-material
+      - name: Install MkDocs Material & Plugins
+        run: pip install mkdocs-material mkdocs-git-revision-date-localized-plugin mkdocs-minify-plugin pillow cairosvg
 
       - name: Build MkDocs
         run: mkdocs build

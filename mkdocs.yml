@@ -2,6 +2,9 @@ site_name: Smart Proxy
 site_url: https://ivseb.github.io/smart-proxy
 repo_url: https://github.com/ivseb/smart-proxy
 repo_name: ivseb/smart-proxy
+site_description: An intelligent Kubernetes Smart Proxy for auto-sleeping deployments, unified ingress/route patching, and dependency management.
+site_author: Ivan Sebben
+copyright: Copyright &copy; 2026 Ivan Sebben
 edit_uri: edit/main/docs/
 
 theme:
@@ -33,6 +36,29 @@ theme:
     - search.highlight
     - content.code.copy
     - toc.integrate
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+  - social:
+      cards_layout_options:
+        background_color: "#009688" # Teal matching primary color
+  - git-revision-date-localized:
+      type: date
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/ivseb
+    - icon: fontawesome/brands/docker
+      link: https://hub.docker.com/u/isebben
+    - icon: fontawesome/brands/linkedin
+      link: https://linkedin.com/in/ivseb
+
+  # Google Search Console Verification
+  # meta:
+  #   google-site-verification: "YOUR_GOOGLE_VERIFICATION_CODE"
 
 nav:
   - Home: index.md
