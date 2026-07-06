@@ -79,3 +79,15 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Sync the Docker Hub repository overview from docker/README.md
+      # https://github.com/peter-evans/dockerhub-description
+      - name: Update Docker Hub description
+        if: github.event_name != 'pull_request'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE_NAME }}
+          short-description: "Scale-to-zero & smart traffic management for Kubernetes and OpenShift."
+          readme-filepath: ./docker/README.md
