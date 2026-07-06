@@ -80,6 +80,15 @@ Idle environments burn money. Preview, dev, staging and demo namespaces run 24/7
     3. **Wake** — if the deployment is asleep, it holds the request, scales it up, and shows a "waking up" page until ready.
     4. **Sleep** — after an idle timeout with no traffic, it scales the deployment back to zero.
 
+```mermaid
+flowchart LR
+    U([User]) --> ING["Ingress / Route"]
+    ING -->|patched| SP["Smart Proxy"]
+    SP -->|awake| SVC["App Service"] --> POD["App Pods"]
+    SP -. asleep .-> API["Kubernetes API"]
+    API -. scale up .-> POD
+```
+
 [Read the full architecture →](architecture.md)
 
 ## Get started

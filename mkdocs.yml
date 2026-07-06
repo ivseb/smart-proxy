@@ -57,7 +57,7 @@ extra:
     - icon: fontawesome/brands/docker
       link: https://hub.docker.com/u/isebben
     - icon: fontawesome/brands/linkedin
-      link: https://linkedin.com/in/ivseb
+      link: https://linkedin.com/in/isebben
 
   # Google Search Console Verification (Handled via HTML file)
 
@@ -73,7 +73,11 @@ markdown_extensions:
   - attr_list
   - md_in_html
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
