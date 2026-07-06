@@ -3,10 +3,11 @@ name: smart-proxy
 description: Intelligent request handling for Kubernetes Ingresses and OpenShift Routes — auto-sleep, dependency chains and unified route patching.
 type: application
 # Chart version. Bump on every change to the chart itself.
-version: 0.1.0
+version: 0.1.1
 # Version of the Smart Proxy application shipped by default.
 appVersion: "latest"
 home: https://ivseb.github.io/smart-proxy/
+icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
 sources:
   - https://github.com/ivseb/smart-proxy
 maintainers:
@@ -17,3 +18,21 @@ keywords:
   - openshift
   - ingress
   - autoscaling
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/links: |
+    - name: source
+      url: https://github.com/ivseb/smart-proxy
+    - name: documentation
+      url: https://ivseb.github.io/smart-proxy/
+  artifacthub.io/images: |
+    - name: smart-proxy
+      image: docker.io/isebben/smart-proxy:latest
+  artifacthub.io/maintainers: |
+    - name: ivseb
+      email: ivan.sebben.dati@gmail.com
+  artifacthub.io/changes: |
+    - kind: added
+      description: OpenShift Route and Kubernetes Ingress templates
+    - kind: added
+      description: Optional PersistentVolumeClaim for /data
