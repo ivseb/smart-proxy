@@ -6,8 +6,8 @@ Smart Proxy sits between your users and your applications, enabling advanced tra
 
 ![Smart Proxy Demo](media/SmartProxy.gif)
 
-[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/smart-proxy)](https://artifacthub.io/packages/search?repo=smart-proxy)
 [![Docker Pulls](https://img.shields.io/docker/pulls/isebben/smart-proxy)](https://hub.docker.com/r/isebben/smart-proxy)
+[![Helm](https://img.shields.io/badge/helm-ivseb.github.io%2Fsmart--proxy-0f1689)](https://ivseb.github.io/smart-proxy)
 [![License](https://img.shields.io/github/license/ivseb/smart-proxy)](https://github.com/ivseb/smart-proxy/blob/main/LICENSE)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/ivseb/smart-proxy)](https://github.com/ivseb/smart-proxy/releases)
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://ivseb.github.io/smart-proxy/)
@@ -36,8 +36,11 @@ We provide a script to set up a full local environment with Smart Proxy and a de
 ### 2. Helm Installation
 
 ```bash
-helm install smart-proxy ./charts/smart-proxy --namespace smart-proxy --create-namespace
+helm repo add smart-proxy https://ivseb.github.io/smart-proxy
+helm install smart-proxy smart-proxy/smart-proxy --namespace smart-proxy --create-namespace
 ```
+
+See the [Installation Guide](docs/installation.md) for configuration options and installing from source.
 
 ## Documentation
 

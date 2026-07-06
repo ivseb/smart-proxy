@@ -8,15 +8,17 @@
 
 ## Installing via Helm
 
-1.  Clone the repository:
+The chart is published to a Helm repository hosted on GitHub Pages.
+
+1.  Add the repository:
     ```bash
-    git clone https://github.com/ivseb/smart-proxy.git
-    cd smart-proxy
+    helm repo add smart-proxy https://ivseb.github.io/smart-proxy
+    helm repo update
     ```
 
 2.  Install the chart:
     ```bash
-    helm install smart-proxy ./charts/smart-proxy \
+    helm install smart-proxy smart-proxy/smart-proxy \
       --namespace smart-proxy --create-namespace
     ```
 
@@ -24,6 +26,16 @@
     ```bash
     kubectl get pods -n smart-proxy
     ```
+
+### Installing from source
+
+Alternatively, install straight from a clone of the repository:
+
+```bash
+git clone https://github.com/ivseb/smart-proxy.git
+cd smart-proxy
+helm install smart-proxy ./charts/smart-proxy --namespace smart-proxy --create-namespace
+```
 
 ### Customizing the deployment
 
