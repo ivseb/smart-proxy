@@ -1,0 +1,19 @@
+apiVersion: v2
+name: smart-proxy
+description: Intelligent request handling for Kubernetes Ingresses and OpenShift Routes — auto-sleep, dependency chains and unified route patching.
+type: application
+# Chart version. Bump on every change to the chart itself.
+version: 0.1.0
+# Version of the Smart Proxy application shipped by default.
+appVersion: "latest"
+home: https://ivseb.github.io/smart-proxy/
+sources:
+  - https://github.com/ivseb/smart-proxy
+maintainers:
+  - name: ivseb
+keywords:
+  - proxy
+  - kubernetes
+  - openshift
+  - ingress
+  - autoscaling

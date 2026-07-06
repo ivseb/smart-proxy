@@ -1,0 +1,21 @@
+{{- if .Values.route.enabled -}}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "smart-proxy.fullname" . }}-admin
+  labels:
+    {{- include "smart-proxy.labels" . | nindent 4 }}
+spec:
+  host: {{ .Values.route.host | quote }}
+  to:
+    kind: Service
+    name: {{ include "smart-proxy.fullname" . }}
+    weight: 100
+  port:
+    targetPort: admin
+  {{- with .Values.route.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}

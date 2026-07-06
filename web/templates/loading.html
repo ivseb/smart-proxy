@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waking Up...</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .animate-pulse-slow {
+            animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: .5;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white flex items-center justify-center h-screen font-sans">
+    <div class="text-center w-full max-w-md p-6">
+        <div class="mb-8 relative">
+            <div
+                class="w-24 h-24 bg-blue-600 rounded-full mx-auto flex items-center justify-center animate-pulse-slow relative z-10">
+                <svg class="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+            </div>
+            <div
+                class="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-24 bg-blue-500 rounded-full blur-xl opacity-50 animate-ping">
+            </div>
+        </div>
+
+        <h1 class="text-3xl font-bold mb-2">Service Sleeping</h1>
+        <p class="text-gray-400 mb-8">We are waking up the environment for you. This may take a few seconds.</p>
+
+        <div class="bg-gray-800 rounded-xl border border-gray-700 p-4 text-left shadow-lg">
+            <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Startup Progress</h3>
+            <div id="statusList" class="space-y-3">
+                <!-- Populated by JS -->
+                <div class="flex items-center space-x-3 text-gray-400 animate-pulse">
+                    <div class="w-2 h-2 bg-gray-600 rounded-full"></div>
+                    <span class="text-sm">Connecting to Status API...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const statusList = document.getElementById('statusList');
+
+        function getStatusColor(status) {
+            switch (status) {
+                case 'Ready': return 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]';
+                case 'Scaling': return 'bg-yellow-500 animate-pulse';
+                case 'Sleep': return 'bg-gray-600'; // Should switch to scaling soon
+                case 'Error': return 'bg-red-500';
+                default: return 'bg-gray-600';
+            }
+        }
+
+        function getStatusLabel(status) {
+            switch (status) {
+                case 'Ready': return '<span class="text-green-400">Ready</span>';
+                case 'Scaling': return '<span class="text-yellow-400">Starting...</span>';
+                case 'Sleep': return '<span class="text-gray-400">Waiting</span>';
+                case 'Error': return '<span class="text-red-400">Error</span>';
+                default: return '<span class="text-gray-500">Checking...</span>';
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                // Pass current path/host so backend knows which route to check
+                const url = `/__smart_proxy/status?path=${encodeURIComponent(window.location.pathname)}&host=${encodeURIComponent(window.location.host)}`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error("API Error");
+
+                const data = await res.json();
+
+                if (data.status === 'ready') {
+                    document.body.innerHTML = '<div class="flex items-center justify-center h-screen bg-gray-900 text-green-400 text-2xl font-bold animate-pulse">🚀 Ready! Redirecting...</div>';
+                    setTimeout(() => window.location.reload(), 500);
+                    return;
+                }
+
+                // Render Details
+                if (data.details) {
+                    statusList.innerHTML = data.details.map(d => `
+                        <div class="flex justify-between items-center group">
+                            <div class="flex items-center space-x-3">
+                                <span class="w-2.5 h-2.5 rounded-full ${getStatusColor(d.status)} transition-all duration-300"></span>
+                                <span class="text-gray-300 text-sm font-medium">${d.name}</span>
+                            </div>
+                            <div class="text-xs font-mono">
+                                ${getStatusLabel(d.status)}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) {
+                console.error(e);
+                statusList.innerHTML = `<div class="text-red-400 text-xs">Connection lost... Retrying...</div>`;
+            }
+        }
+
+        setInterval(checkStatus, 1000);
+        checkStatus();
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,94 @@
+# Default values for smart-proxy.
+# Every option can be overridden on the command line (--set key=value)
+# or with a custom values file (-f my-values.yaml).
+# See values.example.yaml for a documented production example.
+
+# Number of Smart Proxy replicas. Keep at 1 unless you configure leader election.
+replicaCount: 1
+
+image:
+  # Container image published to Docker Hub.
+  repository: docker.io/isebben/smart-proxy
+  # Image tag. An empty string defaults to the chart's appVersion.
+  # Pin this to a released version (e.g. "1.0.0") in production.
+  tag: ""
+  pullPolicy: Always
+
+# Secrets used to pull the image from a private registry (usually not needed).
+imagePullSecrets: []
+
+# Override the generated resource names.
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Create a dedicated ServiceAccount for Smart Proxy.
+  create: true
+  # Name of the ServiceAccount. Generated from the release name when empty.
+  name: ""
+  annotations: {}
+
+rbac:
+  # Create the Role + RoleBinding that let Smart Proxy read and patch
+  # Deployments, Services, Pods and Ingresses in the release namespace.
+  create: true
+  # Also grant permissions on OpenShift Routes (route.openshift.io).
+  # Set to false on vanilla Kubernetes clusters.
+  openshiftRoutes: true
+
+# Application configuration (mapped to the container environment variables).
+config:
+  # Namespace Smart Proxy watches. Empty = the release namespace (recommended).
+  watchNamespace: ""
+  # Port the proxy listens on (SMART_PROXY_PORT).
+  proxyPort: 8080
+  # Port the admin dashboard listens on.
+  adminPort: 8081
+  # Log verbosity: debug | info | error.
+  logLevel: info
+
+service:
+  type: ClusterIP
+  # Service port exposing the proxy.
+  proxyPort: 80
+  # Service port exposing the admin dashboard.
+  adminPort: 8081
+
+# Expose the admin dashboard through a Kubernetes Ingress.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: smart-proxy-admin.example.com
+  # Set to true to add a TLS block (expects a "<release>-smart-proxy-tls" secret).
+  tls: false
+
+# Expose the admin dashboard through an OpenShift Route.
+route:
+  enabled: false
+  host: smart-proxy-admin.example.com
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+# Container resource requests/limits.
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Smart Proxy stores runtime data in /data.
+persistence:
+  # false = ephemeral emptyDir (data lost on pod restart).
+  # true  = provision a PersistentVolumeClaim.
+  enabled: false
+  size: 1Gi
+  storageClass: ""
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

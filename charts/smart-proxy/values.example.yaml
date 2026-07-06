@@ -1,0 +1,35 @@
+# Example production overrides for Smart Proxy on OpenShift.
+#
+# Usage:
+#   helm install smart-proxy ./charts/smart-proxy \
+#     --namespace my-namespace --create-namespace \
+#     -f charts/smart-proxy/values.example.yaml
+
+image:
+  # Pin to a released version in production instead of "latest".
+  tag: "latest"
+
+config:
+  logLevel: info
+  # Leave watchNamespace empty to watch the release namespace.
+  watchNamespace: ""
+
+# Expose the admin dashboard via an OpenShift Route.
+# On vanilla Kubernetes use `ingress` instead and set `rbac.openshiftRoutes: false`.
+route:
+  enabled: true
+  host: smart-proxy-admin.apps.example.com
+
+# Persist runtime data across pod restarts.
+persistence:
+  enabled: true
+  size: 1Gi
+  # storageClass: gp3
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
