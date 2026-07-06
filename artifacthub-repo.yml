@@ -1,0 +1,14 @@
+# Artifact Hub repository metadata.
+#
+# This file is copied by MkDocs to the site root, so it is served at the Helm
+# repository root:  https://ivseb.github.io/smart-proxy/artifacthub-repo.yml
+#
+# After you add this repository on https://artifacthub.io (Control Panel >
+# Repositories > Add), Artifact Hub shows a "Repository ID" (a UUID). Paste it
+# below and push — that grants the "Verified Publisher" badge.
+#
+# repositoryID: 00000000-0000-0000-0000-000000000000
+
+owners:
+  - name: ivseb
+    email: ivan.sebben.dati@gmail.com
