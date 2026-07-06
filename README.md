@@ -6,6 +6,7 @@ Smart Proxy sits between your users and your applications, enabling advanced tra
 
 ![Smart Proxy Demo](media/SmartProxy.gif)
 
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/smart-proxy)](https://artifacthub.io/packages/helm/smart-proxy/smart-proxy)
 [![Docker Pulls](https://img.shields.io/docker/pulls/isebben/smart-proxy)](https://hub.docker.com/r/isebben/smart-proxy)
 [![Helm](https://img.shields.io/badge/helm-ivseb.github.io%2Fsmart--proxy-0f1689)](https://ivseb.github.io/smart-proxy)
 [![License](https://img.shields.io/github/license/ivseb/smart-proxy)](https://github.com/ivseb/smart-proxy/blob/main/LICENSE)

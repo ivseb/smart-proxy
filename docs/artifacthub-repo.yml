@@ -7,7 +7,7 @@
 # Repositories > Add), Artifact Hub shows a "Repository ID" (a UUID). Paste it
 # below and push — that grants the "Verified Publisher" badge.
 #
-# repositoryID: 00000000-0000-0000-0000-000000000000
+repositoryID: d293f37a-d546-4bfb-9a95-c9130d4a3a65
 
 owners:
   - name: ivseb
