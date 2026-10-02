@@ -7,7 +7,7 @@ COPY web/dashboard/ .
 RUN npm run build
 
 # Build Stage for Backend
-FROM golang:1.24-alpine AS backend-builder
+FROM golang:1.26-alpine AS backend-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -16,11 +16,13 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o smart-proxy ./cmd/server
 
 # Final Stage
-FROM alpine:3.19
+FROM alpine:3.21
 WORKDIR /app
 
-# Install ca-certificates for K8s API communication
-RUN apk --no-cache add ca-certificates
+# Install ca-certificates and apply security updates
+RUN apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates
 
 # Copy binary from backend-builder
 COPY --from=backend-builder /app/smart-proxy .
