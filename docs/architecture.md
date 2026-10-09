@@ -73,6 +73,20 @@ flowchart LR
 4.  **Wake-up size** — before sleeping, the replica count is saved in the Deployment's `smart-proxy/replicas-before-sleep` annotation, and waking restores it. If a HorizontalPodAutoscaler manages the Deployment, it wakes at the HPA's `minReplicas` instead, and the HPA takes over from there. Kubernetes pauses an HPA while its target is at zero replicas, so the two don't conflict. Deployments managed by **KEDA** are never put to sleep: KEDA would scale them straight back up. Use KEDA's own scale-to-zero for those.
 5.  **Dependencies** — dependent services are started together with the application by default. With *Start in order*, they start one at a time in the listed order, each once the previous one has a ready replica, and the application last (e.g. database, then API, then frontend). Using one service keeps the entire chain alive, and dependencies can optionally be stopped together when idle.
 
+## Uptime monitors and health checks
+
+Uptime monitors and health checks poll applications around the clock. Counted as activity, they would keep environments awake forever, and wake them right back up after they go to sleep. Smart Proxy recognizes them and treats them differently:
+
+- **They never count as activity**, so they don't keep an application awake.
+- **They never wake an application.** While it sleeps, they get an answer from Smart Proxy itself: by default `200 OK` (the monitor stays green), or `503` (the monitor reports it down), or, if you really want it, the application is woken up anyway.
+- While the application is awake, they reach it as usual, so the check is real.
+
+Requests are recognized by **User-Agent** (a built-in list covers UptimeRobot, Pingdom, StatusCake, Site24x7, Datadog, Better Stack, Uptime Kuma, Blackbox Exporter, kube-probe and others), **path** (`/healthz`, `/status/*`), **client IP or CIDR**, or **method** (e.g. `HEAD`). Rules can be global (`ignore.*` Helm values) or per route (dashboard, or `smart-proxy/ignore-*` annotations). Requests to the paths of the workload's own Kubernetes probes are always ignored.
+
+To find out what keeps an application awake, open the route in the dashboard: **Who keeps it awake** lists the clients that sent requests in the last 24 hours, how often, and whether they count; one click ignores a monitor.
+
+Client IPs are read from `X-Forwarded-For` only when the request comes through a trusted proxy (by default private networks, where in-cluster ingress controllers and routers connect from).
+
 ## Deployments and StatefulSets
 
 Routes and their dependencies can point at Deployments or StatefulSets (often the database at the end of a chain). In the API and route configurations a plain name means a Deployment and `statefulset/<name>` a StatefulSet, as in `kubectl`. Both are scaled the same way, remember their replica count, and respect HorizontalPodAutoscalers.

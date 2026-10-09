@@ -11,6 +11,9 @@
 | `POD_NAMESPACE` | The namespace Smart Proxy runs in (set by the chart; otherwise read from the service account). | auto |
 | `LOG_LEVEL` | Logging verbosity (debug, info, error). | `info` |
 | `ADMIN_ADDR` | Listen address of the admin dashboard. | `:8081` |
+| `IGNORE_DEFAULT_USER_AGENTS` | Ignore the built-in list of uptime monitors and health checkers (matched in the User-Agent). | `true` |
+| `IGNORE_USER_AGENTS`, `IGNORE_PATHS`, `IGNORE_SOURCES`, `IGNORE_METHODS` | Extra requests that never count as activity, for every route: User-Agent substrings, paths (`/status/*` for prefixes), client IPs/CIDRs, methods. Comma-separated. | — |
+| `TRUSTED_PROXIES` | Proxies whose `X-Forwarded-For` names the client (`none` to trust none). | private networks |
 | `METRICS_ADDR` | Listen address of the Prometheus metrics endpoint. | `:9090` |
 | `SHUTDOWN_DELAY` | On SIGTERM, how long to fail the readiness probe before closing listeners, so in-flight traffic moves away cleanly. | `5s` |
 | `CONFIG_PATH` | File where route configurations are saved when running outside a cluster; inside one they live in the `<service>-routes` ConfigMap (an existing file is imported once). | `routes.json` |
@@ -53,6 +56,8 @@ Prometheus metrics are served on a separate port (`METRICS_ADDR`, default `:9090
 | `smart_proxy_sleeps_total{namespace,deployment,reason}` | Deployments scaled to zero (`idle` or `manual`). |
 | `smart_proxy_sleeping_deployments{namespace}` | Deployments asleep right now. |
 | `smart_proxy_sleeping_replicas{namespace}` | Replicas those deployments would otherwise run. |
+| `smart_proxy_ignored_requests_total{namespace,route,reason}` | Requests that didn't count as activity (monitors, health checks). |
+| `smart_proxy_asleep_responses_total{namespace,route,code}` | Of those, answered by Smart Proxy while the route slept. |
 | `smart_proxy_leader` | 1 on the replica that sleeps deployments and heals patches. |
 
 Every replica reports the cluster-wide gauges; use `max` over replicas for them, and `sum` for the counters. Useful queries:

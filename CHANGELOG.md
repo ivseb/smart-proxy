@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Uptime monitors and health checks** no longer keep applications awake or wake them: they are recognized by User-Agent (built-in list of common monitors), path, client IP/CIDR or method, globally (`ignore.*`) or per route (dashboard, `smart-proxy/ignore-*` annotations). While an application sleeps they get `200` from Smart Proxy (or `503`, or the app is woken: `when_asleep`).
+- **Who keeps it awake**: the route detail lists the clients that sent requests in the last 24 hours, how often, and whether they count, with one-click ignore. New metrics `smart_proxy_ignored_requests_total` and `smart_proxy_asleep_responses_total`.
+
+### Fixed
+- Deleting a route serving several hosts restored only one of the Ingresses/Routes it had patched; the others kept pointing at Smart Proxy and answered 404. Deleting a route now restores all of them, removing a host from a route restores its resource, and unpatching a resource from the patching page updates its route instead of being re-patched 30 seconds later. The "delete configuration only" option is gone.
+- The proxy no longer logs every request (uptime monitors flooded the log view).
+
 ## 2.0.0 — chart 0.2.0
 
 Upgrading from 1.x? Read the [upgrade guide](docs/upgrading.md) first: authentication is now on by default, Smart Proxy runs two replicas, and manually created routes must be exported.

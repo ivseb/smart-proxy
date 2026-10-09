@@ -118,6 +118,10 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Missing required fields", http.StatusBadRequest)
 			return
 		}
+		if err := route.ValidateTraffic(); err != nil {
+			http.Error(w, "Invalid traffic settings: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 		if route.Schedule != nil {
 			if err := route.Schedule.Validate(); err != nil {
 				http.Error(w, "Invalid schedule: "+err.Error(), http.StatusBadRequest)

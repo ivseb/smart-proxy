@@ -10,6 +10,31 @@ export interface Schedule {
     timezone?: string; // IANA name
 }
 
+export interface TrafficRules {
+    user_agents?: string[]; // Case-insensitive User-Agent substrings
+    paths?: string[]; // Exact, or prefix ending with "*"
+    sources?: string[]; // Client IPs or CIDRs
+    methods?: string[];
+}
+
+export type WhenAsleep = "respond" | "unavailable" | "wake";
+
+// A client sending requests to a route.
+export interface TrafficSource {
+    client: string; // Monitor/tool name, or "Browser"
+    method: string;
+    path: string;
+    user_agent: string;
+    last_ip: string;
+    requests: number;
+    ignored: number;
+    reason?: string;
+    first_seen: string;
+    last_seen: string;
+    interval_seconds: number;
+    counts_as_activity: boolean;
+}
+
 export interface RouteConfig {
     id: string;
     host: string;
@@ -26,6 +51,8 @@ export interface RouteConfig {
     start_in_order?: boolean;
     schedule?: Schedule | null;
     declarative?: boolean; // Defined by smart-proxy/* annotations on its Ingress/Route
+    ignore?: TrafficRules | null; // Requests that don't count as activity (monitors…)
+    when_asleep?: WhenAsleep | ""; // Answer to those requests while asleep ("" = respond)
 }
 
 export type DeploymentStatus = "Ready" | "Scaling" | "Sleep" | "Error" | "Unwatched" | "Offline";
@@ -77,6 +104,7 @@ export interface ClusterInfo {
     routes_enabled: boolean;
     proxy_service: string;
     replica: string;
+    ignore_defaults?: TrafficRules; // Ignored for every route
 }
 
 export interface LogEntry {

@@ -14,6 +14,7 @@ import (
 	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/store"
+	"smart-proxy/internal/traffic"
 )
 
 // Server represents the admin HTTP server.
@@ -29,6 +30,10 @@ type Server struct {
 	RequestTotals func() (int64, map[string]int64)
 	// Replica identifies this pod (its log stream only shows its own logs).
 	Replica string
+	// GlobalRules are the requests ignored for every route (shown in the dashboard).
+	GlobalRules traffic.Rules
+	// Traffic, when set, returns who sends requests to a route (across replicas).
+	Traffic func(routeID string) []traffic.SourceStats
 }
 
 // NewServer creates a new instance of the admin Server.
@@ -51,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.HandleFunc("/api/info", s.handleInfo)
 	mux.HandleFunc("/api/routes", s.handleRoutes)
+	mux.HandleFunc("/api/routes/traffic", s.handleRouteTraffic)
 	mux.HandleFunc("/api/stats", s.handleStats)
 	mux.HandleFunc("/api/logs", s.handleLogs)
 
@@ -108,14 +114,15 @@ func writeJSON(w http.ResponseWriter, v any) {
 // handleInfo describes what this Smart Proxy manages, for the dashboard.
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	info := map[string]any{
-		"connected":      s.k8sClient != nil,
-		"scope":          "",
-		"all_namespaces": false,
-		"namespaces":     []string{},
-		"default":        "",
-		"routes_enabled": false,
-		"proxy_service":  s.ServiceName,
-		"replica":        s.Replica,
+		"connected":       s.k8sClient != nil,
+		"scope":           "",
+		"all_namespaces":  false,
+		"namespaces":      []string{},
+		"default":         "",
+		"routes_enabled":  false,
+		"proxy_service":   s.ServiceName,
+		"replica":         s.Replica,
+		"ignore_defaults": s.GlobalRules,
 	}
 	if s.k8sClient != nil {
 		info["scope"] = s.k8sClient.Scope().String()
@@ -335,4 +342,33 @@ func (s *Server) handleWakeDeployment(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// SourceView is a client of a route, as shown in the dashboard.
+type SourceView struct {
+	traffic.SourceStats
+	// IntervalSeconds is the average time between its requests (0 when unknown).
+	IntervalSeconds float64 `json:"interval_seconds"`
+	// CountsAsActivity is true while its requests keep the route awake.
+	CountsAsActivity bool `json:"counts_as_activity"`
+}
+
+// handleRouteTraffic lists who sends requests to a route, to find what keeps it awake.
+func (s *Server) handleRouteTraffic(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "Missing id", http.StatusBadRequest)
+		return
+	}
+	views := []SourceView{}
+	if s.Traffic != nil {
+		for _, src := range s.Traffic(id) {
+			views = append(views, SourceView{
+				SourceStats:      src,
+				IntervalSeconds:  src.Interval().Seconds(),
+				CountsAsActivity: src.Ignored < src.Requests,
+			})
+		}
+	}
+	writeJSON(w, views)
 }

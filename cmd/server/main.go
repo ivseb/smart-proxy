@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 	_ "time/tzdata" // Schedules use IANA timezones; the runtime image has no zoneinfo
@@ -24,6 +25,7 @@ import (
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/restore"
 	"smart-proxy/internal/store"
+	"smart-proxy/internal/traffic"
 	"smart-proxy/internal/watcher"
 )
 
@@ -83,10 +85,17 @@ func main() {
 
 	// 3. Initialize Proxy Handler
 	proxyHandler := proxy.NewHandler(k8sClient, configStore)
+	globalRules, trusted := trafficConfig()
+	proxyHandler.GlobalRules, proxyHandler.TrustedProxies = globalRules, trusted
+	proxyHandler.Traffic = traffic.NewRecorder()
 
 	// 4. Admin Server
 	adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics, serviceName, authn)
 	adminServer.Replica = podName
+	adminServer.GlobalRules = globalRules
+	adminServer.Traffic = func(routeID string) []traffic.SourceStats {
+		return traffic.Merge(proxyHandler.Traffic.Snapshot()[routeID])
+	}
 	// Cancelled at shutdown so long-lived requests (the log stream) end instead of
 	// holding the server open until the deadline.
 	adminCtx, cancelAdmin := context.WithCancel(context.Background())
@@ -126,12 +135,13 @@ func main() {
 			log.Fatalf("Failed to start Kubernetes caches: %v", err)
 		}
 		replica := &ha.Replica{
-			Client:    k8sClient.Clientset,
-			Namespace: k8s.OwnNamespace(),
-			Instance:  serviceName,
-			PodName:   podName,
-			PodUID:    os.Getenv("POD_UID"),
-			Store:     configStore,
+			Client:       k8sClient.Clientset,
+			Namespace:    k8s.OwnNamespace(),
+			Instance:     serviceName,
+			PodName:      podName,
+			PodUID:       os.Getenv("POD_UID"),
+			Store:        configStore,
+			LocalTraffic: proxyHandler.Traffic.Snapshot,
 			LocalRequests: func() ha.RequestCounts {
 				total, routes := proxyHandler.Metrics.Snapshot()
 				return ha.RequestCounts{Total: total, Routes: routes}
@@ -140,6 +150,7 @@ func main() {
 		if err := replica.Start(ctx); err != nil {
 			log.Fatalf("Failed to watch shared configuration: %v", err)
 		}
+		adminServer.Traffic = replica.ClusterTraffic
 		adminServer.RequestTotals = func() (int64, map[string]int64) {
 			c := replica.ClusterRequests()
 			return c.Total, c.Routes
@@ -223,6 +234,42 @@ func newSharedStore(client *k8s.Client, instance, legacyFile string) *store.Stor
 		}
 	}
 	return store.NewStoreWithBackend(backend)
+}
+
+// trafficConfig reads the global rules for requests that never count as activity, and the
+// proxies trusted for X-Forwarded-For. IGNORE_USER_AGENTS adds to the built-in list of
+// monitors (IGNORE_DEFAULT_USER_AGENTS=false drops it); TRUSTED_PROXIES=none trusts no proxy.
+func trafficConfig() (traffic.Rules, traffic.TrustedProxies) {
+	list := func(key string, defaults []string) []string {
+		v := strings.TrimSpace(os.Getenv(key))
+		switch {
+		case v == "":
+			return defaults
+		case strings.EqualFold(v, "none"):
+			return nil
+		default:
+			return traffic.SplitList(v)
+		}
+	}
+	var userAgents []string
+	if !strings.EqualFold(strings.TrimSpace(os.Getenv("IGNORE_DEFAULT_USER_AGENTS")), "false") {
+		userAgents = append(userAgents, traffic.DefaultUserAgents...)
+	}
+	userAgents = append(userAgents, list("IGNORE_USER_AGENTS", nil)...)
+	rules := traffic.Rules{
+		UserAgents: userAgents,
+		Paths:      list("IGNORE_PATHS", nil),
+		Sources:    list("IGNORE_SOURCES", nil),
+		Methods:    list("IGNORE_METHODS", nil),
+	}
+	if err := rules.Validate(); err != nil {
+		log.Fatalf("Invalid IGNORE_* settings: %v", err)
+	}
+	trusted, err := traffic.ParseTrustedProxies(list("TRUSTED_PROXIES", traffic.DefaultTrustedProxies))
+	if err != nil {
+		log.Fatalf("Invalid TRUSTED_PROXIES: %v", err)
+	}
+	return rules, trusted
 }
 
 func hostname() string {

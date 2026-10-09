@@ -24,11 +24,16 @@ import (
 
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/store"
+	"smart-proxy/internal/traffic"
 )
 
 const (
 	activityKey = "activity.json"
 	requestsKey = "requests.json"
+	trafficKey  = "traffic.json"
+
+	// Traffic sources change with every request; share them less often than activity.
+	trafficEvery = 4
 )
 
 // RequestCounts are proxied request totals, overall and per route.
@@ -49,6 +54,8 @@ type Replica struct {
 	// LocalRequests returns this pod's request counts, published with its activity so the
 	// dashboard can show totals across replicas.
 	LocalRequests func() RequestCounts
+	// LocalTraffic returns who sent requests to each route through this pod.
+	LocalTraffic func() map[string][]traffic.SourceStats
 
 	// ActivityInterval is how often local activity is published (and others' merged).
 	ActivityInterval time.Duration
@@ -108,7 +115,8 @@ func (r *Replica) exchangeActivity(ctx context.Context) {
 	defer ticker.Stop()
 	var published map[string]time.Time
 	var publishedRequests RequestCounts
-	for {
+	var sources string
+	for tick := 0; ; tick++ {
 		select {
 		case <-ctx.Done():
 			return
@@ -116,8 +124,13 @@ func (r *Replica) exchangeActivity(ctx context.Context) {
 		}
 		local := r.Store.LocalActivity()
 		requests := r.localRequests()
+		if tick%trafficEvery == 0 && r.LocalTraffic != nil {
+			if data, err := json.Marshal(r.LocalTraffic()); err == nil {
+				sources = string(data)
+			}
+		}
 		if len(local) > 0 && (!reflect.DeepEqual(local, published) || !reflect.DeepEqual(requests, publishedRequests)) {
-			if err := r.publish(ctx, local, requests); err != nil {
+			if err := r.publish(ctx, local, requests, sources); err != nil {
 				logger.Printf("Warning: failed to share request activity: %v", err)
 			} else {
 				published, publishedRequests = local, requests
@@ -154,7 +167,7 @@ func (r *Replica) ClusterRequests() RequestCounts {
 	return sum
 }
 
-func (r *Replica) publish(ctx context.Context, activity map[string]time.Time, requests RequestCounts) error {
+func (r *Replica) publish(ctx context.Context, activity map[string]time.Time, requests RequestCounts, sources string) error {
 	data, err := json.Marshal(activity)
 	if err != nil {
 		return err
@@ -170,7 +183,7 @@ func (r *Replica) publish(ctx context.Context, activity map[string]time.Time, re
 			Namespace: r.Namespace,
 			Labels:    map[string]string{store.LabelInstance: r.Instance, store.LabelComponent: store.ComponentActivity},
 		},
-		Data: map[string]string{activityKey: string(data), requestsKey: string(requestData)},
+		Data: map[string]string{activityKey: string(data), requestsKey: string(requestData), trafficKey: sources},
 	}
 	if r.PodUID != "" {
 		// Deleted by Kubernetes together with the pod.
@@ -181,6 +194,21 @@ func (r *Replica) publish(ctx context.Context, activity map[string]time.Time, re
 		_, err = cms.Create(ctx, cm, metav1.CreateOptions{})
 	}
 	return err
+}
+
+// ClusterTraffic merges who sent requests to a route through this pod and the others.
+func (r *Replica) ClusterTraffic(routeID string) []traffic.SourceStats {
+	var lists [][]traffic.SourceStats
+	if r.LocalTraffic != nil {
+		lists = append(lists, r.LocalTraffic()[routeID])
+	}
+	for _, cm := range r.otherActivityConfigMaps() {
+		var all map[string][]traffic.SourceStats
+		if json.Unmarshal([]byte(cm.Data[trafficKey]), &all) == nil {
+			lists = append(lists, all[routeID])
+		}
+	}
+	return traffic.Merge(lists...)
 }
 
 // otherActivityConfigMaps are the activity ConfigMaps of the other replicas.

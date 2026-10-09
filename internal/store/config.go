@@ -5,8 +5,11 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
+
+	"smart-proxy/internal/traffic"
 )
 
 // DependencyConfig defines a dependent deployment that should be managed alongside the main route.
@@ -38,6 +41,32 @@ type RouteConfig struct {
 	// Declarative routes are defined by annotations on their Ingress/Route (smart-proxy/enabled);
 	// changes made elsewhere are overwritten by those annotations.
 	Declarative bool `json:"declarative,omitempty"`
+	// Ignore selects requests that don't count as activity (uptime monitors, health checks),
+	// on top of the global rules. They never wake the route; see WhenAsleep.
+	Ignore *traffic.Rules `json:"ignore,omitempty"`
+	// WhenAsleep is the answer to ignored requests while the route sleeps: WhenAsleepRespond
+	// (default), WhenAsleepUnavailable or WhenAsleepWake.
+	WhenAsleep string `json:"when_asleep,omitempty"`
+}
+
+// Answers to ignored requests (e.g. uptime monitors) while a route sleeps.
+const (
+	WhenAsleepRespond     = "respond"     // 200 from Smart Proxy: the monitor stays green, the app sleeps
+	WhenAsleepUnavailable = "unavailable" // 503: the monitor reports the app down
+	WhenAsleepWake        = "wake"        // Wake the app (the request still doesn't count as activity)
+)
+
+// ValidateTraffic reports invalid ignore rules or WhenAsleep values.
+func (r RouteConfig) ValidateTraffic() error {
+	switch r.WhenAsleep {
+	case "", WhenAsleepRespond, WhenAsleepUnavailable, WhenAsleepWake:
+	default:
+		return fmt.Errorf("when_asleep must be %s, %s or %s", WhenAsleepRespond, WhenAsleepUnavailable, WhenAsleepWake)
+	}
+	if r.Ignore != nil {
+		return r.Ignore.Validate()
+	}
+	return nil
 }
 
 // Kinds of cluster resources a route can be bound to by patching.

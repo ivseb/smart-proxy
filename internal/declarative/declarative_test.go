@@ -39,6 +39,8 @@ func TestParseErrors(t *testing.T) {
 		"bad schedule": {Schedule: "weekdays 9-5"},
 		"bad day":      {Schedule: "mon-funday 08:00-09:00"},
 		"bad tz":       {Schedule: "daily 08:00-09:00 Mars/Base"},
+		"bad source":   {IgnoreSources: "10.0.0.0/99"},
+		"bad asleep":   {WhenAsleep: "snooze"},
 	} {
 		if _, err := Parse(annotations); err == nil {
 			t.Errorf("%s: expected an error", name)
@@ -62,5 +64,20 @@ func TestParseScheduleDays(t *testing.T) {
 func TestIsEnabled(t *testing.T) {
 	if IsEnabled(map[string]string{}) || IsEnabled(map[string]string{Enabled: "false"}) || !IsEnabled(map[string]string{Enabled: "True"}) {
 		t.Fatal("IsEnabled")
+	}
+}
+
+func TestParseTrafficAnnotations(t *testing.T) {
+	s, err := Parse(map[string]string{
+		IgnoreUserAgents: "MyMonitor, internal-checker",
+		IgnorePaths:      "/healthz\n/status/*",
+		IgnoreMethods:    "HEAD",
+		WhenAsleep:       "Unavailable",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Ignore == nil || len(s.Ignore.UserAgents) != 2 || len(s.Ignore.Paths) != 2 || s.Ignore.Methods[0] != "HEAD" || s.WhenAsleep != "unavailable" {
+		t.Fatalf("settings = %+v %+v", s, s.Ignore)
 	}
 }

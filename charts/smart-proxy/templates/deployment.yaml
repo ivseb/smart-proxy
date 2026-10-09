@@ -46,6 +46,28 @@ spec:
             {{- end }}
           env:
             {{- include "smart-proxy.scopeEnv" . | nindent 12 }}
+            - name: IGNORE_DEFAULT_USER_AGENTS
+              value: {{ .Values.ignore.defaultUserAgents | quote }}
+            {{- with .Values.ignore.userAgents }}
+            - name: IGNORE_USER_AGENTS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.ignore.paths }}
+            - name: IGNORE_PATHS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.ignore.sources }}
+            - name: IGNORE_SOURCES
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.ignore.methods }}
+            - name: IGNORE_METHODS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.ignore.trustedProxies }}
+            - name: TRUSTED_PROXIES
+              value: {{ join "," . | quote }}
+            {{- end }}
             - name: METRICS_ADDR
               value: {{ printf ":%v" .Values.metrics.port | quote }}
             - name: POD_NAME

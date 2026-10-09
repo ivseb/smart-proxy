@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
-import type { ClusterInfo, RouteConfig, Schedule } from "@/types/api";
+import type { ClusterInfo, RouteConfig, Schedule, TrafficRules, WhenAsleep } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { formatDuration, parseDuration, splitHosts, workloadLabel } from "@/lib/format";
 
@@ -323,6 +323,13 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                         </div>
                     </div>
 
+                    <IgnoreEditor
+                        rules={formData.ignore || {}}
+                        whenAsleep={(formData.when_asleep || "respond") as WhenAsleep}
+                        defaults={info?.ignore_defaults}
+                        onChange={(ignore, when_asleep) => setFormData(prev => ({ ...prev, ignore, when_asleep }))}
+                    />
+
                     <ScheduleEditor
                         schedule={formData.schedule || null}
                         onChange={schedule => setFormData(prev => ({ ...prev, schedule }))}
@@ -406,6 +413,65 @@ function ScheduleEditor({ schedule, onChange }: { schedule: Schedule | null; onC
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+const RULE_FIELDS: { key: keyof TrafficRules; label: string; placeholder: string }[] = [
+    { key: "user_agents", label: "User agents contain", placeholder: "MyMonitor, internal-checker" },
+    { key: "paths", label: "Paths", placeholder: "/healthz, /status/*" },
+    { key: "sources", label: "Client IPs / CIDRs", placeholder: "10.20.0.0/16" },
+    { key: "methods", label: "Methods", placeholder: "HEAD" },
+];
+
+function IgnoreEditor({ rules, whenAsleep, defaults, onChange }: {
+    rules: TrafficRules;
+    whenAsleep: WhenAsleep;
+    defaults?: TrafficRules;
+    onChange: (rules: TrafficRules, whenAsleep: WhenAsleep) => void;
+}) {
+    const split = (v: string) => v.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+    // The text as typed (with spaces and trailing commas); the parsed lists go to the form.
+    const [text, setText] = useState<Record<string, string>>(() =>
+        Object.fromEntries(RULE_FIELDS.map(f => [f.key, (rules[f.key] || []).join(", ")])));
+    const field = "w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+    return (
+        <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700 space-y-3">
+            <div>
+                <p className="text-sm text-gray-200 font-medium">Monitors &amp; health checks</p>
+                <p className="text-xs text-gray-500">
+                    Matching requests don&apos;t count as activity and never wake the app. Common monitors are ignored already
+                    {defaults?.user_agents?.length ? (
+                        <details className="inline">
+                            <summary className="inline cursor-pointer text-gray-400 hover:text-gray-200"> (list)</summary>
+                            <span className="block mt-1 text-gray-400">{defaults.user_agents.join(", ")}</span>
+                        </details>
+                    ) : null}
+                    .
+                </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {RULE_FIELDS.map(f => (
+                    <label key={f.key} className="block">
+                        <span className="block text-xs text-gray-400 mb-1">{f.label}</span>
+                        <input type="text" className={field} placeholder={f.placeholder}
+                            value={text[f.key]}
+                            onChange={e => {
+                                setText({ ...text, [f.key]: e.target.value });
+                                onChange({ ...rules, [f.key]: split(e.target.value) }, whenAsleep);
+                            }} />
+                    </label>
+                ))}
+            </div>
+            <label className="block">
+                <span className="block text-xs text-gray-400 mb-1">While the app sleeps, answer them with</span>
+                <select className={field} value={whenAsleep} onChange={e => onChange(rules, e.target.value as WhenAsleep)}>
+                    <option value="respond">200 OK from Smart Proxy (monitors stay green, the app keeps sleeping)</option>
+                    <option value="unavailable">503 Service Unavailable (monitors report it down)</option>
+                    <option value="wake">Wake the app (it goes back to sleep after the idle timeout)</option>
+                </select>
+            </label>
         </div>
     );
 }

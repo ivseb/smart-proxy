@@ -3,7 +3,8 @@ import { ArrowLeft, Edit, Globe, Hand, Octagon, Power, Route as RouteIcon, Trash
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import type { LogEntry, RouteStatus, StatsData } from "@/types/api";
+import type { LogEntry, RouteConfig, RouteStatus, StatsData } from "@/types/api";
+import { TrafficSources } from "@/components/views/TrafficSources";
 import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 
@@ -16,9 +17,10 @@ interface RouteDetailViewProps {
     onDelete: (route: RouteStatus) => void;
     onStop: (route: RouteStatus) => void;
     onWake: (route: RouteStatus) => void;
+    onSave: (route: Partial<RouteConfig>) => Promise<boolean>;
 }
 
-export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, onStop, onWake }: RouteDetailViewProps) {
+export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, onStop, onWake, onSave }: RouteDetailViewProps) {
     const now = useNow(1000);
     const hosts = splitHosts(route.host);
     const requests = stats?.RouteStats?.[route.id] || 0;
@@ -147,6 +149,8 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                     </CardContent>
                 </Card>
             </div>
+
+            <TrafficSources route={route} onSave={onSave} />
 
             <Card>
                 <CardHeader><CardTitle>Events</CardTitle></CardHeader>

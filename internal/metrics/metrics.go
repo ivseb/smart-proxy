@@ -41,6 +41,18 @@ var (
 		Help:      "Deployments scaled to zero, by reason (idle or manual).",
 	}, []string{"namespace", "deployment", "reason"})
 
+	ignored = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "ignored_requests_total",
+		Help:      "Requests that didn't count as activity (uptime monitors, health checks), by reason.",
+	}, []string{"namespace", "route", "reason"})
+
+	asleepResponses = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "asleep_responses_total",
+		Help:      "Ignored requests answered by Smart Proxy because the route was asleep, by status code.",
+	}, []string{"namespace", "route", "code"})
+
 	leader = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "leader",
@@ -54,7 +66,7 @@ var (
 )
 
 func init() {
-	registry.MustRegister(requests, wakeups, wakeDuration, sleeps, leader,
+	registry.MustRegister(requests, wakeups, wakeDuration, sleeps, ignored, asleepResponses, leader,
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 }
 
@@ -66,6 +78,16 @@ func Handler() http.Handler {
 // Request counts a proxied request.
 func Request(namespace, routeID string) {
 	requests.WithLabelValues(namespace, routeID).Inc()
+}
+
+// Ignored counts a request that didn't count as activity.
+func Ignored(namespace, routeID, reason string) {
+	ignored.WithLabelValues(namespace, routeID, reason).Inc()
+}
+
+// AsleepResponse counts an ignored request answered while the route slept.
+func AsleepResponse(namespace, routeID string, code int) {
+	asleepResponses.WithLabelValues(namespace, routeID, strconv.Itoa(code)).Inc()
 }
 
 // WakeStarted records that a deployment was scaled up from zero.

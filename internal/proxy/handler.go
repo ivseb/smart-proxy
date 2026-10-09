@@ -21,6 +21,7 @@ import (
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/store"
+	"smart-proxy/internal/traffic"
 )
 
 type Handler struct {
@@ -30,6 +31,13 @@ type Handler struct {
 	Metrics   *Metrics
 	ready     atomic.Bool
 	draining  atomic.Bool
+
+	// GlobalRules select requests that never count as activity, for every route.
+	GlobalRules traffic.Rules
+	// TrustedProxies decide when X-Forwarded-For names the client.
+	TrustedProxies traffic.TrustedProxies
+	// Traffic records who sends requests to each route (nil disables it).
+	Traffic *traffic.Recorder
 }
 
 // Probe endpoints, under the reserved /__smart_proxy/ prefix so they can't shadow an
@@ -195,55 +203,33 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if this request is a Kubernetes probe.
-	// Probes should not keep the route/deployments alive, so we skip updating the activity timer.
-	isProbe := false
-	for _, route := range matchedRoutes {
-		probePaths, err := h.k8sClient.GetDeploymentProbePaths(route.Namespace, route.Deployment)
-		if err == nil {
-			for _, p := range probePaths {
-				if r.URL.Path == p {
-					isProbe = true
-					break
-				}
-			}
-		}
-		if isProbe {
-			break
-		}
-		for _, dep := range route.Dependencies {
-			depProbePaths, err := h.k8sClient.GetDeploymentProbePaths(route.Namespace, dep.Name)
-			if err == nil {
-				for _, p := range depProbePaths {
-					if r.URL.Path == p {
-						isProbe = true
-						break
-					}
-				}
-			}
-			if isProbe {
-				break
-			}
-		}
-		if isProbe {
-			break
-		}
+	// Uptime monitors, health checks and probes don't count as activity, and don't wake
+	// anything: while the route sleeps they get an answer from Smart Proxy (see WhenAsleep).
+	client := h.TrustedProxies.ClientIP(r)
+	reason := h.ignoredReason(r, client, matchedRoutes, bestRoute)
+	if h.Traffic != nil {
+		h.Traffic.Record(bestRoute.ID, r, client, reason)
 	}
-
-	if !isProbe {
+	wake := true
+	if reason == "" {
 		for _, route := range matchedRoutes {
 			h.store.UpdateActivity(route.ID)
 		}
 	} else {
-		logger.Printf("Ignoring activity update for probe request: %s on route %s (Deployment: %s)", r.URL.Path, bestRoute.ID, bestRoute.Deployment)
+		metrics.Ignored(bestRoute.Namespace, bestRoute.ID, reason)
+		if h.serving(bestRoute) {
+			wake = false
+		} else if h.answerAsleep(w, bestRoute) {
+			return
+		}
 	}
 
-	logger.Printf("Request: %s (Host: %s) -> Best Route: %s (Deps: %v, Total Matched: %d)", r.URL.Path, r.Host, bestRoute.Deployment, bestRoute.Dependencies, len(matchedRoutes))
-
 	// 2. Wake whatever the matched routes need
-	if _, allReady := h.ensureAwake(matchedRoutes); !allReady {
-		h.serveLoadingPage(w)
-		return
+	if wake {
+		if _, allReady := h.ensureAwake(matchedRoutes); !allReady {
+			h.serveLoadingPage(w)
+			return
+		}
 	}
 
 	// 4. Proxy Request

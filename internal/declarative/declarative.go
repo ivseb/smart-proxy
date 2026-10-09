@@ -9,6 +9,11 @@
 //	smart-proxy/schedule: mon-fri 08:00-19:00 Europe/Rome
 //	smart-proxy/workload: statefulset/web           # when it can't be inferred from the Service
 //	smart-proxy/badge: "true"
+//	smart-proxy/ignore-user-agents: MyMonitor, internal-checker   # on top of the global list
+//	smart-proxy/ignore-paths: /healthz, /status/*
+//	smart-proxy/ignore-sources: 10.20.0.0/16
+//	smart-proxy/ignore-methods: HEAD
+//	smart-proxy/when-asleep: respond                # or unavailable, wake
 package declarative
 
 import (
@@ -18,6 +23,7 @@ import (
 	"time"
 
 	"smart-proxy/internal/store"
+	"smart-proxy/internal/traffic"
 )
 
 // Annotation keys users set.
@@ -30,6 +36,12 @@ const (
 	Schedule     = "smart-proxy/schedule"
 	Workload     = "smart-proxy/workload"
 	Badge        = "smart-proxy/badge"
+
+	IgnoreUserAgents = "smart-proxy/ignore-user-agents"
+	IgnorePaths      = "smart-proxy/ignore-paths"
+	IgnoreSources    = "smart-proxy/ignore-sources"
+	IgnoreMethods    = "smart-proxy/ignore-methods"
+	WhenAsleep       = "smart-proxy/when-asleep"
 )
 
 // IsEnabled reports whether the resource opts in.
@@ -47,6 +59,8 @@ type Settings struct {
 	Schedule     *store.Schedule
 	Workload     string // Empty: infer from the Service
 	InjectBadge  bool
+	Ignore       *traffic.Rules
+	WhenAsleep   string
 }
 
 // Parse reads the settings from a resource's annotations.
@@ -90,6 +104,23 @@ func Parse(annotations map[string]string) (Settings, error) {
 	s.AlwaysOn = boolean(AlwaysOn)
 	s.InjectBadge = boolean(Badge)
 	s.Workload = get(Workload)
+
+	rules := traffic.Rules{
+		UserAgents: traffic.SplitList(get(IgnoreUserAgents)),
+		Paths:      traffic.SplitList(get(IgnorePaths)),
+		Sources:    traffic.SplitList(get(IgnoreSources)),
+		Methods:    traffic.SplitList(get(IgnoreMethods)),
+	}
+	if !rules.IsZero() {
+		if verr := rules.Validate(); verr != nil {
+			return s, fmt.Errorf("smart-proxy/ignore-*: %w", verr)
+		}
+		s.Ignore = &rules
+	}
+	s.WhenAsleep = strings.ToLower(get(WhenAsleep))
+	if verr := (store.RouteConfig{WhenAsleep: s.WhenAsleep}).ValidateTraffic(); verr != nil {
+		return s, fmt.Errorf("%s: %w", WhenAsleep, verr)
+	}
 	return s, err
 }
 
@@ -164,6 +195,8 @@ func (s Settings) Apply(r *store.RouteConfig) {
 	r.AlwaysOn = s.AlwaysOn
 	r.Schedule = s.Schedule
 	r.InjectBadge = s.InjectBadge
+	r.Ignore = s.Ignore
+	r.WhenAsleep = s.WhenAsleep
 	if s.Workload != "" {
 		r.Deployment = s.Workload
 	}

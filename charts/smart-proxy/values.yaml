@@ -135,6 +135,23 @@ auth:
         cpu: 100m
         memory: 64Mi
 
+# Requests that never count as activity, for every route: uptime monitors, health checks…
+# They don't keep applications awake and don't wake them; while an application sleeps they get
+# an answer from Smart Proxy (per route: 200 by default, or 503, or wake it). Routes can add
+# their own rules from the dashboard or with smart-proxy/ignore-* annotations.
+ignore:
+  # Built-in list of common monitors (UptimeRobot, Pingdom, StatusCake, Datadog, Blackbox
+  # Exporter, kube-probe, …), matched in the User-Agent.
+  defaultUserAgents: true
+  # Extra User-Agent substrings, paths ("/healthz", "/status/*"), client IPs/CIDRs, methods.
+  userAgents: []
+  paths: []
+  sources: []
+  methods: []
+  # Proxies whose X-Forwarded-For names the real client (for "sources"). Empty = private
+  # networks, where in-cluster ingress controllers and routers connect from.
+  trustedProxies: []
+
 # Prometheus metrics on a dedicated port (never through the proxy or the dashboard login):
 # requests, wake-ups and cold-start durations, sleeps, sleeping deployments/replicas.
 metrics:

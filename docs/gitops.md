@@ -30,6 +30,11 @@ spec:
 | `smart-proxy/always-on` | Never sleep (traffic still goes through Smart Proxy). | `false` |
 | `smart-proxy/schedule` | Keep awake during these hours: `<days> <from>-<to> [timezone]`, e.g. `mon-fri 08:00-19:00 Europe/Rome`, `daily 22:00-06:00`. | none |
 | `smart-proxy/workload` | The workload to scale, when it can't be inferred from the Service (`web`, `statefulset/web`). | inferred |
+| `smart-proxy/ignore-user-agents` | Clients that never count as activity (on top of the built-in monitor list), comma-separated User-Agent substrings. | none |
+| `smart-proxy/ignore-paths` | Paths that never count as activity: exact, or prefixes ending with `*`. | none |
+| `smart-proxy/ignore-sources` | Client IPs/CIDRs that never count as activity. | none |
+| `smart-proxy/ignore-methods` | Methods that never count as activity, e.g. `HEAD`. | none |
+| `smart-proxy/when-asleep` | Answer to ignored requests while asleep: `respond` (200), `unavailable` (503) or `wake`. | `respond` |
 | `smart-proxy/badge` | Show a "Powered by Smart Proxy" badge on HTML pages. | `false` |
 
 Smart Proxy applies changes within 30 seconds. Routes defined this way are marked *annotations* in the dashboard; editing them there is overwritten by the annotations. An invalid value is reported in the logs and the last valid configuration is kept.

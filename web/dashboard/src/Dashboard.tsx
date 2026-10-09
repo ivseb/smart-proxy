@@ -199,6 +199,7 @@ export function Dashboard() {
                             onDelete={requestDelete}
                             onStop={stopRoute}
                             onWake={wakeRoute}
+                            onSave={saveRoute}
                         />
                     ) : (
                         <>
