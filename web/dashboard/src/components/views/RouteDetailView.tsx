@@ -108,7 +108,9 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                 </Card>
 
                 <Card>
-                    <CardHeader><CardTitle className="text-sm text-gray-400 font-medium">Dependencies</CardTitle></CardHeader>
+                    <CardHeader><CardTitle className="text-sm text-gray-400 font-medium">
+                        Dependencies{route.start_in_order && (route.dependencies || []).length > 0 ? " · start in order" : ""}
+                    </CardTitle></CardHeader>
                     <CardContent className="space-y-2">
                         {(route.dependencies || []).length === 0 && <span className="text-sm text-gray-500 italic">None</span>}
                         {(route.dependencies || []).map(d => (

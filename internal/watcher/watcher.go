@@ -9,6 +9,7 @@ import (
 
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
+	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/store"
 )
 
@@ -89,6 +90,7 @@ func (w *Watcher) sleep(namespace, deployment, reason string) {
 		logger.Printf("Error putting %s to sleep: %v", key, err)
 	case slept:
 		logger.Printf("Scaled down %s (%s)", key, reason)
+		metrics.Slept(namespace, deployment, "idle")
 	}
 }
 

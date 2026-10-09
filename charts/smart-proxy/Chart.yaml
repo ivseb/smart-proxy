@@ -33,6 +33,8 @@ annotations:
       email: ivan.sebben.dati@gmail.com
   artifacthub.io/changes: |
     - kind: added
+      description: Prometheus metrics on a dedicated port, with an optional ServiceMonitor
+    - kind: added
       description: High availability, 2 replicas by default sharing routes (ConfigMap) and activity, with leader election and a PodDisruptionBudget
     - kind: added
       description: Uninstalling restores patched Ingresses/Routes and wakes sleeping Deployments (restoreOnUninstall)

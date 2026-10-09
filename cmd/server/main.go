@@ -19,6 +19,7 @@ import (
 	"smart-proxy/internal/auth"
 	"smart-proxy/internal/ha"
 	"smart-proxy/internal/k8s"
+	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/restore"
 	"smart-proxy/internal/store"
@@ -102,8 +103,13 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	errs := make(chan error, 2)
-	for name, srv := range map[string]*http.Server{"Admin": adminHTTP, "Proxy": proxyHTTP} {
+	// Prometheus metrics, on their own port: never exposed through the proxy or behind the dashboard login.
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", metrics.Handler())
+	metricsHTTP := &http.Server{Addr: getEnv("METRICS_ADDR", ":9090"), Handler: metricsMux, ReadHeaderTimeout: 10 * time.Second}
+
+	errs := make(chan error, 3)
+	for name, srv := range map[string]*http.Server{"Admin": adminHTTP, "Proxy": proxyHTTP, "Metrics": metricsHTTP} {
 		go func(name string, srv *http.Server) {
 			log.Printf("%s Server listening on %s", name, srv.Addr)
 			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -142,7 +148,19 @@ func main() {
 
 		// Only the leader puts deployments to sleep and heals patches; every replica proxies and wakes.
 		w := watcher.NewWatcher(k8sClient, configStore, serviceName)
-		go replica.RunLeaderElection(ctx, w.Start)
+		go replica.RunLeaderElection(ctx, func(leadCtx context.Context) {
+			metrics.SetLeader(true)
+			defer metrics.SetLeader(false)
+			w.Start(leadCtx)
+		})
+		metrics.RegisterSleeping(func() (map[string]int, map[string]int) {
+			sleeping, _ := k8sClient.SleepingDeployments()
+			namespaces, recorded := make([]string, len(sleeping)), make([]string, len(sleeping))
+			for i, d := range sleeping {
+				namespaces[i], recorded[i] = d.Namespace, d.Annotations[k8s.AnnotationReplicasBeforeSleep]
+			}
+			return metrics.SleepingFromAnnotations(namespaces, recorded)
+		})
 	} else {
 		proxyHandler.SetReady()
 	}
@@ -167,6 +185,7 @@ func main() {
 	if err := adminHTTP.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Admin Server shutdown: %v", err)
 	}
+	metricsHTTP.Shutdown(shutdownCtx)
 	log.Println("Stopped")
 }
 

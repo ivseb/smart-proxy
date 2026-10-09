@@ -11,6 +11,7 @@
 | `POD_NAMESPACE` | The namespace Smart Proxy runs in (set by the chart; otherwise read from the service account). | auto |
 | `LOG_LEVEL` | Logging verbosity (debug, info, error). | `info` |
 | `ADMIN_ADDR` | Listen address of the admin dashboard. | `:8081` |
+| `METRICS_ADDR` | Listen address of the Prometheus metrics endpoint. | `:9090` |
 | `SHUTDOWN_DELAY` | On SIGTERM, how long to fail the readiness probe before closing listeners, so in-flight traffic moves away cleanly. | `5s` |
 | `CONFIG_PATH` | File where route configurations are saved when running outside a cluster; inside one they live in the `<service>-routes` ConfigMap (an existing file is imported once). | `routes.json` |
 | `POD_NAME`, `POD_UID` | This replica's identity, for leader election and its activity ConfigMap (set by the chart). | hostname |
@@ -39,6 +40,30 @@ kubectl label namespace pr-1234 smart-proxy=enabled
 ```
 
 Smart Proxy keeps a local cache of the managed namespaces (Deployments, Services, Ingresses, Routes and HPAs), so proxied requests never wait on the Kubernetes API. Patching, waking and sleeping happen only inside managed namespaces; the API refuses anything else.
+
+## Metrics
+
+Prometheus metrics are served on a separate port (`METRICS_ADDR`, default `:9090`, path `/metrics`), never through the proxy or behind the dashboard login. The chart exposes it on the Service and can create a ServiceMonitor (`metrics.serviceMonitor.enabled`).
+
+| Metric | Description |
+| :--- | :--- |
+| `smart_proxy_requests_total{namespace,route}` | Requests proxied to applications. |
+| `smart_proxy_wakeups_total{namespace,deployment,trigger}` | Deployments scaled up from zero (`request` or `manual`). |
+| `smart_proxy_wake_duration_seconds{namespace,deployment}` | Cold start: from scaling up until a replica is ready. |
+| `smart_proxy_sleeps_total{namespace,deployment,reason}` | Deployments scaled to zero (`idle` or `manual`). |
+| `smart_proxy_sleeping_deployments{namespace}` | Deployments asleep right now. |
+| `smart_proxy_sleeping_replicas{namespace}` | Replicas those deployments would otherwise run. |
+| `smart_proxy_leader` | 1 on the replica that sleeps deployments and heals patches. |
+
+Every replica reports the cluster-wide gauges; use `max` over replicas for them, and `sum` for the counters. Useful queries:
+
+```promql
+# Replica-hours saved over the last 7 days
+sum(sum_over_time((max by (namespace) (smart_proxy_sleeping_replicas))[7d:1m])) / 60
+
+# 95th percentile cold start per deployment
+histogram_quantile(0.95, sum by (le, namespace, deployment) (rate(smart_proxy_wake_duration_seconds_bucket[1h])))
+```
 
 ## Reserved paths
 

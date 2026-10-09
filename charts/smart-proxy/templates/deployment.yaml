@@ -36,12 +36,18 @@ spec:
           ports:
             - name: proxy
               containerPort: {{ .Values.config.proxyPort }}
+            {{- if .Values.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ .Values.metrics.port }}
+            {{- end }}
             {{- if ne $authMode "openshift" }}
             - name: admin
               containerPort: {{ .Values.config.adminPort }}
             {{- end }}
           env:
             {{- include "smart-proxy.scopeEnv" . | nindent 12 }}
+            - name: METRICS_ADDR
+              value: {{ printf ":%v" .Values.metrics.port | quote }}
             - name: POD_NAME
               valueFrom:
                 fieldRef:

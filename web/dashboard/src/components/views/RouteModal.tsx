@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import type { ClusterInfo, RouteConfig } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { formatDuration, parseDuration, splitHosts } from "@/lib/format";
@@ -140,6 +140,14 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
         setFormData(prev => ({ ...prev, host: next.join(", ") }));
     };
 
+    const moveDependency = (index: number, direction: -1 | 1) => {
+        const deps = [...(formData.dependencies || [])];
+        const target = index + direction;
+        if (target < 0 || target >= deps.length) return;
+        [deps[index], deps[target]] = [deps[target], deps[index]];
+        setFormData(prev => ({ ...prev, dependencies: deps }));
+    };
+
     const addDependency = () => {
         if (selectedDepToAdd && !formData.dependencies?.some(d => d.name === selectedDepToAdd)) {
             setFormData(prev => ({ ...prev, dependencies: [...(prev.dependencies || []), { name: selectedDepToAdd, stop_on_idle: true }] }));
@@ -231,14 +239,29 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                     </div>
 
                     <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700 space-y-3">
-                        <div>
-                            <p className="text-gray-200 text-sm font-medium">Dependencies</p>
-                            <p className="text-xs text-gray-500">Woken together with the app. "Sleeps too" puts them to sleep when it goes idle.</p>
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                                <p className="text-gray-200 text-sm font-medium">Dependencies</p>
+                                <p className="text-xs text-gray-500">
+                                    {formData.start_in_order
+                                        ? "Woken one at a time in this order, each once the previous is ready; the app starts last."
+                                        : "Woken together with the app."}{" "}
+                                    "Sleeps too" puts them to sleep when it goes idle.
+                                </p>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer shrink-0">
+                                <input type="checkbox" className="w-3.5 h-3.5 rounded bg-gray-800 border-gray-500" checked={formData.start_in_order || false}
+                                    onChange={e => setFormData({ ...formData, start_in_order: e.target.checked })} />
+                                Start in order
+                            </label>
                         </div>
                         {(formData.dependencies || []).length === 0 && <div className="text-gray-500 text-sm italic">No dependencies.</div>}
                         {(formData.dependencies || []).map((dep, idx) => (
                             <div key={dep.name} className="flex justify-between items-center gap-2 bg-gray-800 px-3 py-2 rounded border border-gray-600">
-                                <span className="text-white font-mono text-sm truncate">{dep.name}</span>
+                                <span className="flex items-center gap-2 min-w-0">
+                                    {formData.start_in_order && <span className="text-gray-500 font-mono text-xs">{idx + 1}.</span>}
+                                    <span className="text-white font-mono text-sm truncate">{dep.name}</span>
+                                </span>
                                 <div className="flex items-center gap-3 shrink-0">
                                     <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-300">
                                         <input
@@ -253,6 +276,14 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                                         />
                                         Sleeps too
                                     </label>
+                                    {formData.start_in_order && (
+                                        <span className="flex">
+                                            <button type="button" onClick={() => moveDependency(idx, -1)} disabled={idx === 0}
+                                                className="p-1 text-gray-400 hover:text-white disabled:opacity-30" aria-label={`Move ${dep.name} up`}><ArrowUp size={14} /></button>
+                                            <button type="button" onClick={() => moveDependency(idx, 1)} disabled={idx === (formData.dependencies?.length || 0) - 1}
+                                                className="p-1 text-gray-400 hover:text-white disabled:opacity-30" aria-label={`Move ${dep.name} down`}><ArrowDown size={14} /></button>
+                                        </span>
+                                    )}
                                     <button type="button" onClick={() => setFormData(prev => ({ ...prev, dependencies: prev.dependencies?.filter(d => d.name !== dep.name) }))}
                                         className="text-red-400 hover:text-red-300" aria-label={`Remove ${dep.name}`}>
                                         <X size={16} />

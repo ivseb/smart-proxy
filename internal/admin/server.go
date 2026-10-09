@@ -11,6 +11,7 @@ import (
 	"smart-proxy/internal/auth"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
+	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/store"
 )
@@ -263,7 +264,11 @@ func (s *Server) handleStopDeployment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := s.k8sClient.SleepDeployment(namespace, deployment); err != nil {
+	slept, err := s.k8sClient.SleepDeployment(namespace, deployment)
+	if slept {
+		metrics.Slept(namespace, deployment, "manual")
+	}
+	if err != nil {
 		logger.Printf("Error scaling down %s/%s: %v", namespace, deployment, err)
 		status := http.StatusInternalServerError
 		if errors.Is(err, k8s.ErrManagedByKEDA) {
@@ -326,6 +331,7 @@ func (s *Server) handleWakeDeployment(w http.ResponseWriter, r *http.Request) {
 		}
 		if target > 0 {
 			logger.Printf("Manual wake-up of %s/%s with %d replica(s)", namespace, name, target)
+			metrics.WakeStarted(namespace, name, "manual")
 		}
 	}
 	w.WriteHeader(http.StatusOK)

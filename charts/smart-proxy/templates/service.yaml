@@ -17,3 +17,9 @@ spec:
       port: {{ .Values.service.adminPort }}
       targetPort: admin
       protocol: TCP
+    {{- if .Values.metrics.enabled }}
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+    {{- end }}

@@ -16,6 +16,7 @@ export interface RouteConfig {
     last_activity: string;
     inject_badge: boolean;
     always_on?: boolean;
+    start_in_order?: boolean;
 }
 
 export type DeploymentStatus = "Ready" | "Scaling" | "Sleep" | "Error" | "Unwatched" | "Offline";

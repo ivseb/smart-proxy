@@ -135,6 +135,18 @@ auth:
         cpu: 100m
         memory: 64Mi
 
+# Prometheus metrics on a dedicated port (never through the proxy or the dashboard login):
+# requests, wake-ups and cold-start durations, sleeps, sleeping deployments/replicas.
+metrics:
+  enabled: true
+  port: 9090
+  # Create a ServiceMonitor for the Prometheus Operator.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    # Extra labels, e.g. the one your Prometheus selects ServiceMonitors by.
+    labels: {}
+
 # Expose the admin dashboard through a Kubernetes Ingress.
 ingress:
   enabled: false

@@ -29,6 +29,10 @@ type RouteConfig struct {
 	LastActivity  time.Time          `json:"last_activity"`
 	InjectBadge   bool               `json:"inject_badge"` // If true, injects a visible badge in HTML responses
 	AlwaysOn      bool               `json:"always_on"`    // If true, the main deployment is not scaled down on idle
+	// StartInOrder wakes the dependencies one at a time, in the listed order, each once the
+	// previous one is ready, and the main deployment last (e.g. database, then API, then app).
+	// Otherwise everything is woken at once.
+	StartInOrder bool `json:"start_in_order"`
 }
 
 // Kinds of cluster resources a route can be bound to by patching.

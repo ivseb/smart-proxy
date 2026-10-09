@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -20,6 +19,7 @@ import (
 
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
+	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/store"
 )
 
@@ -240,40 +240,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	logger.Printf("Request: %s (Host: %s) -> Best Route: %s (Deps: %v, Total Matched: %d)", r.URL.Path, r.Host, bestRoute.Deployment, bestRoute.Dependencies, len(matchedRoutes))
 
-	// 2. Check Chain Status
-	// We need to check the Main Deployment AND all Dependencies for ALL matched routes
-	depMap := make(map[string]string) // name -> namespace
-	for _, route := range matchedRoutes {
-		depMap[route.Deployment] = route.Namespace
-		for _, d := range route.Dependencies {
-			depMap[d.Name] = route.Namespace
-		}
-	}
-
-	allReady := true
-
-	for depName, targetNs := range depMap {
-		replicas, readyReplicas, err := h.k8sClient.GetDeploymentStatus(targetNs, depName)
-		if err != nil {
-			log.Printf("Error getting status for %s: %v", depName, err)
-			continue
-		}
-
-		if replicas == 0 {
-			target, err := h.k8sClient.WakeDeployment(targetNs, depName)
-			if err != nil {
-				logger.Printf("Error waking up %s: %v", depName, err)
-			} else if target > 0 {
-				logger.Printf("Waking up %s with %d replica(s)", depName, target)
-			}
-			allReady = false
-		} else if readyReplicas == 0 {
-			logger.Printf("Dependency %s is waking up...", depName)
-			allReady = false
-		}
-	}
-
-	if !allReady {
+	// 2. Wake whatever the matched routes need
+	if _, allReady := h.ensureAwake(matchedRoutes); !allReady {
 		h.serveLoadingPage(w)
 		return
 	}
@@ -289,6 +257,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Track Metrics
 	h.Metrics.Increment(bestRoute.ID)
+	metrics.Request(bestRoute.Namespace, bestRoute.ID)
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
@@ -394,40 +363,8 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check ALL Dependencies for ALL matched routes
-	depMap := make(map[string]string)
-	for _, route := range matchedRoutes {
-		depMap[route.Deployment] = route.Namespace
-		for _, d := range route.Dependencies {
-			depMap[d.Name] = route.Namespace
-		}
-	}
-	allReady := true
-
-	type ServiceStatus struct {
-		Name   string `json:"name"`
-		Status string `json:"status"` // Ready, Scaling, Sleep, Error
-	}
-	var details []ServiceStatus
-
-	for depName, targetNs := range depMap {
-		replicas, readyReplicas, err := h.k8sClient.GetDeploymentStatus(targetNs, depName)
-		status := "Unknown"
-		if err != nil {
-			status = "Error"
-			allReady = false
-		} else if replicas == 0 {
-			status = "Sleep"
-			allReady = false
-		} else if readyReplicas < replicas {
-			status = "Scaling"
-			allReady = false
-		} else {
-			status = "Ready"
-		}
-
-		details = append(details, ServiceStatus{Name: depName, Status: status})
-	}
+	// Keep waking: with StartInOrder, each poll of the waiting page advances the chain.
+	details, allReady := h.ensureAwake(matchedRoutes)
 
 	if allReady {
 		for _, route := range matchedRoutes {
@@ -444,9 +381,9 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 				resp, err := client.Do(req)
 				if err != nil {
 					allReady = false
-					details = append(details, ServiceStatus{
+					details = append(details, workloadState{
 						Name:   route.TargetService + " (warming up)",
-						Status: "Scaling",
+						Status: stateScaling,
 					})
 				} else {
 					resp.Body.Close()
