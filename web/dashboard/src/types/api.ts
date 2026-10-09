@@ -82,6 +82,20 @@ export interface RouteConfig {
     when_asleep?: WhenAsleep | ""; // Answer to those requests while asleep ("" = respond)
     backends?: WeightedBackend[] | null; // Balanced Route: the Services and their weights
     inspect_until?: string | null; // Requests are recorded until then
+    protection?: Protection | null;
+}
+
+// Require a login (browsers) or an access token (scripts) before requests reach the app.
+export interface Protection {
+    enabled: boolean;
+    open?: string[]; // Paths reachable without login; prefixes end with "*"
+    session_hours?: number; // Default 12
+}
+
+export interface Credential {
+    name: string;
+    created: string;
+    hint?: string; // Last characters of a token
 }
 
 export type DeploymentStatus = "Ready" | "Scaling" | "Sleep" | "Error" | "Unwatched" | "Offline";
@@ -103,6 +117,9 @@ export interface RouteStatus extends RouteConfig {
     schedule_active: boolean;
     resources: (ResourceRef & { host: string })[]; // Patched for this route; restored when it is deleted
     backend_status: (WeightedBackend & { status: DeploymentStatus | "Unknown"; share: number })[];
+    protection_users: Credential[];
+    protection_tokens: Credential[];
+    protection_available: boolean; // Smart Proxy's Secret is usable
 }
 
 export interface DeploymentSummary {

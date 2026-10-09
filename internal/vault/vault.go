@@ -31,8 +31,15 @@ const (
 
 // Credentials are the hashed secrets protecting one route.
 type Credentials struct {
-	Users  map[string]string `json:"users,omitempty"`  // Name -> password hash
-	Tokens map[string]string `json:"tokens,omitempty"` // Name -> token hash
+	Users  map[string]Secret `json:"users,omitempty"`  // Name -> password
+	Tokens map[string]Secret `json:"tokens,omitempty"` // Name -> access token
+}
+
+// Secret is a hashed password or token.
+type Secret struct {
+	Hash    string    `json:"hash"`
+	Created time.Time `json:"created"`
+	Hint    string    `json:"hint,omitempty"` // The token's last characters, to recognize it
 }
 
 // State is what the Secret holds.

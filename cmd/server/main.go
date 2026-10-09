@@ -20,6 +20,7 @@ import (
 
 	"smart-proxy/internal/admin"
 	"smart-proxy/internal/auth"
+	"smart-proxy/internal/guard"
 	"smart-proxy/internal/ha"
 	"smart-proxy/internal/history"
 	"smart-proxy/internal/inspect"
@@ -123,6 +124,21 @@ func main() {
 	recorder := &inspect.Recorder{Replica: podName}
 	proxyHandler.Inspect, adminServer.Inspect = recorder, recorder
 	var secrets atomic.Pointer[vault.Vault] // Set once the cluster connection is up
+	adminServer.Vault = secrets.Load
+	adminServer.PeerToken = func() string { return secrets.Load().PeerToken() }
+	if k8sClient != nil {
+		metricsPort := getEnv("METRICS_ADDR", ":9090")
+		ownIP := os.Getenv("POD_IP")
+		adminServer.Peers = func() []string {
+			var peers []string
+			for _, ip := range k8sClient.ProxyPodIPs() {
+				if ip != ownIP {
+					peers = append(peers, "http://"+net.JoinHostPort(ip, strings.TrimPrefix(metricsPort, ":")))
+				}
+			}
+			return peers
+		}
+	}
 	// Cancelled at shutdown so long-lived requests (the log stream) end instead of
 	// holding the server open until the deadline.
 	adminCtx, cancelAdmin := context.WithCancel(context.Background())
@@ -181,17 +197,8 @@ func main() {
 		} else {
 			secrets.Store(v)
 		}
-		metricsPort := getEnv("METRICS_ADDR", ":9090")
-		ownIP := os.Getenv("POD_IP")
-		adminServer.PeerToken = func() string { return secrets.Load().PeerToken() }
-		adminServer.Peers = func() []string {
-			var peers []string
-			for _, ip := range k8sClient.ProxyPodIPs() {
-				if ip != ownIP {
-					peers = append(peers, "http://"+net.JoinHostPort(ip, strings.TrimPrefix(metricsPort, ":")))
-				}
-			}
-			return peers
+		if v := secrets.Load(); v != nil {
+			proxyHandler.Guard = &guard.Guard{Vault: v} // Read by requests only once ready (below)
 		}
 		replica := &ha.Replica{
 			Client:       k8sClient.Clientset,

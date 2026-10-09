@@ -49,6 +49,8 @@ type RouteConfig struct {
 	// WhenAsleep is the answer to ignored requests while the route sleeps: WhenAsleepRespond
 	// (default), WhenAsleepUnavailable or WhenAsleepWake.
 	WhenAsleep string `json:"when_asleep,omitempty"`
+	// Protection requires a login or an access token before requests reach the application.
+	Protection *Protection `json:"protection,omitempty"`
 	// InspectUntil, while in the future, has the requests to this route recorded for the
 	// dashboard (see package inspect).
 	InspectUntil *time.Time `json:"inspect_until,omitempty"`
@@ -272,4 +274,52 @@ func (r RouteConfig) AnnotationJSON() string {
 // Inspecting reports whether the route's requests are being recorded.
 func (r RouteConfig) Inspecting(now time.Time) bool {
 	return r.InspectUntil != nil && now.Before(*r.InspectUntil)
+}
+
+// Protection requires a login (browsers) or an access token (scripts) before requests reach the
+// application. Who may log in, and the tokens, are kept hashed in Smart Proxy's Secret.
+type Protection struct {
+	Enabled bool `json:"enabled"`
+	// Open paths are reachable without login, e.g. an identity provider's callback
+	// ("/saml/acs") or health checks ("/health*"): exact, or prefixes ending with "*".
+	Open []string `json:"open,omitempty"`
+	// SessionHours is how long a browser login lasts (default 12).
+	SessionHours int `json:"session_hours,omitempty"`
+}
+
+// Protected reports whether a request path of the route needs credentials.
+func (r RouteConfig) Protected(path string) bool {
+	if r.Protection == nil || !r.Protection.Enabled {
+		return false
+	}
+	for _, open := range r.Protection.Open {
+		if traffic.MatchPath(open, path) {
+			return false
+		}
+	}
+	return true
+}
+
+// SessionTTL is how long a browser login to the route lasts.
+func (p *Protection) SessionTTL() time.Duration {
+	if p == nil || p.SessionHours <= 0 {
+		return 12 * time.Hour
+	}
+	return time.Duration(p.SessionHours) * time.Hour
+}
+
+// Validate reports invalid protection settings.
+func (p *Protection) Validate() error {
+	if p == nil {
+		return nil
+	}
+	for _, open := range p.Open {
+		if !strings.HasPrefix(open, "/") {
+			return fmt.Errorf("open path %q must start with /", open)
+		}
+	}
+	if p.SessionHours < 0 || p.SessionHours > 24*30 {
+		return fmt.Errorf("session_hours must be between 1 and 720")
+	}
+	return nil
 }

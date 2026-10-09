@@ -49,6 +49,11 @@ type RouteStatus struct {
 	Resources []patchedResource `json:"resources"`
 	// BackendStatus is the live state of each backend, when traffic is balanced across several.
 	BackendStatus []BackendState `json:"backend_status"`
+	// Users and Tokens of a protected route (names only), and whether protection can work at
+	// all (Smart Proxy's Secret is available).
+	ProtectionUsers     []Credential `json:"protection_users"`
+	ProtectionTokens    []Credential `json:"protection_tokens"`
+	ProtectionAvailable bool         `json:"protection_available"`
 }
 
 // BackendState is a backend of a route with its live state.
@@ -91,6 +96,8 @@ func (s *Server) routeStatus(r store.RouteConfig) RouteStatus {
 	}
 	rs.ScheduleActive = r.ScheduledAwake(time.Now())
 	rs.BackendStatus = s.backendStates(r)
+	rs.ProtectionUsers, rs.ProtectionTokens = s.credentials(r.ID)
+	rs.ProtectionAvailable = s.vault().Ready()
 	if kind, ns, name, ok := r.Resource(); ok {
 		rs.Source = &ResourceRef{Kind: kind, Namespace: ns, Name: name}
 		if !r.AlwaysOn && !rs.ScheduleActive && rs.Status != StatusSleep {
@@ -128,6 +135,14 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		if route.Namespace == "" || route.Deployment == "" {
 			http.Error(w, "Missing required fields", http.StatusBadRequest)
+			return
+		}
+		if err := route.Protection.Validate(); err != nil {
+			http.Error(w, "Invalid protection: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if route.Protection != nil && route.Protection.Enabled && !s.vault().Ready() {
+			http.Error(w, "Routes can't be protected: Smart Proxy's Secret is unavailable (see its RBAC)", http.StatusServiceUnavailable)
 			return
 		}
 		if err := route.ValidateTraffic(); err != nil {

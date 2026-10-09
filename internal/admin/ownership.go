@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/store"
+	"smart-proxy/internal/vault"
 )
 
 // A route can patch several Ingresses/Routes (one per host). Each patched resource records its
@@ -139,7 +141,31 @@ func (s *Server) deleteRoute(id string) ([]patchedResource, error) {
 	if err := s.store.RemoveRoute(route.ID); err != nil {
 		return restored, err
 	}
+	s.forgetCredentials(route.ID)
 	return restored, nil
+}
+
+// forgetCredentials removes the users and tokens of a deleted route.
+func (s *Server) forgetCredentials(id string) {
+	if v := s.vault(); v.Ready() && (len(v.Credentials(id).Users) > 0 || len(v.Credentials(id).Tokens) > 0) {
+		if err := v.UpdateCredentials(context.Background(), id, func(c *vault.Credentials) { *c = vault.Credentials{} }); err != nil {
+			logger.Printf("Warning: removing the credentials of route %s: %v", id, err)
+		}
+	}
+}
+
+// moveCredentials keeps a route's users and tokens when its ID changes.
+func (s *Server) moveCredentials(from, to string) {
+	v := s.vault()
+	creds := v.Credentials(from)
+	if !v.Ready() || (len(creds.Users) == 0 && len(creds.Tokens) == 0) {
+		return
+	}
+	if err := v.UpdateCredentials(context.Background(), to, func(c *vault.Credentials) { *c = creds }); err != nil {
+		logger.Printf("Warning: moving the credentials of route %s to %s: %v", from, to, err)
+		return
+	}
+	s.forgetCredentials(from)
 }
 
 // releaseStale restores resources a route patched for hosts it no longer has (after an edit).
@@ -175,6 +201,7 @@ func (s *Server) afterUnpatch(owner string, res patchedResource) {
 	}
 	if len(remaining) == 0 {
 		s.store.RemoveRoute(owner)
+		s.forgetCredentials(owner)
 		logger.Printf("Route %s removed: its last patched resource was restored", owner)
 		return
 	}
@@ -216,6 +243,7 @@ func (s *Server) afterUnpatch(owner string, res patchedResource) {
 		return
 	}
 	if updated.ID != owner {
+		s.moveCredentials(owner, updated.ID)
 		s.store.RemoveRoute(owner)
 		logger.Printf("Route %s is now %s", owner, updated.ID)
 	}

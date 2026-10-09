@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CalendarClock, FileCode2, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
+import { CalendarClock, Circle, FileCode2, Lock, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
 import type { ClusterInfo, RouteStatus, StatsData } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
@@ -299,6 +299,16 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                         <span>Wakes on next request</span>
                     )}
                     <span className="text-gray-600"> · {requests} req</span>
+                    {route.protection?.enabled && (
+                        <span className="inline-flex items-center gap-1 ml-2 text-green-400/80" title="Requires sign-in or an access token">
+                            <Lock size={11} /> protected
+                        </span>
+                    )}
+                    {route.inspect_until && new Date(route.inspect_until).getTime() > now && (
+                        <span className="inline-flex items-center gap-1 ml-2 text-red-300" title="Requests are being recorded">
+                            <Circle size={8} className="fill-red-500 text-red-500" /> recording
+                        </span>
+                    )}
                     {route.schedule && !route.schedule_active && (
                         <div className="inline-flex items-center gap-1 text-gray-500" title={`Kept awake ${formatSchedule(route.schedule)}${route.schedule.timezone ? ` (${route.schedule.timezone})` : ""}`}>
                             <CalendarClock size={12} /> {formatSchedule(route.schedule)}

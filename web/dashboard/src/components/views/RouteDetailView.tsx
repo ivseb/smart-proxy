@@ -9,6 +9,7 @@ import { RequestsChart } from "@/components/views/RequestsChart";
 import { RequestInspector } from "@/components/views/RequestInspector";
 import { BackendsCard } from "@/components/views/BackendsCard";
 import { BackendsEditor } from "@/components/views/BackendsEditor";
+import { ProtectionCard } from "@/components/views/ProtectionCard";
 import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 
@@ -167,6 +168,8 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
             </Card>
 
             <BackendsCard route={route} onEdit={() => setEditor({ prefill: null })} />
+
+            <ProtectionCard route={route} onSave={onSave} onChanged={onChanged} />
 
             <RequestInspector
                 route={route}

@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"smart-proxy/internal/guard"
 	"smart-proxy/internal/inspect"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
@@ -44,6 +45,8 @@ type Handler struct {
 	ClusterDomain string
 	// Inspect records the requests of routes being inspected (nil disables it).
 	Inspect *inspect.Recorder
+	// Guard checks the credentials of protected routes.
+	Guard *guard.Guard
 	// WakeTimeout is how long requests other than page loads wait for a sleeping app
 	// (default 2 minutes).
 	WakeTimeout time.Duration
@@ -163,6 +166,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleUse(w, r)
 		return
 	}
+	if strings.HasSuffix(r.URL.Path, guard.LoginPath) || strings.HasSuffix(r.URL.Path, guard.LogoutPath) {
+		h.handleLogin(w, r)
+		return
+	}
 
 	// Special Endpoint: Status Check
 	if strings.HasSuffix(r.URL.Path, "/__smart_proxy/status") {
@@ -192,6 +199,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rec.entry.Ignored = reason
 		w = rec.writer
 		defer rec.finish()
+	}
+
+	// Protected routes: no credentials, no request (and nothing woken, nothing counted).
+	if route.Protected(cleanPath(r.URL.Path)) {
+		id, ok := h.authenticate(r, route)
+		if !ok {
+			if wantsPage(r) {
+				rec.set(inspect.OutcomeLogin)
+			} else {
+				rec.set(inspect.OutcomeDenied)
+			}
+			guard.Deny(w, r, route, wantsPage(r))
+			return
+		}
+		rec.setUser(id.User)
+		guard.Strip(r, route, id)
+	} else {
+		r.Header.Del(guard.UserHeader) // Only Smart Proxy says who the user is
 	}
 
 	// A backend chosen by a condition (or the client pinned to one) gets the request whatever
@@ -357,6 +382,12 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 	if !found {
 		http.NotFound(w, r)
 		return
+	}
+	if route.Protected(path) {
+		if _, ok := h.authenticate(r, route); !ok {
+			http.Error(w, "Smart Proxy: sign in first", http.StatusUnauthorized) // Nothing is woken for strangers
+			return
+		}
 	}
 	if b, _ := h.explicitBackend(r, h.TrustedProxies.ClientIP(r), route); b != nil {
 		route = routeTo(route, *b) // The backend the page's client was sent to

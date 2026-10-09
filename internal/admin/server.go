@@ -18,6 +18,7 @@ import (
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
+	"smart-proxy/internal/vault"
 )
 
 // Server represents the admin HTTP server.
@@ -44,6 +45,8 @@ type Server struct {
 	Inspect   *inspect.Recorder
 	Peers     func() []string
 	PeerToken func() string
+	// Vault returns Smart Proxy's Secret (nil while unavailable): credentials of protected routes.
+	Vault func() *vault.Vault
 }
 
 // NewServer creates a new instance of the admin Server.
@@ -69,6 +72,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/routes/traffic", s.handleRouteTraffic)
 	mux.HandleFunc("/api/routes/inspect", s.handleInspect)
 	mux.HandleFunc("/api/routes/requests", s.handleRequests)
+	mux.HandleFunc("/api/routes/protection/users", s.handleProtectionUsers)
+	mux.HandleFunc("/api/routes/protection/tokens", s.handleProtectionTokens)
 	mux.HandleFunc("/api/stats", s.handleStats)
 	mux.HandleFunc("/api/stats/history", s.handleStatsHistory)
 	mux.HandleFunc("/api/logs", s.handleLogs)

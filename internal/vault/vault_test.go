@@ -24,12 +24,12 @@ func TestVaultIsSharedByReplicas(t *testing.T) {
 	}
 
 	err := a.UpdateCredentials(ctx, "ing-x/web", func(c *Credentials) {
-		c.Users = map[string]string{"team": "hash"}
+		c.Users = map[string]Secret{"team": {Hash: "hash"}}
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Credentials("ing-x/web").Users["team"] != "hash" {
+	if a.Credentials("ing-x/web").Users["team"].Hash != "hash" {
 		t.Fatal("credentials not saved")
 	}
 	a.UpdateCredentials(ctx, "ing-x/web", func(c *Credentials) { c.Users = nil })
