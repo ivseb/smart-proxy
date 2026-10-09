@@ -1,5 +1,14 @@
 # Upgrading
 
+## From 2.0 to 2.1
+
+A drop-in upgrade (`helm upgrade … --version 0.3.0 -f my-values.yaml`). Things to know:
+
+- **Uptime monitors no longer keep applications awake.** Requests from common monitors (UptimeRobot, Pingdom, StatusCake, Datadog, Blackbox Exporter, kube-probe, …) don't count as activity anymore, and while an application sleeps they get `200` from Smart Proxy. An environment that only monitors were visiting will go to sleep after its idle timeout. To keep the old behaviour, set `ignore.defaultUserAgents: false`, or set a route's "While the app sleeps" to *Wake the app*.
+- **Deleting a route restores every Ingress/Route it patched**, and the "delete configuration only" option is gone. Resources left patched by an earlier deletion can be restored from the Patching page.
+- **Routes balancing several Services** keep their weighted split once patched. Routes patched with 2.0 still send all traffic to their main Service: on the Patching page, unpatch them and patch them again. Smart Proxy then records their backends and manages only those running at that moment (a backend kept off on purpose stays off); check the result in the route's detail.
+- **DeploymentConfigs** are managed on OpenShift; the chart's Role gains `apps.openshift.io/deploymentconfigs` (with `rbac.openshiftRoutes`). Without the chart, add that rule to your Role.
+
 ## From 1.x (chart 0.1.x) to 2.0 (chart 0.2.0)
 
 2.0 adds dashboard authentication, high availability, multiple namespaces, safe uninstall, metrics, schedules, StatefulSets and declarative configuration. Most of it works without changes, but a few defaults and internals changed. Read this section before upgrading.

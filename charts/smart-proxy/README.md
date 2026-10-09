@@ -42,7 +42,11 @@ Common values (see [`values.yaml`](values.yaml) for the full, commented list and
 | `persistence.enabled` | Deprecated: routes now live in a ConfigMap. | `false` |
 | `podSecurityContext` | Pod securityContext; on vanilla Kubernetes with persistence, set `fsGroup: 1001` so the volume is writable. | `{}` |
 
-## Upgrading from 0.1.x
+## Upgrading
+
+See the [upgrade guide](https://ivseb.github.io/smart-proxy/upgrading/). From 0.2.x to 0.3.0: uptime monitors no longer keep applications awake (`ignore.defaultUserAgents: false` restores the old behaviour).
+
+### From 0.1.x
 
 Version 0.2.0 (Smart Proxy 2.0) enables dashboard authentication by default, runs two replicas and moves routes into a ConfigMap. Follow the [upgrade guide](https://ivseb.github.io/smart-proxy/upgrading/) — in particular, export manually created routes before upgrading, and upgrade with your values file rather than `--reuse-values`.
 

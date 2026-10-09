@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 — chart 0.3.0
+
+Upgrading from 2.0: see [the upgrade notes](docs/upgrading.md#from-20-to-21). Environments kept awake only by uptime monitors will now go to sleep.
 
 ### Added
 - **Routes balancing several Services** (`alternateBackends`): Smart Proxy keeps the weighted split across the backends that are running (sticky per client), and only wakes and sleeps the *managed* ones; a backend kept off on purpose is never woken. While managed backends wake up, a running unmanaged one answers right away. Routes are suggested for alternate backends too, with their share.

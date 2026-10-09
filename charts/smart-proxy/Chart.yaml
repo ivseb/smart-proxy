@@ -3,9 +3,9 @@ name: smart-proxy
 description: Intelligent request handling for Kubernetes Ingresses and OpenShift Routes — auto-sleep, dependency chains and unified route patching.
 type: application
 # Chart version. Bump on every change to the chart itself.
-version: 0.2.0
+version: 0.3.0
 # Version of the Smart Proxy application shipped by default.
-appVersion: "2.0.0"
+appVersion: "2.1.0"
 home: https://ivseb.github.io/smart-proxy/
 icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
 sources:
@@ -27,30 +27,18 @@ annotations:
       url: https://ivseb.github.io/smart-proxy/
   artifacthub.io/images: |
     - name: smart-proxy
-      image: docker.io/isebben/smart-proxy:2.0.0
+      image: docker.io/isebben/smart-proxy:2.1.0
   artifacthub.io/maintainers: |
     - name: ivseb
       email: ivan.sebben.dati@gmail.com
   artifacthub.io/changes: |
     - kind: added
-      description: Declarative routes from smart-proxy/* annotations on Ingresses/Routes (GitOps)
+      description: Uptime monitors and health checks never keep applications awake or wake them (ignore.* values)
     - kind: added
-      description: StatefulSets can be put to sleep and woken like Deployments (Role covers statefulsets)
+      description: Routes balancing several Services keep their split; only managed backends sleep and wake
     - kind: added
-      description: Prometheus metrics on a dedicated port, with an optional ServiceMonitor
-    - kind: added
-      description: High availability, 2 replicas by default sharing routes (ConfigMap) and activity, with leader election and a PodDisruptionBudget
-    - kind: added
-      description: Uninstalling restores patched Ingresses/Routes and wakes sleeping Deployments (restoreOnUninstall)
-    - kind: added
-      description: Manage several namespaces (watchNamespaces), all of them (allNamespaces), or labelled ones (namespaceSelector)
-    - kind: added
-      description: Dashboard authentication (basic, token, OIDC, OpenShift oauth-proxy or trusted header), basic auth enabled by default
+      description: OpenShift DeploymentConfigs (Role covers apps.openshift.io with rbac.openshiftRoutes)
     - kind: fixed
-      description: Patched Ingresses/Routes now target the release Service name instead of a hardcoded "smart-proxy"
-    - kind: added
-      description: Liveness and readiness probes on /__smart_proxy/healthz, with graceful shutdown
+      description: Deleting a route restores every Ingress/Route it patched
     - kind: fixed
-      description: Route configurations are saved to /data, so the optional PersistentVolumeClaim is actually used
-    - kind: changed
-      description: Role can read HorizontalPodAutoscalers, so deployments wake at their original size or HPA minReplicas
+      description: Route target ports are resolved and restored exactly
