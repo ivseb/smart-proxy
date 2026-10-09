@@ -388,4 +388,3 @@ func (c *Client) GetDeploymentProbePaths(namespace, deploymentName string) ([]st
 
 	return uniquePaths, nil
 }
-

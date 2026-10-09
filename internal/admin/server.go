@@ -851,11 +851,11 @@ func (s *Server) handlePatchRoute(w http.ResponseWriter, r *http.Request) {
 		Path:          routePath,
 		TargetService: originalSvc,
 		TargetPort:    targetPort,
-		Namespace:    route.Namespace,
-		Deployment:   depName,
-		Dependencies: []store.DependencyConfig{},
-		IdleTimeout:  30 * 60 * 1000 * 1000 * 1000,
-		LastActivity: time.Now(),
+		Namespace:     route.Namespace,
+		Deployment:    depName,
+		Dependencies:  []store.DependencyConfig{},
+		IdleTimeout:   30 * 60 * 1000 * 1000 * 1000,
+		LastActivity:  time.Now(),
 	}
 
 	// Persist Config
