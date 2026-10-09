@@ -90,10 +90,17 @@ func (h *Handler) pickTarget(w http.ResponseWriter, r *http.Request, route store
 		}
 		n -= b.Weight
 	}
+	// While a managed backend wakes up, its share goes elsewhere for now: don't stick to that.
+	for _, b := range route.Backends {
+		if b.Managed && b.Weight > 0 && !h.backendServing(route.Namespace, b) {
+			return target{chosen.Service, chosen.Port}
+		}
+	}
 	path := route.Path
 	if path == "" {
 		path = "/"
 	}
-	http.SetCookie(w, &http.Cookie{Name: name, Value: chosen.Service, Path: path, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+	http.SetCookie(w, &http.Cookie{Name: name, Value: chosen.Service, Path: path, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
 	return target{chosen.Service, chosen.Port}
 }

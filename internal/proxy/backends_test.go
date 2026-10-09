@@ -71,6 +71,7 @@ func balancedHandler(t *testing.T, s1, s2 *appsv1.Deployment) (*Handler, *fakecl
 func visit(h *Handler, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	r := httptest.NewRequest("GET", "http://r.example.com/", nil)
 	r.Header.Set("User-Agent", "Mozilla/5.0 (X11) Firefox/131.0")
+	r.Header.Set("Accept", "text/html,*/*")
 	for _, c := range cookies {
 		r.AddCookie(c)
 	}
@@ -149,6 +150,9 @@ func TestRunningPassThroughServesWhileManagedWakes(t *testing.T) {
 	w := visit(h)
 	if tr.last() != "s2" || w.Code != 200 {
 		t.Fatalf("got %d via %q, want s2", w.Code, tr.last())
+	}
+	if len(w.Result().Cookies()) != 0 {
+		t.Fatal("pinned to s2 while s1 wakes: it would never get its share back")
 	}
 	if replicas(t, c, "s1") == 0 {
 		t.Fatal("s1 not woken")

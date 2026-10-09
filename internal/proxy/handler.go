@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -40,6 +39,11 @@ type Handler struct {
 	Traffic *traffic.Recorder
 	// Transport, when set, replaces the default transport to the applications (tests).
 	Transport http.RoundTripper
+	// WakeTimeout is how long requests other than page loads wait for a sleeping app
+	// (default 2 minutes).
+	WakeTimeout time.Duration
+
+	inflight inflight
 }
 
 // Probe endpoints, under the reserved /__smart_proxy/ prefix so they can't shadow an
@@ -155,51 +159,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Match Routes (Host + Path)
-	var matchedRoutes []store.RouteConfig
-	var bestRoute store.RouteConfig
-	var bestPath string
-	found := false
-
-	routes := h.store.GetAllRoutes()
-	for _, route := range routes {
-		// Host matching: If route.Host is set, it MUST match the request host.
-		// If route.Host is empty, it matches any host (legacy behavior or catch-all).
-		requestHost := r.Host
-		if strings.Contains(requestHost, ":") {
-			host, _, err := net.SplitHostPort(requestHost)
-			if err == nil {
-				requestHost = host
-			}
-		}
-		hostMatches := matchHost(route.Host, requestHost)
-
-		if hostMatches && strings.HasPrefix(r.URL.Path, route.Path) {
-			matchedRoutes = append(matchedRoutes, route)
-
-			// Priority:
-			// 1. Longer Path wins
-			// 2. Specific Host wins over empty Host (if paths are same length)
-			isBetterMatch := false
-			if !found {
-				isBetterMatch = true
-			} else {
-				if len(route.Path) > len(bestPath) {
-					isBetterMatch = true
-				} else if len(route.Path) == len(bestPath) && route.Host != "" && bestRoute.Host == "" {
-					isBetterMatch = true
-				}
-			}
-
-			if isBetterMatch {
-				bestRoute = route
-				bestPath = route.Path
-				found = true
-			}
-		}
-	}
-
-	// If no route matched
+	// 1. Find the route for this host and path.
+	route, found := h.matchRoute(requestHost(r), r.URL.Path)
 	if !found {
 		http.NotFound(w, r)
 		return
@@ -208,113 +169,116 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Uptime monitors, health checks and probes don't count as activity, and don't wake
 	// anything: while the route sleeps they get an answer from Smart Proxy (see WhenAsleep).
 	client := h.TrustedProxies.ClientIP(r)
-	reason := h.ignoredReason(r, client, matchedRoutes, bestRoute)
+	reason := h.ignoredReason(r, client, route)
 	if h.Traffic != nil {
-		h.Traffic.Record(bestRoute.ID, r, client, reason)
+		h.Traffic.Record(route.ID, r, client, reason)
 	}
 	wake := true
 	if reason == "" {
-		for _, route := range matchedRoutes {
-			h.store.UpdateActivity(route.ID)
-		}
+		h.store.UpdateActivity(route.ID)
+		// Long requests (WebSockets, streams, downloads) keep the route active until they end.
+		defer h.track(route.ID)()
 	} else {
-		metrics.Ignored(bestRoute.Namespace, bestRoute.ID, reason)
-		if h.serving(bestRoute) {
+		metrics.Ignored(route.Namespace, route.ID, reason)
+		if h.serving(route) {
 			wake = false
-		} else if h.answerAsleep(w, bestRoute) {
+		} else if h.answerAsleep(w, route) {
 			return
 		}
 	}
 
-	// 2. Wake whatever the matched routes need. While the managed workloads wake up, a running
-	// backend Smart Proxy doesn't manage takes the traffic, as the OpenShift router would.
+	// 2. Wake what the route needs. While the managed workloads wake up, a running backend
+	// Smart Proxy doesn't manage takes the traffic, as the OpenShift router would. Browsers get
+	// the "waking up" page; other requests (API calls, form posts, WebSockets) wait for the app.
+	woken := false
 	if wake {
-		if _, allReady := h.ensureAwake(matchedRoutes); !allReady && !h.hasServingPassThrough(bestRoute) {
-			h.serveLoadingPage(w)
-			return
+		if _, allReady := h.ensureAwake([]store.RouteConfig{route}); !allReady && !h.hasServingPassThrough(route) {
+			if wantsPage(r) {
+				h.serveLoadingPage(w)
+				return
+			}
+			if !h.waitAwake(r.Context(), route) {
+				if r.Context().Err() == nil {
+					w.Header().Set("Retry-After", "10")
+					http.Error(w, "Smart Proxy: the application is still starting", http.StatusServiceUnavailable)
+				}
+				return
+			}
+			woken = true
 		}
 	}
 
-	// 4. Proxy Request
-	dest := h.pickTarget(w, r, bestRoute)
-	targetURLStr := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", dest.Service, bestRoute.Namespace, dest.Port)
-	targetURL, err := url.Parse(targetURLStr)
-	if err != nil {
-		logger.Printf("Invalid target URL: %v", err)
-		http.Error(w, "Invalid configuration", http.StatusInternalServerError)
-		return
+	// 3. Proxy the request.
+	dest := h.pickTarget(w, r, route)
+	host := fmt.Sprintf("%s.%s.svc.cluster.local:%d", dest.Service, route.Namespace, dest.Port)
+	if woken && h.Transport == nil {
+		waitReachable(r.Context(), host, 15*time.Second)
 	}
 
-	// Track Metrics
-	h.Metrics.Increment(bestRoute.ID)
-	metrics.Request(bestRoute.Namespace, bestRoute.ID)
+	h.Metrics.Increment(route.ID)
+	metrics.Request(route.Namespace, route.ID)
 
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	proxy := httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: host})
+	proxy.Transport = transport
 	if h.Transport != nil {
 		proxy.Transport = h.Transport
 	}
-
-	if bestRoute.InjectBadge {
-		proxy.ModifyResponse = func(resp *http.Response) error {
-			if !strings.Contains(resp.Header.Get("Content-Type"), "text/html") {
-				return nil
-			}
-
-			// Check for compression (not handling gzip here)
-			if resp.Header.Get("Content-Encoding") != "" {
-				return nil // Skip compressed responses
-			}
-
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return err
-			}
-			resp.Body.Close()
-
-			badgeHTML := `
-<div style="position:fixed;bottom:12px;right:12px;display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(15, 23, 42, 0.95);border:1px solid rgba(59, 130, 246, 0.5);border-radius:99px;color:#cbd5e1;font-family:'Inter',system-ui,sans-serif;font-size:12px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:99999;backdrop-filter:blur(8px);pointer-events:none;user-select:none;">
-    <span style="color:#3b82f6;font-size:14px;">⚡</span>
-    <span>Powered by <span style="color:#fff;font-weight:600;">Smart Proxy</span></span>
-</div></body>`
-
-			// Replace closing body tag, or append if not found
-			newBodyStr := strings.Replace(string(body), "</body>", badgeHTML, 1)
-			if !strings.Contains(newBodyStr, "Protected by Smart Proxy") { // Simple check to avoid double inject if replace failed?
-				// Using "Powered by" as check string
-				if !strings.Contains(newBodyStr, "Powered by") {
-					newBodyStr += badgeHTML
-				}
-			}
-
-			buf := bytes.NewBufferString(newBodyStr)
-			resp.Body = io.NopCloser(buf)
-			resp.ContentLength = int64(buf.Len())
-			resp.Header.Set("Content-Length", fmt.Sprint(buf.Len()))
-
-			// Disable caching of modified content
-			resp.Header.Del("ETag")
-			resp.Header.Del("Last-Modified")
-
-			return nil
-		}
-	}
-
-	// Force identity encoding to avoid GZIP so we can modify the body
-	if bestRoute.InjectBadge {
-		// We must modify the transport to not request compression,
-		// OR just strip the header. Stripping header in Director is easiest.
-		// However, httputil.ReverseProxy Director runs *before* we can easily set per-route logic
-		// if we constructed it dynamically?
-		// Actually, we create NewSingleHostReverseProxy here.
-
+	proxy.ErrorHandler = proxyError
+	if route.InjectBadge && r.Method != http.MethodHead {
+		proxy.ModifyResponse = injectBadge
 		originalDirector := proxy.Director
 		proxy.Director = func(req *http.Request) {
 			originalDirector(req)
-			req.Header.Del("Accept-Encoding") // Force backend to send plain text
+			req.Header.Del("Accept-Encoding") // Plain responses, so the badge can be added
 		}
 	}
 
 	proxy.ServeHTTP(w, r)
+}
+
+// maxBadgeBody is the largest HTML page the badge is added to (it is buffered in memory).
+const maxBadgeBody = 4 << 20
+
+const badgeHTML = `
+<div style="position:fixed;bottom:12px;right:12px;display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(15, 23, 42, 0.95);border:1px solid rgba(59, 130, 246, 0.5);border-radius:99px;color:#cbd5e1;font-family:'Inter',system-ui,sans-serif;font-size:12px;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:99999;backdrop-filter:blur(8px);pointer-events:none;user-select:none;">
+    <span style="color:#3b82f6;font-size:14px;">⚡</span>
+    <span>Powered by <span style="color:#fff;font-weight:600;">Smart Proxy</span></span>
+</div>`
+
+// injectBadge adds the "Powered by Smart Proxy" badge to HTML pages.
+func injectBadge(resp *http.Response) error {
+	if !strings.Contains(resp.Header.Get("Content-Type"), "text/html") || resp.Header.Get("Content-Encoding") != "" ||
+		resp.StatusCode < 200 || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified ||
+		resp.ContentLength > maxBadgeBody {
+		return nil
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBadgeBody+1))
+	if err != nil {
+		return err
+	}
+	if len(body) > maxBadgeBody {
+		// Too large to buffer: pass it through unchanged.
+		resp.Body = struct {
+			io.Reader
+			io.Closer
+		}{io.MultiReader(bytes.NewReader(body), resp.Body), resp.Body}
+		return nil
+	}
+	resp.Body.Close()
+
+	page := string(body)
+	if i := strings.LastIndex(page, "</body>"); i >= 0 {
+		page = page[:i] + badgeHTML + page[i:]
+	} else {
+		page += badgeHTML
+	}
+	resp.Body = io.NopCloser(strings.NewReader(page))
+	resp.ContentLength = int64(len(page))
+	resp.Header.Set("Content-Length", fmt.Sprint(len(page)))
+	// Disable caching of modified content
+	resp.Header.Del("ETag")
+	resp.Header.Del("Last-Modified")
+	return nil
 }
 
 func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
@@ -323,7 +287,6 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 	// unless we embed it in the URL parameters.
 
 	path := r.URL.Query().Get("path")
-	host := r.URL.Query().Get("host") // Client needs to send this
 
 	if path == "" {
 		if strings.HasSuffix(r.URL.Path, "/__smart_proxy/status") {
@@ -334,38 +297,13 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	reqHost := r.Host
-	if strings.Contains(reqHost, ":") {
-		if h, _, err := net.SplitHostPort(reqHost); err == nil {
-			reqHost = h
-		}
-	}
-
-	// Find Routes
-	var matchedRoutes []store.RouteConfig
-	found := false
-	routes := h.store.GetAllRoutes()
-	for _, route := range routes {
-		// Fix: Strip port from client-provided host param if present
-		checkHost := host
-		if strings.Contains(checkHost, ":") {
-			h, _, err := net.SplitHostPort(checkHost)
-			if err == nil {
-				checkHost = h
-			}
-		}
-
-		hostMatches := matchHost(route.Host, checkHost) || matchHost(route.Host, reqHost)
-		if hostMatches && strings.HasPrefix(path, route.Path) {
-			matchedRoutes = append(matchedRoutes, route)
-			found = true
-		}
-	}
-
+	// Only the request's own host: the page polling this is served under it.
+	route, found := h.matchRoute(requestHost(r), path)
 	if !found {
 		http.NotFound(w, r)
 		return
 	}
+	matchedRoutes := []store.RouteConfig{route}
 
 	// Keep waking: with StartInOrder, each poll of the waiting page advances the chain.
 	details, allReady := h.ensureAwake(matchedRoutes)
@@ -419,18 +357,4 @@ func (h *Handler) serveLoadingPage(w http.ResponseWriter) {
 	} else {
 		w.Write([]byte("<h1>Waking up... please wait...</h1><script>setTimeout(() => location.reload(), 2000)</script>"))
 	}
-}
-
-// matchHost checks if the requestHost matches a comma-separated list of route hosts (case-insensitive)
-func matchHost(routeHost, requestHost string) bool {
-	if routeHost == "" {
-		return true
-	}
-	parts := strings.Split(routeHost, ",")
-	for _, part := range parts {
-		if strings.EqualFold(strings.TrimSpace(part), requestHost) {
-			return true
-		}
-	}
-	return false
 }

@@ -25,7 +25,7 @@ func monitorHandler(t *testing.T, whenAsleep string) (*Handler, *fakecluster.Clu
 		Ignore: &traffic.Rules{Paths: []string{"/healthz"}}})
 	st.SetActivityForTest(id, time.Now().Add(-time.Hour))
 	h := &Handler{k8sClient: c.Client, store: st, Metrics: NewMetrics(), Traffic: traffic.NewRecorder(),
-		GlobalRules: traffic.Rules{UserAgents: traffic.DefaultUserAgents}}
+		GlobalRules: traffic.Rules{UserAgents: traffic.DefaultUserAgents}, WakeTimeout: time.Second}
 	h.SetReady()
 	return h, c, id
 }
@@ -33,6 +33,7 @@ func monitorHandler(t *testing.T, whenAsleep string) (*Handler, *fakecluster.Clu
 func get(h *Handler, path, ua string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest("GET", "http://web.example.com"+path, nil)
 	r.Header.Set("User-Agent", ua)
+	r.Header.Set("Accept", "text/html,*/*")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	return w

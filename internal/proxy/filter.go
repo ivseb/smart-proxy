@@ -11,25 +11,28 @@ import (
 )
 
 // ignoredReason says why a request doesn't count as activity ("" when it does): it matches the
-// global or the route's rules, or targets one of the workloads' Kubernetes probe paths.
-func (h *Handler) ignoredReason(r *http.Request, client net.IP, matched []store.RouteConfig, best store.RouteConfig) string {
+// global or the route's rules, or is a monitor calling one of the workloads' Kubernetes probe
+// paths (e.g. /healthz through the ingress). Browsers and the root path always count: many apps
+// probe "/", their home page.
+func (h *Handler) ignoredReason(r *http.Request, client net.IP, route store.RouteConfig) string {
 	rules := h.GlobalRules
-	if best.Ignore != nil {
-		rules = rules.Merge(*best.Ignore)
+	if route.Ignore != nil {
+		rules = rules.Merge(*route.Ignore)
 	}
 	if reason, ok := rules.Match(r, client); ok {
 		return reason
 	}
-	for _, route := range matched {
-		for _, workload := range append([]string{route.Deployment}, dependencyNames(route)...) {
-			paths, err := h.k8sClient.GetDeploymentProbePaths(route.Namespace, workload)
-			if err != nil {
-				continue
-			}
-			for _, p := range paths {
-				if r.URL.Path == p {
-					return traffic.ReasonProbePath
-				}
+	if r.URL.Path == "/" || traffic.ClientName(r.UserAgent()) == traffic.Browser {
+		return ""
+	}
+	for _, workload := range append([]string{route.Deployment}, dependencyNames(route)...) {
+		paths, err := h.k8sClient.GetDeploymentProbePaths(route.Namespace, workload)
+		if err != nil {
+			continue
+		}
+		for _, p := range paths {
+			if r.URL.Path == p {
+				return traffic.ReasonProbePath
 			}
 		}
 	}
