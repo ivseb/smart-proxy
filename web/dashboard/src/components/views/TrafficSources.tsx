@@ -81,7 +81,7 @@ export function TrafficSources({ route, onSave }: TrafficSourcesProps) {
                                         </div>
                                         <div className="text-xs text-gray-400 tabular-nums">
                                             {src.requests} request{src.requests === 1 ? "" : "s"}
-                                            {src.interval_seconds > 0 && src.requests > 2 && <> · every ~{formatDuration(src.interval_seconds * 1e9)}</>}
+                                            {src.interval_seconds >= 1 && src.requests > 2 && <> · every ~{formatDuration(src.interval_seconds * 1e9)}</>}
                                             <span className="text-gray-500"> · last {formatRelative(src.last_seen, now)}</span>
                                         </div>
                                         <div className="flex justify-end">

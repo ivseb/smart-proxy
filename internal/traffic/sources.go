@@ -21,13 +21,15 @@ type SourceStats struct {
 	Method string `json:"method"`
 	Path   string `json:"path"`
 	// UserAgent is the latest full User-Agent seen (truncated).
-	UserAgent string    `json:"user_agent"`
-	LastIP    string    `json:"last_ip"`
-	Requests  int64     `json:"requests"`
-	Ignored   int64     `json:"ignored"`
-	Reason    string    `json:"reason,omitempty"` // Why the latest ignored request was ignored
-	FirstSeen time.Time `json:"first_seen"`
-	LastSeen  time.Time `json:"last_seen"`
+	UserAgent string `json:"user_agent"`
+	LastIP    string `json:"last_ip"`
+	Requests  int64  `json:"requests"`
+	Ignored   int64  `json:"ignored"`
+	Reason    string `json:"reason,omitempty"` // Why the latest ignored request was ignored
+	// LastIgnored is true when the latest request was ignored: the client no longer counts.
+	LastIgnored bool      `json:"last_ignored"`
+	FirstSeen   time.Time `json:"first_seen"`
+	LastSeen    time.Time `json:"last_seen"`
 }
 
 // Interval is the average time between requests (0 when unknown).
@@ -88,6 +90,7 @@ func (r *Recorder) Record(routeID string, req *http.Request, client net.IP, igno
 	if client != nil {
 		entry.LastIP = client.String()
 	}
+	entry.LastIgnored = ignoredReason != ""
 	if ignoredReason != "" {
 		entry.Ignored++
 		entry.Reason = ignoredReason
@@ -145,7 +148,7 @@ func Merge(lists ...[]SourceStats) []SourceStats {
 				m.FirstSeen = s.FirstSeen
 			}
 			if s.LastSeen.After(m.LastSeen) {
-				m.LastSeen, m.UserAgent, m.LastIP = s.LastSeen, s.UserAgent, s.LastIP
+				m.LastSeen, m.UserAgent, m.LastIP, m.LastIgnored = s.LastSeen, s.UserAgent, s.LastIP, s.LastIgnored
 				if s.Reason != "" {
 					m.Reason = s.Reason
 				}

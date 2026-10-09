@@ -349,7 +349,7 @@ type SourceView struct {
 	traffic.SourceStats
 	// IntervalSeconds is the average time between its requests (0 when unknown).
 	IntervalSeconds float64 `json:"interval_seconds"`
-	// CountsAsActivity is true while its requests keep the route awake.
+	// CountsAsActivity is true while its requests keep the route awake (its latest one counted).
 	CountsAsActivity bool `json:"counts_as_activity"`
 }
 
@@ -366,7 +366,7 @@ func (s *Server) handleRouteTraffic(w http.ResponseWriter, r *http.Request) {
 			views = append(views, SourceView{
 				SourceStats:      src,
 				IntervalSeconds:  src.Interval().Seconds(),
-				CountsAsActivity: src.Ignored < src.Requests,
+				CountsAsActivity: !src.LastIgnored,
 			})
 		}
 	}

@@ -89,6 +89,15 @@ func TestRecorderAndMerge(t *testing.T) {
 		b.Header.Set("User-Agent", "Mozilla/5.0 (X11) Firefox/131.0")
 		rec.Record("r1", b, net.ParseIP("5.6.7.8"), "")
 	}
+	// Once ignored (e.g. a rule was just added), a client no longer counts.
+	late := httptest.NewRequest("GET", "/", nil)
+	late.Header.Set("User-Agent", "MyPinger/1.0")
+	rec.Record("r2", late, nil, "")
+	rec.Record("r2", late, nil, ReasonUserAgent)
+	if s := rec.Snapshot()["r2"][0]; !s.LastIgnored || s.Ignored != 1 || s.Requests != 2 {
+		t.Fatalf("r2 = %+v", s)
+	}
+
 	got := rec.Snapshot()["r1"]
 	if len(got) != 2 {
 		t.Fatalf("sources = %+v (browsers should be one entry)", got)
