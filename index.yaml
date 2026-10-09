@@ -4,6 +4,65 @@ entries:
   - annotations:
       artifacthub.io/changes: |
         - kind: added
+          description: Declarative routes from smart-proxy/* annotations on Ingresses/Routes (GitOps)
+        - kind: added
+          description: StatefulSets can be put to sleep and woken like Deployments (Role covers statefulsets)
+        - kind: added
+          description: Prometheus metrics on a dedicated port, with an optional ServiceMonitor
+        - kind: added
+          description: High availability, 2 replicas by default sharing routes (ConfigMap) and activity, with leader election and a PodDisruptionBudget
+        - kind: added
+          description: Uninstalling restores patched Ingresses/Routes and wakes sleeping Deployments (restoreOnUninstall)
+        - kind: added
+          description: Manage several namespaces (watchNamespaces), all of them (allNamespaces), or labelled ones (namespaceSelector)
+        - kind: added
+          description: Dashboard authentication (basic, token, OIDC, OpenShift oauth-proxy or trusted header), basic auth enabled by default
+        - kind: fixed
+          description: Patched Ingresses/Routes now target the release Service name instead of a hardcoded "smart-proxy"
+        - kind: added
+          description: Liveness and readiness probes on /__smart_proxy/healthz, with graceful shutdown
+        - kind: fixed
+          description: Route configurations are saved to /data, so the optional PersistentVolumeClaim is actually used
+        - kind: changed
+          description: Role can read HorizontalPodAutoscalers, so deployments wake at their original size or HPA minReplicas
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.0.0
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.0.0
+    created: "2026-10-09T06:51:01.684319811Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: 0a5110092e954b6d31f0bcaf4a1623eeea7a75236c2747999bad650a4e67d17a
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.2.0/smart-proxy-0.2.0.tgz
+    version: 0.2.0
+  - annotations:
+      artifacthub.io/changes: |
+        - kind: added
           description: OpenShift Route and Kubernetes Ingress templates
         - kind: added
           description: Optional PersistentVolumeClaim for /data
@@ -64,4 +123,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-07-06T18:23:42.752029927Z"
+generated: "2026-10-09T06:51:01.684338025Z"
