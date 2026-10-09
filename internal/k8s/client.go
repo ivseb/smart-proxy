@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
@@ -101,8 +102,7 @@ type Client struct {
 	// Recent failures (e.g. refused by an admission webhook), returned without asking again.
 	wakeFailed map[string]wakeFailure
 
-	standIns    *standIns // See EnableStandIns
-	standInsErr error     // Why stand-ins can't be kept, if so
+	standIns atomic.Pointer[standIns] // See EnableStandIns
 }
 
 type wakeFailure struct {

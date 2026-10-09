@@ -105,7 +105,7 @@ func (c *Client) UpdateIngress(ing *networkingv1.Ingress) error {
 	if !c.Watches(ing.Namespace) {
 		return fmt.Errorf("%w: %q", errNotWatched, ing.Namespace)
 	}
-	if c.standIns != nil && IsIngressPatched(ing, c.standIns.service) {
+	if svc := c.standInService(); svc != "" && IsIngressPatched(ing, svc) {
 		if err := c.EnsureStandIn(ing.Namespace); err != nil {
 			return err // Patched, it would lead nowhere
 		}
@@ -158,7 +158,7 @@ func (c *Client) UpdateRoute(rt *routev1.Route) error {
 	if !c.Watches(rt.Namespace) {
 		return fmt.Errorf("%w: %q", errNotWatched, rt.Namespace)
 	}
-	if c.standIns != nil && IsRoutePatched(rt, c.standIns.service) {
+	if svc := c.standInService(); svc != "" && IsRoutePatched(rt, svc) {
 		if err := c.EnsureStandIn(rt.Namespace); err != nil {
 			return err // Patched, it would lead nowhere
 		}

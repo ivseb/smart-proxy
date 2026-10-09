@@ -44,12 +44,14 @@ type standIns struct {
 	service string // Smart Proxy's Service, in its own namespace
 
 	leading atomic.Bool
+	ready   atomic.Bool   // Smart Proxy's own endpoints are known
+	err     error         // Why stand-ins can't be kept, if so (set before ready)
 	trigger chan struct{} // Coalesced requests for a pass
 
 	mu       sync.Mutex
 	subsets  []corev1.EndpointSubset // Smart Proxy's ready pods, proxy port only
 	written  map[string]written      // Namespace -> last stand-in written there
-	unneeded map[string]int          // Namespace -> passes in a row its stand-in was unneeded
+	unneeded map[string]time.Time    // Namespace -> since when its stand-in is unneeded
 }
 
 // written is the last stand-in written in a namespace, so unchanged ones aren't re-read from
@@ -66,13 +68,14 @@ var errNoStandIns = errors.New("cannot reach Smart Proxy from other namespaces: 
 // wherever resources are patched to point at it. Call after Start. Without permission to read
 // its own endpoints, it logs why and patching outside its namespace is refused.
 func (c *Client) EnableStandIns(ctx context.Context, service string) {
-	s := &standIns{c: c, service: service, trigger: make(chan struct{}, 1), written: map[string]written{}, unneeded: map[string]int{}}
-	c.standIns = s
+	s := &standIns{c: c, service: service, trigger: make(chan struct{}, 1), written: map[string]written{}, unneeded: map[string]time.Time{}}
+	c.standIns.Store(s) // Not ready yet: patching elsewhere waits for it
 	checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	allowed := c.canList(checkCtx, "", "endpoints", c.ownNamespace)
 	cancel()
 	if !allowed {
-		c.standInsErr = errNoStandIns
+		s.err = errNoStandIns
+		s.ready.Store(true)
 		logger.Printf("Warning: %v. Ingresses and Routes in other namespaces can't be patched.", errNoStandIns)
 		return
 	}
@@ -98,13 +101,14 @@ func (c *Client) EnableStandIns(ctx context.Context, service string) {
 	if !toolscache.WaitForCacheSync(syncCtx.Done(), informer.HasSynced) {
 		logger.Printf("Warning: Smart Proxy's own endpoints are not known yet; stand-ins will follow when they are")
 	}
+	s.ready.Store(true)
 	go s.run(ctx)
 }
 
 // SetLeading tells the stand-ins whether this replica leads: only the leader updates and removes
 // them, so replicas never undo each other's writes.
 func (c *Client) SetLeading(leading bool) {
-	if s := c.standIns; s != nil {
+	if s := c.standIns.Load(); s != nil {
 		s.leading.Store(leading)
 		if leading {
 			s.requestPass()
@@ -177,13 +181,18 @@ func (s *standIns) labels() map[string]string {
 }
 
 func (c *Client) isStandIn(meta metav1.ObjectMeta, service string) bool {
+	ns, labelled := meta.Labels[labelNamespace]
+	// Stand-ins written by early 2.2 builds had no namespace label: adopted.
 	return meta.Labels[labelComponent] == componentStandIn && meta.Labels[labelInstance] == service &&
-		meta.Labels[labelNamespace] == c.ownNamespace
+		(ns == c.ownNamespace || !labelled)
 }
 
 // ensure creates or updates the stand-in of a namespace. Unless forced, a stand-in written
-// recently with the same endpoints is trusted without asking the API.
+// recently with the same endpoints is trusted without asking the API. Only the leader updates
+// existing endpoints (others only create missing ones: their view of Smart Proxy's pods may be
+// behind), and known endpoints are never replaced by none.
 func (s *standIns) ensure(namespace string, force bool) error {
+	leading := s.leading.Load()
 	if namespace == s.c.ownNamespace {
 		return nil // The real Service is there
 	}
@@ -213,6 +222,11 @@ func (s *standIns) ensure(namespace string, force bool) error {
 		return err
 	case !s.c.isStandIn(existing.ObjectMeta, s.service):
 		return fmt.Errorf("Service %s/%s exists and isn't this Smart Proxy's: patched resources there can't reach it", namespace, s.service)
+	case existing.Labels[labelNamespace] == "" && leading:
+		existing.Labels[labelNamespace] = s.c.ownNamespace // Label stand-ins of early 2.2 builds
+		if _, err := services.Update(ctx, existing, metav1.UpdateOptions{}); err != nil && !apierrors.IsConflict(err) {
+			return err
+		}
 	}
 
 	endpoints := s.c.Clientset.CoreV1().Endpoints(namespace)
@@ -221,7 +235,7 @@ func (s *standIns) ensure(namespace string, force bool) error {
 		switch {
 		case apierrors.IsNotFound(err):
 			_, err = endpoints.Create(ctx, &corev1.Endpoints{ObjectMeta: *meta.DeepCopy(), Subsets: subsets}, metav1.CreateOptions{})
-		case err == nil && !reflect.DeepEqual(current.Subsets, subsets) && (len(current.Subsets) > 0 || len(subsets) > 0):
+		case err == nil && leading && len(subsets) > 0 && !reflect.DeepEqual(current.Subsets, subsets):
 			current.Subsets = subsets
 			_, err = endpoints.Update(ctx, current, metav1.UpdateOptions{})
 		}
@@ -263,9 +277,12 @@ func (s *standIns) needs() (map[string]bool, error) {
 	return needed, nil
 }
 
+// unneededFor is how long a stand-in must be unneeded before it is removed, so one created for a
+// resource being patched right now (not in the caches yet) stays.
+var unneededFor = time.Minute
+
 // syncAll keeps a stand-in in each watched namespace with resources patched to Smart Proxy, and
-// removes those no longer needed (after two passes in a row, so one being patched right now
-// keeps its stand-in).
+// removes those unneeded for a while.
 func (s *standIns) syncAll() {
 	needed, err := s.needs()
 	if err != nil {
@@ -284,13 +301,18 @@ func (s *standIns) syncAll() {
 	}
 	for _, ns := range s.c.WatchedNamespaces() {
 		if needed[ns] || ns == s.c.ownNamespace || !s.c.hasStandIn(ns, s.service) {
+			s.mu.Lock()
+			delete(s.unneeded, ns)
+			s.mu.Unlock()
 			continue
 		}
 		s.mu.Lock()
-		s.unneeded[ns]++
-		passes := s.unneeded[ns]
+		since, seen := s.unneeded[ns]
+		if !seen {
+			s.unneeded[ns] = time.Now()
+		}
 		s.mu.Unlock()
-		if passes < 2 {
+		if !seen || time.Since(since) < unneededFor {
 			continue
 		}
 		if now, err := s.needs(); err != nil || now[ns] {
@@ -313,10 +335,16 @@ func (c *Client) hasStandIn(namespace, service string) bool {
 	if err != nil {
 		return false
 	}
-	list, err := services.List(labels.SelectorFromSet(labels.Set{
-		labelInstance: service, labelNamespace: c.ownNamespace, labelComponent: componentStandIn,
-	}))
-	return err == nil && len(list) > 0
+	list, err := services.List(labels.SelectorFromSet(labels.Set{labelInstance: service, labelComponent: componentStandIn}))
+	if err != nil {
+		return false
+	}
+	for _, svc := range list {
+		if c.isStandIn(svc.ObjectMeta, service) {
+			return true
+		}
+	}
+	return false
 }
 
 // deleteStandIn removes a namespace's stand-in, if it is this installation's: its Endpoints
@@ -353,13 +381,25 @@ func (c *Client) deleteStandIn(namespace, service string) error {
 // EnsureStandIn makes sure resources patched in a namespace can reach Smart Proxy: called
 // right before patching one there.
 func (c *Client) EnsureStandIn(namespace string) error {
-	if c.standIns == nil || namespace == c.ownNamespace {
+	s := c.standIns.Load()
+	if s == nil || namespace == c.ownNamespace {
 		return nil
 	}
-	if c.standInsErr != nil {
-		return c.standInsErr
+	if !s.ready.Load() {
+		return errors.New("Smart Proxy is starting: try again in a moment")
 	}
-	return c.standIns.ensure(namespace, true)
+	if s.err != nil {
+		return s.err
+	}
+	return s.ensure(namespace, true)
+}
+
+// standInService is the Service stand-ins are kept for ("" without stand-ins).
+func (c *Client) standInService() string {
+	if s := c.standIns.Load(); s != nil {
+		return s.service
+	}
+	return ""
 }
 
 // RemoveStandIns deletes this installation's stand-ins in every watched namespace (restore).

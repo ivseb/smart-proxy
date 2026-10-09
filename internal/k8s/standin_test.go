@@ -102,3 +102,52 @@ func TestWithoutEndpointsPermissionPatchingElsewhereIsRefused(t *testing.T) {
 		t.Fatalf("patching in Smart Proxy's own namespace: %v", err)
 	}
 }
+
+// A stand-in nothing points at anymore is removed, but only after a while: one just created for
+// a resource being patched stays even if passes run back to back meanwhile.
+func TestUnneededStandInIsRemovedAfterAWhile(t *testing.T) {
+	standIn := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "sp", Namespace: ns, Labels: map[string]string{
+		"smart-proxy/instance": "sp", "smart-proxy/namespace": "smart-proxy", "smart-proxy/component": "stand-in"}}}
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"smart-proxy", ns}}, fakecluster.Options{}, proxyEndpoints("10.0.0.1"), standIn)
+	defer func(d time.Duration) { *k8s.UnneededFor = d }(*k8s.UnneededFor)
+	*k8s.UnneededFor = 500 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.EnableStandIns(ctx, "sp")
+	c.SetLeading(true)
+	for _, ip := range []string{"10.0.0.2", "10.0.0.3"} { // Passes back to back
+		c.Kube.CoreV1().Endpoints("smart-proxy").Update(ctx, proxyEndpoints(ip), metav1.UpdateOptions{})
+	}
+	time.Sleep(200 * time.Millisecond)
+	if _, err := c.Kube.CoreV1().Services(ns).Get(ctx, "sp", metav1.GetOptions{}); err != nil {
+		t.Fatal("removed right away")
+	}
+	time.Sleep(*k8s.UnneededFor)
+	c.Kube.CoreV1().Endpoints("smart-proxy").Update(ctx, proxyEndpoints("10.0.0.4"), metav1.UpdateOptions{}) // Another pass
+	fakecluster.Eventually(t, func() bool {
+		_, err := c.Kube.CoreV1().Services(ns).Get(ctx, "sp", metav1.GetOptions{})
+		return err != nil
+	}, "unneeded stand-in never removed")
+}
+
+// Only the leader replaces existing endpoints: another replica patching there must not write
+// its own (possibly outdated) view of Smart Proxy's pods.
+func TestOnlyTheLeaderUpdatesStandInEndpoints(t *testing.T) {
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"smart-proxy", ns}}, fakecluster.Options{},
+		ingress(ns, "web", "web.example.com", "web-svc", 80), proxyEndpoints("10.0.0.1"))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.EnableStandIns(ctx, "sp") // Not leading
+	current := &corev1.Endpoints{ObjectMeta: metav1.ObjectMeta{Name: "sp", Namespace: ns}, Subsets: proxyEndpoints("10.0.0.9").Subsets}
+	c.Kube.CoreV1().Endpoints(ns).Create(ctx, current, metav1.CreateOptions{})
+	ing, _ := c.GetIngress(ns, "web")
+	original, _ := k8s.IngressBackend(ing)
+	k8s.PatchIngress(ing, "sp", original, "{}")
+	if err := c.UpdateIngress(ing); err != nil {
+		t.Fatal(err)
+	}
+	ep, _ := c.Kube.CoreV1().Endpoints(ns).Get(ctx, "sp", metav1.GetOptions{})
+	if ep.Subsets[0].Addresses[0].IP != "10.0.0.9" {
+		t.Fatalf("a replica that isn't the leader replaced the endpoints: %+v", ep.Subsets)
+	}
+}
