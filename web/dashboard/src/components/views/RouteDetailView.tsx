@@ -101,16 +101,20 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                     <CardContent className="space-y-2 text-sm">
                         <div><span className="text-gray-500">Workload</span> <span className="font-mono text-gray-100">{workloadLabel(route.deployment)}</span></div>
                         <div><span className="text-gray-500">Service</span> <span className="font-mono text-gray-100">{route.target_service}:{route.target_port}</span></div>
-                        <div className="flex items-center gap-1.5 text-gray-300">
-                            {route.source ? (
-                                <>
-                                    {route.source.kind === "Route" ? <RouteIcon size={14} /> : <Globe size={14} />}
-                                    {route.source.kind} <span className="font-mono">{route.source.namespace}/{route.source.name}</span>
-                                </>
-                            ) : (
-                                <><Hand size={14} /> Configured manually</>
-                            )}
-                        </div>
+                        {route.resources.length > 0 ? (
+                            <ul className="space-y-1">
+                                {route.resources.map(r => (
+                                    <li key={`${r.kind}/${r.name}`} className="flex items-center gap-1.5 text-gray-300 min-w-0">
+                                        {r.kind === "Route" ? <RouteIcon size={14} className="shrink-0" /> : <Globe size={14} className="shrink-0" />}
+                                        <span className="truncate">{r.kind} <span className="font-mono">{r.namespace}/{r.name}</span></span>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <div className="flex items-center gap-1.5 text-gray-300">
+                                <Hand size={14} /> {route.source ? "Not patched right now" : "Configured manually"}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 

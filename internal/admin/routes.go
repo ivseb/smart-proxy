@@ -43,6 +43,9 @@ type RouteStatus struct {
 	EffectiveIdleTimeout time.Duration `json:"effective_idle_timeout"`
 	// ScheduleActive is true while the route's schedule keeps it awake.
 	ScheduleActive bool `json:"schedule_active"`
+	// Resources are the Ingresses/Routes currently patched for this route (one per host);
+	// deleting the route restores all of them.
+	Resources []patchedResource `json:"resources"`
 }
 
 func (s *Server) deploymentStatus(namespace, name string) (string, int32, int32) {
@@ -90,9 +93,15 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		routes := s.store.GetAllRoutes()
+		patched := s.patchedByRoute()
 		result := make([]RouteStatus, 0, len(routes))
 		for _, route := range routes {
-			result = append(result, s.routeStatus(route))
+			rs := s.routeStatus(route)
+			rs.Resources = patched[route.ID]
+			if rs.Resources == nil {
+				rs.Resources = []patchedResource{}
+			}
+			result = append(result, rs)
 		}
 		writeJSON(w, result)
 
@@ -128,9 +137,10 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		// Auto-patch any matching routes/ingresses in the cluster to keep in sync
+		// Patch the Ingresses/Routes serving its hosts, and restore those of hosts it no longer has
 		if s.k8sClient != nil {
 			s.autoPatchResourcesForConfig(&route)
+			s.releaseStale(route)
 		}
 		w.WriteHeader(http.StatusCreated)
 
@@ -140,12 +150,22 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Missing id", http.StatusBadRequest)
 			return
 		}
-		if err := s.store.RemoveRoute(id); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if route, ok := s.store.GetRoute(id); ok && route.Declarative {
+			http.Error(w, "This route is defined by smart-proxy/* annotations on its Ingress/Route: set smart-proxy/enabled to false there", http.StatusConflict)
 			return
 		}
-		logger.Printf("Route %s deleted", id)
-		w.WriteHeader(http.StatusOK)
+		// Every resource patched for the route is restored: leaving them pointed at Smart Proxy
+		// without a route would make them answer 404.
+		restored, err := s.deleteRoute(id)
+		if err != nil {
+			http.Error(w, err.Error(), httpStatusFor(err))
+			return
+		}
+		logger.Printf("Route %s deleted (%d resource(s) restored)", id, len(restored))
+		if restored == nil {
+			restored = []patchedResource{}
+		}
+		writeJSON(w, map[string]any{"restored": restored})
 
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

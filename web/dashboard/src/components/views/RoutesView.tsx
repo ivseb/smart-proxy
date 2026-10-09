@@ -230,6 +230,11 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-400 pl-4 min-w-0">
                     <SourceChip route={route} />
+                    {route.resources.length > 1 && (
+                        <span className="shrink-0 text-gray-500" title={route.resources.map(r => `${r.kind} ${r.namespace}/${r.name}`).join("\n")}>
+                            +{route.resources.length - 1} more
+                        </span>
+                    )}
                     {route.declarative && (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-200 shrink-0" title="Configured by smart-proxy/* annotations on the resource (e.g. from Git)">
                             <FileCode2 size={11} /> annotations

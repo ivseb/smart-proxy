@@ -208,6 +208,12 @@ func (s *Server) handleUnpatchIngress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), httpStatusFor(err))
 		return
 	}
+	if ing.Annotations[k8s.AnnotationDeclarative] == "true" {
+		http.Error(w, "Patched because of its smart-proxy/enabled annotation: set it to false instead", http.StatusConflict)
+		return
+	}
+	owner := ownerID(store.KindIngress, ns, name, ing.Annotations)
+	res := patchedResource{ResourceRef{Kind: store.KindIngress, Namespace: ns, Name: name}, k8s.IngressHost(ing)}
 	if err := k8s.UnpatchIngress(ing); err != nil {
 		http.Error(w, "Not patched", http.StatusBadRequest)
 		return
@@ -216,7 +222,7 @@ func (s *Server) handleUnpatchIngress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to update ingress: "+err.Error(), httpStatusFor(err))
 		return
 	}
-	s.store.RemoveResource(store.KindIngress, ns, name)
+	s.afterUnpatch(owner, res)
 	logger.Printf("Restored Ingress %s/%s", ns, name)
 	w.WriteHeader(http.StatusOK)
 }
@@ -272,6 +278,12 @@ func (s *Server) handleUnpatchRoute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), httpStatusFor(err))
 		return
 	}
+	if rt.Annotations[k8s.AnnotationDeclarative] == "true" {
+		http.Error(w, "Patched because of its smart-proxy/enabled annotation: set it to false instead", http.StatusConflict)
+		return
+	}
+	owner := ownerID(store.KindRoute, ns, name, rt.Annotations)
+	res := patchedResource{ResourceRef{Kind: store.KindRoute, Namespace: ns, Name: name}, rt.Spec.Host}
 	if err := k8s.UnpatchRoute(rt); err != nil {
 		http.Error(w, "Not patched", http.StatusBadRequest)
 		return
@@ -280,7 +292,7 @@ func (s *Server) handleUnpatchRoute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to update route: "+err.Error(), httpStatusFor(err))
 		return
 	}
-	s.store.RemoveResource(store.KindRoute, ns, name)
+	s.afterUnpatch(owner, res)
 	logger.Printf("Restored Route %s/%s", ns, name)
 	w.WriteHeader(http.StatusOK)
 }

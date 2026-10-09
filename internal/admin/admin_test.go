@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -250,5 +251,135 @@ func TestWakeDeploymentRecordsActivity(t *testing.T) {
 	}
 	if r, _ := f.store.GetRoute(store.IngressID("team-a", "web")); time.Since(r.LastActivity) > time.Minute {
 		t.Fatalf("activity not recorded: %v", r.LastActivity)
+	}
+}
+
+func routeObj(ns, name, host, service string) *routev1.Route {
+	return &routev1.Route{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		Spec:       routev1.RouteSpec{Host: host, To: routev1.RouteTargetReference{Kind: "Service", Name: service}},
+	}
+}
+
+func (f *fixture) osRoute(t *testing.T, ns, name string) *routev1.Route {
+	t.Helper()
+	rt, err := f.cluster.Routes.RouteV1().Routes(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rt
+}
+
+// A route serving the hosts of two OpenShift Routes patches both; deleting it must restore both.
+func TestDeletingMultiHostRouteRestoresEveryPatchedResource(t *testing.T) {
+	objs := append(app("team-a", "web", 1),
+		routeObj("team-a", "web-com", "web.example.com", "web-svc"),
+		routeObj("team-a", "web-it", "web.example.it", "web-svc"))
+	f := newFixture(t, objs...)
+
+	cfg := store.RouteConfig{Host: "web.example.com, web.example.it", Namespace: "team-a", Deployment: "web", TargetService: "web-svc", TargetPort: 8080}
+	if code, body := f.call(t, "POST", "/api/routes", cfg); code != http.StatusCreated {
+		t.Fatalf("create: %d %s", code, body)
+	}
+	for _, name := range []string{"web-com", "web-it"} {
+		if !k8s.IsRoutePatched(f.osRoute(t, "team-a", name), proxyService) {
+			t.Fatalf("%s not patched", name)
+		}
+	}
+	routes := f.store.GetAllRoutes()
+	if len(routes) != 1 {
+		t.Fatalf("routes = %+v", routes)
+	}
+	waitPatched := func(name string, patched bool) {
+		fakecluster.Eventually(t, func() bool {
+			rt, err := f.cluster.GetRoute("team-a", name)
+			return err == nil && k8s.IsRoutePatched(rt, proxyService) == patched
+		}, name+" cache not updated")
+	}
+	waitPatched("web-com", true)
+	waitPatched("web-it", true)
+
+	if code, body := f.call(t, "DELETE", "/api/routes?id="+url.QueryEscape(routes[0].ID), nil); code != http.StatusOK {
+		t.Fatalf("delete: %d %s", code, body)
+	}
+	for _, name := range []string{"web-com", "web-it"} {
+		rt := f.osRoute(t, "team-a", name)
+		if rt.Spec.To.Name != "web-svc" || rt.Annotations[k8s.AnnotationPatched] != "" {
+			t.Errorf("%s still patched after deleting its route: to=%s annotations=%v", name, rt.Spec.To.Name, rt.Annotations)
+		}
+	}
+}
+
+func multiHostFixture(t *testing.T) (*fixture, string) {
+	t.Helper()
+	objs := append(app("team-a", "web", 1),
+		routeObj("team-a", "web-com", "web.example.com", "web-svc"),
+		routeObj("team-a", "web-it", "web.example.it", "web-svc"))
+	f := newFixture(t, objs...)
+	cfg := store.RouteConfig{Host: "web.example.com, web.example.it", Namespace: "team-a", Deployment: "web", TargetService: "web-svc", TargetPort: 8080}
+	if code, body := f.call(t, "POST", "/api/routes", cfg); code != http.StatusCreated {
+		t.Fatalf("create: %d %s", code, body)
+	}
+	for _, name := range []string{"web-com", "web-it"} {
+		n := name
+		fakecluster.Eventually(t, func() bool {
+			rt, err := f.cluster.GetRoute("team-a", n)
+			return err == nil && k8s.IsRoutePatched(rt, proxyService)
+		}, n+" not patched in cache")
+	}
+	return f, f.store.GetAllRoutes()[0].ID
+}
+
+func TestUnpatchingASecondaryHostKeepsTheRouteWithoutIt(t *testing.T) {
+	f, id := multiHostFixture(t)
+	if code, body := f.call(t, "POST", "/api/unpatch-route?namespace=team-a&name=web-it", nil); code != 200 {
+		t.Fatalf("unpatch: %d %s", code, body)
+	}
+	r, ok := f.store.GetRoute(id)
+	if !ok || r.Host != "web.example.com" {
+		t.Fatalf("route = %+v, %v (want host web.example.com only)", r, ok)
+	}
+	if !k8s.IsRoutePatched(f.osRoute(t, "team-a", "web-com"), proxyService) {
+		t.Fatal("primary resource was unpatched too")
+	}
+}
+
+func TestUnpatchingThePrimaryRebindsTheRoute(t *testing.T) {
+	f, id := multiHostFixture(t)
+	if id != store.RouteID("team-a", "web-com") {
+		t.Fatalf("route bound to %s", id)
+	}
+	if code, body := f.call(t, "POST", "/api/unpatch-route?namespace=team-a&name=web-com", nil); code != 200 {
+		t.Fatalf("unpatch: %d %s", code, body)
+	}
+	if _, ok := f.store.GetRoute(id); ok {
+		t.Fatal("old route still stored")
+	}
+	r, ok := f.store.GetRoute(store.RouteID("team-a", "web-it"))
+	if !ok || r.Host != "web.example.it" {
+		t.Fatalf("route not rebound to web-it: %+v %v", r, ok)
+	}
+}
+
+func TestRemovingAHostRestoresItsResource(t *testing.T) {
+	f, id := multiHostFixture(t)
+	r, _ := f.store.GetRoute(id)
+	r.Host = "web.example.com"
+	if code, body := f.call(t, "POST", "/api/routes", r); code != http.StatusCreated {
+		t.Fatalf("save: %d %s", code, body)
+	}
+	if rt := f.osRoute(t, "team-a", "web-it"); rt.Spec.To.Name != "web-svc" {
+		t.Fatalf("web-it still patched: %s", rt.Spec.To.Name)
+	}
+	if !k8s.IsRoutePatched(f.osRoute(t, "team-a", "web-com"), proxyService) {
+		t.Fatal("web-com unpatched")
+	}
+}
+
+func TestDeclarativeRoutesCannotBeDeletedFromTheAPI(t *testing.T) {
+	f := newFixture(t)
+	f.store.AddRoute(&store.RouteConfig{ID: store.IngressID("team-a", "web"), Namespace: "team-a", Deployment: "web", Declarative: true})
+	if code, _ := f.call(t, "DELETE", "/api/routes?id="+url.QueryEscape(store.IngressID("team-a", "web")), nil); code != http.StatusConflict {
+		t.Fatalf("delete declarative: %d", code)
 	}
 }

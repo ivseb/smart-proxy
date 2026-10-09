@@ -45,6 +45,7 @@ export interface RouteStatus extends RouteConfig {
     sleeps_at: string | null; // null when it never sleeps (Always On, manual, asleep)
     effective_idle_timeout: number; // nanoseconds
     schedule_active: boolean;
+    resources: (ResourceRef & { host: string })[]; // Patched for this route; restored when it is deleted
 }
 
 export interface DeploymentSummary {

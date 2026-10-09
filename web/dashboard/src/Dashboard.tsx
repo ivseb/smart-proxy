@@ -78,10 +78,13 @@ export function Dashboard() {
             body: JSON.stringify(data),
         }), "Route saved", "Failed to save route");
 
-    // Routes created by patching an Ingress or OpenShift Route keep that resource pointed at
-    // Smart Proxy, so deleting only the configuration would leave the app answering 404.
+    // Deleting a route restores every Ingress/Route patched for it (server-side).
     const requestDelete = (route: RouteStatus) => {
-        if (route.source) {
+        if (route.declarative) {
+            toast.error("This route is defined by smart-proxy/* annotations on its Ingress/Route: set smart-proxy/enabled to \"false\" there to remove it.");
+            return;
+        }
+        if (route.resources.length > 0) {
             setRouteToDelete(route);
         } else if (confirm(`Delete the route for ${route.host || route.deployment}?`)) {
             deleteRoute(route);
@@ -89,21 +92,15 @@ export function Dashboard() {
     };
 
     const deleteRoute = async (route: RouteStatus) => {
-        if (await run(() => apiRequest(`/api/routes?${query({ id: route.id })}`, { method: "DELETE" }), "Route deleted", "Failed to delete route")) {
+        let restored = 0;
+        const ok = await run(async () => {
+            const res = await apiRequest(`/api/routes?${query({ id: route.id })}`, { method: "DELETE" });
+            restored = ((await res.json()).restored || []).length;
+        }, null, "Failed to delete route");
+        if (ok) {
+            toast.success(restored > 0 ? `Route deleted, ${restored} resource${restored === 1 ? "" : "s"} restored` : "Route deleted");
             setSelectedRouteId(null);
         }
-        setRouteToDelete(null);
-    };
-
-    const unpatchAndDelete = async (route: RouteStatus) => {
-        const src = route.source!;
-        const endpoint = src.kind === "Route" ? "/api/unpatch-route" : "/api/unpatch-ingress";
-        const ok = await run(
-            () => apiRequest(`${endpoint}?${query({ namespace: src.namespace, name: src.name })}`, { method: "POST" }),
-            `Restored the original backend of ${src.kind} ${src.namespace}/${src.name}`,
-            `Failed to unpatch ${src.kind} ${src.name}`,
-        );
-        if (ok) setSelectedRouteId(null);
         setRouteToDelete(null);
     };
 
@@ -234,23 +231,25 @@ export function Dashboard() {
                 info={info}
             />
 
-            {routeToDelete?.source && (
+            {routeToDelete && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
                     <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-full max-w-md p-6">
-                        <h3 className="text-xl font-bold text-white mb-2">Delete patched route?</h3>
-                        <p className="text-gray-400 mb-6 text-sm">
-                            This route comes from {routeToDelete.source.kind === "Route" ? "the OpenShift Route" : "the Ingress"}{" "}
-                            <span className="font-mono text-gray-200">{routeToDelete.source.namespace}/{routeToDelete.source.name}</span>.
-                            Unpatching restores its original backend. Deleting only the configuration leaves it pointed at Smart Proxy, which will answer 404.
+                        <h3 className="text-xl font-bold text-white mb-2">Delete route?</h3>
+                        <p className="text-gray-400 mb-3 text-sm">
+                            These resources point at Smart Proxy for this route and get their original backend back:
                         </p>
+                        <ul className="mb-6 space-y-1 text-sm">
+                            {routeToDelete.resources.map(r => (
+                                <li key={`${r.kind}/${r.namespace}/${r.name}`} className="font-mono text-gray-200 truncate">
+                                    {r.kind} {r.namespace}/{r.name} <span className="text-gray-500">({r.host || "any host"})</span>
+                                </li>
+                            ))}
+                        </ul>
                         <div className="flex flex-col gap-3">
-                            <Button onClick={() => unpatchAndDelete(routeToDelete)} className="w-full">
-                                Unpatch {routeToDelete.source.kind} &amp; delete
-                            </Button>
                             <Button variant="danger" onClick={() => deleteRoute(routeToDelete)} className="w-full">
-                                Delete configuration only
+                                Delete and restore {routeToDelete.resources.length === 1 ? routeToDelete.resources[0].kind : `${routeToDelete.resources.length} resources`}
                             </Button>
-                            <Button variant="secondary" onClick={() => setRouteToDelete(null)} className="w-full mt-2">
+                            <Button variant="secondary" onClick={() => setRouteToDelete(null)} className="w-full">
                                 Cancel
                             </Button>
                         </div>
