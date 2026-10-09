@@ -4,6 +4,53 @@ entries:
   - annotations:
       artifacthub.io/changes: |
         - kind: added
+          description: Uptime monitors and health checks never keep applications awake or wake them (ignore.* values)
+        - kind: added
+          description: Routes balancing several Services keep their split; only managed backends sleep and wake
+        - kind: added
+          description: OpenShift DeploymentConfigs (Role covers apps.openshift.io with rbac.openshiftRoutes)
+        - kind: fixed
+          description: Deleting a route restores every Ingress/Route it patched
+        - kind: fixed
+          description: Route target ports are resolved and restored exactly
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.1.0
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.1.0
+    created: "2026-10-09T12:34:51.905905006Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: 4041c274461dc9888db492a879b4a457d30548a842578a14c51561c279c69158
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.3.0/smart-proxy-0.3.0.tgz
+    version: 0.3.0
+  - annotations:
+      artifacthub.io/changes: |
+        - kind: added
           description: Declarative routes from smart-proxy/* annotations on Ingresses/Routes (GitOps)
         - kind: added
           description: StatefulSets can be put to sleep and woken like Deployments (Role covers statefulsets)
@@ -123,4 +170,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-09T06:51:01.684338025Z"
+generated: "2026-10-09T12:34:51.905927979Z"
