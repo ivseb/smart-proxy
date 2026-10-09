@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l cmd internal)"
+          if [ -n "$unformatted" ]; then
+            echo "Run gofmt on:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -race ./...
+
+  dashboard:
+    name: Dashboard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/dashboard/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+
+      - name: helm lint
+        run: helm lint charts/smart-proxy
+
+      - name: Render every auth mode
+        run: |
+          set -e
+          render() { helm template ci charts/smart-proxy "$@" > /dev/null; }
+          for mode in none basic token header; do render --set auth.mode=$mode; done
+          render --set auth.mode=openshift --set route.enabled=true --set route.host=admin.example.com
+          render --set auth.mode=oidc --set ingress.enabled=true --set ingress.host=admin.example.com \
+            --set auth.oidc.issuerURL=https://idp.example.com --set auth.oidc.clientID=sp \
+            --set auth.oidc.clientSecret=secret --set 'auth.oidc.allowedDomains={example.com}'
+          # Invalid settings must fail the install.
+          if render --set auth.mode=oidc 2>/dev/null; then echo "incomplete oidc config was accepted"; exit 1; fi
