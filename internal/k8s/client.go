@@ -30,12 +30,13 @@ const ProxyPortName = "proxy"
 
 // Client wraps the Kubernetes and OpenShift clientsets.
 type Client struct {
-	Clientset      *kubernetes.Clientset
+	Clientset      kubernetes.Interface
 	RouteClientSet *routeclientset.Clientset
 	RouteClient    routev1client.RouteV1Interface // Interface for interacting with OpenShift Routes
 	Namespace      string                         // The namespace the client is scoped to
 	probeCache     map[string][]string            // Cache of probe paths per deployment (namespace/name -> paths)
 	probeCacheMu   sync.RWMutex
+	hpaWarnOnce    sync.Once
 }
 
 // NewClient creates a new instance of the K8s Client.
@@ -120,25 +121,6 @@ func (c *Client) GetDeploymentStatus(namespace, deploymentName string) (int32, i
 		return 0, 0, err
 	}
 	return *deployment.Spec.Replicas, deployment.Status.ReadyReplicas, nil
-}
-
-// ScaleDeployment scales a deployment to a specific number of replicas
-func (c *Client) ScaleDeployment(namespace, deploymentName string, replicas int32) error {
-	targetNs := namespace
-	if targetNs == "" {
-		targetNs = c.Namespace
-	}
-
-	scale, err := c.Clientset.AppsV1().Deployments(targetNs).GetScale(context.TODO(), deploymentName, metav1.GetOptions{})
-	if err != nil {
-		return err
-	}
-
-	sc := *scale
-	sc.Spec.Replicas = replicas
-
-	_, err = c.Clientset.AppsV1().Deployments(targetNs).UpdateScale(context.TODO(), deploymentName, &sc, metav1.UpdateOptions{})
-	return err
 }
 
 // ListNamespaces returns ONLY the current namespace in single-ns mode

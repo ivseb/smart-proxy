@@ -15,6 +15,10 @@ rules:
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "list", "watch", "update", "patch"]
+  # Read HPAs to wake deployments at their minReplicas and to detect KEDA-managed ones.
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
   {{- if .Values.rbac.openshiftRoutes }}
   - apiGroups: ["route.openshift.io"]
     resources: ["routes"]

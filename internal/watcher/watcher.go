@@ -2,6 +2,8 @@ package watcher
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +20,8 @@ import (
 type Watcher struct {
 	k8sClient   *k8s.Client
 	store       *store.Store
-	serviceName string // Service fronting Smart Proxy; patched Ingresses/Routes point at it
+	serviceName string          // Service fronting Smart Proxy; patched Ingresses/Routes point at it
+	kedaWarned  map[string]bool // Deployments already reported as KEDA-managed (only touched by the watcher loop)
 }
 
 func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *Watcher {
@@ -26,6 +29,7 @@ func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *
 		k8sClient:   k8sClient,
 		store:       store,
 		serviceName: serviceName,
+		kedaWarned:  make(map[string]bool),
 	}
 }
 
@@ -50,75 +54,49 @@ func (w *Watcher) checkIdleRoutes() {
 		if !strings.HasPrefix(route.ID, "route-") && !strings.HasPrefix(route.ID, "ing-") {
 			continue
 		}
-		// IdleTimeout is already time.Duration
-		// But in old config it was string.
-		// Since we changed the struct in config.go to time.Duration, we don't need to parse string anymore.
-		// However, JSON unmarshal of string into time.Duration assumes nanoseconds unless we write a custom unmarshal?
-		// No, standard JSON unmarshal into time.Duration expects numbers (ns).
-		// Wait, if users provide string "30m" in JSON, standard unmarshal will FAIL for time.Duration field.
-		// We might need a wrapper type or keep it string and parse it here.
-		// Let's assume for now the Store handles loading correctly or we change struct back to string.
-		// Actually, standard `time.Duration` in Go JSON is int64 (nanoseconds).
-		// If we want user friendly "30m", we should keep it string in Struct.
-		// Reverting Struct field to string in store/config.go would be safer for user config?
-		// No, let's stick to Duration in struct but we assume the JSON has int64.
-		// OR we change it back to string.
-		// Given the user wants "Professional", "30m" string is better than 1800000000000.
-		// Let's keep it Duration but assume we handled it?
-		// Actually, I should probably check what I wrote in config.go.
-		// I wrote `IdleTimeout  time.Duration`.
-		// If I want string inputs, I should use a custom type or string.
-		// For simplicity, let's use string in struct and parse it here, as it was before.
-		// BUT I already wrote config.go with time.Duration.
-		// Let's assume I fix config.go?
-		// No, let's fix THIS watcher to use the Duration directly.
-
-		timeout := route.IdleTimeout
-
-		if time.Since(route.LastActivity) > timeout {
-			// 1. Check if the main deployment is needed by any other active route
-			if route.AlwaysOn {
-				logger.Printf("Route %s is idle, but main deployment %s is configured as Always On. Keeping it alive.", route.Path, route.Deployment)
-			} else if w.isDeploymentActive(routes, route.Namespace, route.Deployment) {
-				// Main deployment is still needed by another active route, skip scaling it down.
-				logger.Printf("Route %s is idle, but main deployment %s is still needed by another active route. Keeping it alive.", route.Path, route.Deployment)
-			} else {
-				// Check current replicas of main deployment
-				replicas, _, err := w.k8sClient.GetDeploymentStatus(route.Namespace, route.Deployment)
-				if err != nil {
-					logger.Printf("Error getting status for idle check %s/%s: %v", route.Namespace, route.Deployment, err)
-				} else if replicas > 0 {
-					logger.Printf("Route %s is idle (Last active: %s). Scaling down deployment %s...",
-						route.Path, route.LastActivity.Format(time.RFC3339), route.Deployment)
-
-					err := w.k8sClient.ScaleDeployment(route.Namespace, route.Deployment, 0)
-					if err != nil {
-						logger.Printf("Error scaling down %s: %v", route.Deployment, err)
-					}
-				}
+		if time.Since(route.LastActivity) > idleTimeout(route) {
+			// 1. Main deployment
+			// Always On deployments and those still needed by another active route stay up.
+			// (Not logged: this runs every tick for every idle route and would flood the log view.)
+			if !route.AlwaysOn && !w.isDeploymentActive(routes, route.Namespace, route.Deployment) {
+				w.sleep(route.Namespace, route.Deployment, fmt.Sprintf("route %s idle since %s", route.Path, route.LastActivity.Format(time.RFC3339)))
 			}
 
 			// 2. Scale down dependencies if they are not active in any other route
 			for _, dep := range route.Dependencies {
-				if dep.StopOnIdle {
-					if w.isDeploymentActive(routes, route.Namespace, dep.Name) {
-						logger.Printf("Route %s is idle, but dependency %s is still needed by another active route. Keeping it alive.", route.Path, dep.Name)
-						continue
-					}
-
-					replicas, _, err := w.k8sClient.GetDeploymentStatus(route.Namespace, dep.Name)
-					if err != nil {
-						logger.Printf("Error getting status for dependency %s: %v", dep.Name, err)
-					} else if replicas > 0 {
-						logger.Printf("Scaling down dependency %s for route %s...", dep.Name, route.Path)
-						err := w.k8sClient.ScaleDeployment(route.Namespace, dep.Name, 0)
-						if err != nil {
-							logger.Printf("Error scaling down dependency %s: %v", dep.Name, err)
-						}
-					}
+				if dep.StopOnIdle && !w.isDeploymentActive(routes, route.Namespace, dep.Name) {
+					w.sleep(route.Namespace, dep.Name, fmt.Sprintf("dependency of idle route %s", route.Path))
 				}
 			}
 		}
+	}
+}
+
+// defaultIdleTimeout applies to routes saved without one; a zero timeout would put the
+// deployment back to sleep on every watcher tick.
+const defaultIdleTimeout = 30 * time.Minute
+
+func idleTimeout(r store.RouteConfig) time.Duration {
+	if r.IdleTimeout <= 0 {
+		return defaultIdleTimeout
+	}
+	return r.IdleTimeout
+}
+
+// sleep scales a deployment to zero if it is running, logging only when something happens.
+func (w *Watcher) sleep(namespace, deployment, reason string) {
+	key := namespace + "/" + deployment
+	slept, err := w.k8sClient.SleepDeployment(namespace, deployment)
+	switch {
+	case errors.Is(err, k8s.ErrManagedByKEDA):
+		if !w.kedaWarned[key] {
+			w.kedaWarned[key] = true
+			logger.Printf("Not putting %s to sleep: its %v, which would scale it back up. Use KEDA's own scale-to-zero, or remove the ScaledObject.", key, err)
+		}
+	case err != nil:
+		logger.Printf("Error putting %s to sleep: %v", key, err)
+	case slept:
+		logger.Printf("Scaled down %s (%s)", key, reason)
 	}
 }
 
@@ -128,8 +106,8 @@ func (w *Watcher) isDeploymentActive(routes []store.RouteConfig, namespace, depl
 		if r.Namespace != namespace {
 			continue
 		}
-		// If the route itself is active (last request is within IdleTimeout)
-		if time.Since(r.LastActivity) <= r.IdleTimeout {
+		// If the route itself is active (last request is within its idle timeout)
+		if time.Since(r.LastActivity) <= idleTimeout(r) {
 			// Check if it's the main deployment
 			if r.Deployment == deploymentName {
 				return true

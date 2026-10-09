@@ -5,6 +5,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -129,10 +130,13 @@ func (s *Server) handleStopDeployment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.k8sClient != nil {
-		err := s.k8sClient.ScaleDeployment(namespace, deployment, 0)
-		if err != nil {
+		if _, err := s.k8sClient.SleepDeployment(namespace, deployment); err != nil {
 			logger.Printf("Error scaling down %s: %v", deployment, err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			status := http.StatusInternalServerError
+			if errors.Is(err, k8s.ErrManagedByKEDA) {
+				status = http.StatusConflict
+			}
+			http.Error(w, fmt.Sprintf("Cannot stop %s: %v", deployment, err), status)
 			return
 		}
 		logger.Printf("Manual shutdown triggered for %s/%s", namespace, deployment)
@@ -145,7 +149,7 @@ func (s *Server) handleStopDeployment(w http.ResponseWriter, r *http.Request) {
 					if dep.StopOnIdle {
 						logger.Printf("Stopping dependency %s for manual stop of %s", dep.Name, deployment)
 						// We ignore error here to ensure we try others
-						if err := s.k8sClient.ScaleDeployment(namespace, dep.Name, 0); err != nil {
+						if _, err := s.k8sClient.SleepDeployment(namespace, dep.Name); err != nil {
 							logger.Printf("Error stopping dependency %s: %v", dep.Name, err)
 						}
 					}

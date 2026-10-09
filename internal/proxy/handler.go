@@ -205,10 +205,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if replicas == 0 {
-			logger.Printf("Dependency %s is sleeping. Waking up...", depName)
-			err := h.k8sClient.ScaleDeployment(targetNs, depName, 1)
+			target, err := h.k8sClient.WakeDeployment(targetNs, depName)
 			if err != nil {
 				logger.Printf("Error waking up %s: %v", depName, err)
+			} else if target > 0 {
+				logger.Printf("Waking up %s with %d replica(s)", depName, target)
 			}
 			allReady = false
 		} else if readyReplicas == 0 {

@@ -21,6 +21,7 @@ Smart Proxy uses annotations on Ingress/Route objects to store state and configu
 | `smart-proxy/original-service` | The name of the backend service before patching. |
 | `smart-proxy/original-port` | The port of the backend service before patching. |
 | `smart-proxy/config` | JSON string containing advanced configuration (dependencies, timeouts). |
+| `smart-proxy/replicas-before-sleep` | Set on a **Deployment** while it sleeps: the replica count restored when it wakes up. |
 
 ## Helm Values
 
