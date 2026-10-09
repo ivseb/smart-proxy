@@ -85,6 +85,17 @@ func (m *Metrics) Increment(routeID string) {
 	}
 }
 
+// Snapshot returns the total and per-route request counts.
+func (m *Metrics) Snapshot() (int64, map[string]int64) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	routes := make(map[string]int64, len(m.RouteStats))
+	for k, v := range m.RouteStats {
+		routes[k] = v
+	}
+	return m.TotalRequests, routes
+}
+
 func (m *Metrics) MarshalJSON() ([]byte, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

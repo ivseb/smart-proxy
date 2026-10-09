@@ -364,6 +364,11 @@ func (s *Server) SyncRoutesFromCluster() {
 				config.ID = store.RouteID(namespace, name)
 			}
 		}
+		// The shared route store is the source of truth; annotations only fill gaps
+		// (first start, or a store that was lost).
+		if _, exists := s.store.GetRoute(config.ID); exists {
+			return
+		}
 		if err := s.store.AddRoute(&config); err == nil {
 			count++
 		}

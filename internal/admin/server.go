@@ -23,6 +23,11 @@ type Server struct {
 	// ServiceName is the Service fronting Smart Proxy; patched Ingresses/Routes point at it.
 	ServiceName string
 	auth        *auth.Auth
+
+	// RequestTotals, when set, returns request counts across all replicas.
+	RequestTotals func() (int64, map[string]int64)
+	// Replica identifies this pod (its log stream only shows its own logs).
+	Replica string
 }
 
 // NewServer creates a new instance of the admin Server.
@@ -109,6 +114,7 @@ func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 		"default":        "",
 		"routes_enabled": false,
 		"proxy_service":  s.ServiceName,
+		"replica":        s.Replica,
 	}
 	if s.k8sClient != nil {
 		info["scope"] = s.k8sClient.Scope().String()
@@ -150,6 +156,11 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	if s.RequestTotals != nil {
+		total, routes := s.RequestTotals()
+		writeJSON(w, map[string]any{"TotalRequests": total, "RouteStats": routes})
+		return
+	}
 	if s.Metrics != nil {
 		writeJSON(w, s.Metrics)
 	} else {

@@ -64,13 +64,12 @@ export interface ClusterInfo {
     default: string;
     routes_enabled: boolean;
     proxy_service: string;
+    replica: string;
 }
 
 export interface LogEntry {
     timestamp: string;
-    level: string;
     message: string;
-    component?: string;
 }
 
 export interface StatsData {

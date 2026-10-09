@@ -11,8 +11,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	"smart-proxy/internal/admin"
 	"smart-proxy/internal/auth"
+	"smart-proxy/internal/ha"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/restore"
@@ -40,14 +45,19 @@ func main() {
 		k8sClient = nil
 	}
 
-	// 2. Initialize Config Store
-	// Use environment variable for config path or default
-	configPath := getEnv("CONFIG_PATH", "routes.json")
-	configStore := store.NewStore(configPath)
-
 	// Name of the Service fronting Smart Proxy: patched Ingresses/Routes are pointed at it.
 	// Helm sets this to the release fullname, which is not always "smart-proxy".
 	serviceName := getEnv("SMART_PROXY_SERVICE_NAME", "smart-proxy")
+	podName := getEnv("POD_NAME", hostname())
+
+	// 2. Initialize Config Store: a ConfigMap shared by all replicas in a cluster, a file offline.
+	configPath := getEnv("CONFIG_PATH", "routes.json")
+	var configStore *store.Store
+	if k8sClient != nil {
+		configStore = newSharedStore(k8sClient, serviceName, configPath)
+	} else {
+		configStore = store.NewStore(configPath)
+	}
 	proxyAddr := ":" + getEnv("SMART_PROXY_PORT", "8080")
 
 	// Admin dashboard authentication (AUTH_MODE and AUTH_* variables).
@@ -74,6 +84,7 @@ func main() {
 
 	// 4. Admin Server
 	adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics, serviceName, authn)
+	adminServer.Replica = podName
 	// Cancelled at shutdown so long-lived requests (the log stream) end instead of
 	// holding the server open until the deadline.
 	adminCtx, cancelAdmin := context.WithCancel(context.Background())
@@ -107,10 +118,34 @@ func main() {
 		if err := k8sClient.Start(ctx, 2*time.Minute); err != nil {
 			log.Fatalf("Failed to start Kubernetes caches: %v", err)
 		}
+		replica := &ha.Replica{
+			Client:    k8sClient.Clientset,
+			Namespace: k8s.OwnNamespace(),
+			Instance:  serviceName,
+			PodName:   podName,
+			PodUID:    os.Getenv("POD_UID"),
+			Store:     configStore,
+			LocalRequests: func() ha.RequestCounts {
+				total, routes := proxyHandler.Metrics.Snapshot()
+				return ha.RequestCounts{Total: total, Routes: routes}
+			},
+		}
+		if err := replica.Start(ctx); err != nil {
+			log.Fatalf("Failed to watch shared configuration: %v", err)
+		}
+		adminServer.RequestTotals = func() (int64, map[string]int64) {
+			c := replica.ClusterRequests()
+			return c.Total, c.Routes
+		}
 		adminServer.SyncRoutesFromCluster()
+		proxyHandler.SetReady()
+
+		// Only the leader puts deployments to sleep and heals patches; every replica proxies and wakes.
+		w := watcher.NewWatcher(k8sClient, configStore, serviceName)
+		go replica.RunLeaderElection(ctx, w.Start)
+	} else {
+		proxyHandler.SetReady()
 	}
-	proxyHandler.SetReady()
-	go watcher.NewWatcher(k8sClient, configStore, serviceName).Start(ctx)
 
 	select {
 	case err := <-errs:
@@ -133,6 +168,46 @@ func main() {
 		log.Printf("Admin Server shutdown: %v", err)
 	}
 	log.Println("Stopped")
+}
+
+// newSharedStore keeps routes in a ConfigMap in Smart Proxy's namespace, shared by all replicas.
+// On the first start, routes from an older file-based installation (CONFIG_PATH) are imported.
+func newSharedStore(client *k8s.Client, instance, legacyFile string) *store.Store {
+	ns := k8s.OwnNamespace()
+	var owner *metav1.OwnerReference
+	if name := os.Getenv("SMART_PROXY_DEPLOYMENT"); name != "" {
+		// Owned by the Smart Proxy Deployment: deleted with it when uninstalled.
+		if dep, err := client.Clientset.AppsV1().Deployments(ns).Get(context.TODO(), name, metav1.GetOptions{}); err == nil {
+			owner = &metav1.OwnerReference{APIVersion: "apps/v1", Kind: "Deployment", Name: dep.Name, UID: dep.UID}
+		} else {
+			log.Printf("Warning: cannot read Deployment %s/%s (%v); the routes ConfigMap won't be removed on uninstall", ns, name, err)
+		}
+	}
+	backend := store.NewConfigMapBackend(client.Clientset, ns, ha.RoutesConfigMap(instance), instance, owner)
+
+	if exists, err := backend.Exists(); err != nil {
+		log.Fatalf("Cannot read ConfigMap %s/%s: %v", ns, backend.Name(), err)
+	} else if !exists {
+		if legacy, err := store.NewFileBackend(legacyFile).Load(); err == nil && len(legacy) > 0 {
+			if _, err := backend.Update(func(m map[string]*store.RouteConfig) {
+				for _, r := range legacy {
+					if r.ID == "" {
+						r.ID = uuid.New().String() // Very old files had no IDs
+					}
+					m[r.ID] = r
+				}
+			}); err != nil {
+				log.Fatalf("Failed to import %s into ConfigMap %s: %v", legacyFile, backend.Name(), err)
+			}
+			log.Printf("Imported %d route(s) from %s into ConfigMap %s/%s", len(legacy), legacyFile, ns, backend.Name())
+		}
+	}
+	return store.NewStoreWithBackend(backend)
+}
+
+func hostname() string {
+	name, _ := os.Hostname()
+	return name
 }
 
 // newK8sClient connects to the cluster for the namespaces in WATCH_NAMESPACE(_SELECTOR).
@@ -163,6 +238,11 @@ func runRestore() {
 	if name := os.Getenv("SMART_PROXY_DEPLOYMENT"); name != "" {
 		if err := restore.StopProxy(ctx, client, k8s.OwnNamespace(), name); err != nil {
 			log.Fatalf("Failed to stop Smart Proxy before restoring: %v", err)
+		}
+		// Not owned by anything Helm deletes, unlike the ConfigMaps.
+		lease := getEnv("SMART_PROXY_SERVICE_NAME", "smart-proxy") + "-leader"
+		if err := client.Clientset.CoordinationV1().Leases(k8s.OwnNamespace()).Delete(ctx, lease, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			log.Printf("Warning: could not delete Lease %s: %v", lease, err)
 		}
 	}
 	if err := restore.Run(client).Err(); err != nil {

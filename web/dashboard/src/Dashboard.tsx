@@ -202,7 +202,7 @@ export function Dashboard() {
                                 />
                             )}
                             {activeTab === "patching" && <PatchingView info={info} onChanged={refetch} />}
-                            {activeTab === "logs" && <LogsView />}
+                            {activeTab === "logs" && <LogsView replica={info?.replica} />}
                         </>
                     )}
                 </main>

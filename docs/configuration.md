@@ -12,7 +12,9 @@
 | `LOG_LEVEL` | Logging verbosity (debug, info, error). | `info` |
 | `ADMIN_ADDR` | Listen address of the admin dashboard. | `:8081` |
 | `SHUTDOWN_DELAY` | On SIGTERM, how long to fail the readiness probe before closing listeners, so in-flight traffic moves away cleanly. | `5s` |
-| `CONFIG_PATH` | File where route configurations are saved. | `routes.json` |
+| `CONFIG_PATH` | File where route configurations are saved when running outside a cluster; inside one they live in the `<service>-routes` ConfigMap (an existing file is imported once). | `routes.json` |
+| `POD_NAME`, `POD_UID` | This replica's identity, for leader election and its activity ConfigMap (set by the chart). | hostname |
+| `SMART_PROXY_DEPLOYMENT` | Smart Proxy's own Deployment: owns the routes ConfigMap, and is stopped by `restore`. | — |
 | `AUTH_MODE` | Dashboard authentication: `none`, `basic`, `token`, `oidc` or `header`. See [Authentication](authentication.md) for all `AUTH_*` variables. | `none` |
 
 ## Multiple namespaces

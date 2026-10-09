@@ -42,6 +42,16 @@ spec:
             {{- end }}
           env:
             {{- include "smart-proxy.scopeEnv" . | nindent 12 }}
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: SMART_PROXY_DEPLOYMENT
+              value: {{ include "smart-proxy.fullname" . | quote }}
             - name: SMART_PROXY_PORT
               value: {{ .Values.config.proxyPort | quote }}
             - name: CONFIG_PATH
@@ -182,10 +192,19 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- if .Values.affinity }}
+        {{- toYaml .Values.affinity | nindent 8 }}
+        {{- else }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "smart-proxy.selectorLabels" . | nindent 20 }}
+        {{- end }}
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}

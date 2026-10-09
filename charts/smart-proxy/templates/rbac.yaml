@@ -60,7 +60,8 @@ roleRef:
 {{- end }}
 {{- end }}
 ---
-# In Smart Proxy's own namespace: lets the uninstall Job stop Smart Proxy before restoring.
+# In Smart Proxy's own namespace: shared routes and activity (ConfigMaps), leader election
+# (Lease), and stopping Smart Proxy before the uninstall Job restores applications.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -75,6 +76,12 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["list"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

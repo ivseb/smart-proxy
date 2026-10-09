@@ -45,6 +45,16 @@ spec:
           env:
             - name: CONFIG_PATH
               value: /data/routes.json
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_UID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.uid
+            - name: SMART_PROXY_DEPLOYMENT
+              value: smart-proxy
           volumeMounts:
             - name: data
               mountPath: /data

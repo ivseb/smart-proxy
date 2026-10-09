@@ -3,8 +3,15 @@
 # or with a custom values file (-f my-values.yaml).
 # See values.example.yaml for a documented production example.
 
-# Number of Smart Proxy replicas. Keep at 1 unless you configure leader election.
-replicaCount: 1
+# Number of Smart Proxy replicas. Patched applications receive their traffic through Smart
+# Proxy, so run at least 2 for availability: replicas share routes and activity, and an
+# elected leader puts deployments to sleep.
+replicaCount: 2
+
+# Keeps at least one replica up during node drains and upgrades (when replicaCount > 1).
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
 
 image:
   # Container image published to Docker Hub.
@@ -160,10 +167,10 @@ resources:
     cpu: 50m
     memory: 64Mi
 
-# Smart Proxy stores runtime data in /data.
+# Routes are stored in a ConfigMap shared by all replicas; no volume is needed.
+# Deprecated: a PVC was used by versions that kept routes in /data/routes.json. Enabled, its
+# routes are imported into the ConfigMap on first start (it only works with replicaCount: 1).
 persistence:
-  # false = ephemeral emptyDir (data lost on pod restart).
-  # true  = provision a PersistentVolumeClaim.
   enabled: false
   size: 1Gi
   storageClass: ""
@@ -176,4 +183,5 @@ podSecurityContext: {}
 podAnnotations: {}
 nodeSelector: {}
 tolerations: []
+# Empty = spread replicas across nodes when possible.
 affinity: {}

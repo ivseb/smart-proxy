@@ -37,7 +37,9 @@ Common values (see [`values.yaml`](values.yaml) for the full, commented list and
 | `ingress.enabled` | Expose the admin dashboard via a Kubernetes Ingress. | `false` |
 | `auth.mode` | Dashboard sign-in: `basic`, `token`, `oidc`, `openshift`, `header` or `none` ([docs](https://ivseb.github.io/smart-proxy/authentication/)). | `basic` |
 | `auth.existingSecret` | Use your own Secret for the credentials (recommended with GitOps). | `""` |
-| `persistence.enabled` | Use a PVC instead of an ephemeral `emptyDir`. | `false` |
+| `replicaCount` | Replicas; they share routes and activity and elect a leader. | `2` |
+| `podDisruptionBudget.enabled` | Keep one replica up during drains (when `replicaCount` > 1). | `true` |
+| `persistence.enabled` | Deprecated: routes now live in a ConfigMap. | `false` |
 | `podSecurityContext` | Pod securityContext; on vanilla Kubernetes with persistence, set `fsGroup: 1001` so the volume is writable. | `{}` |
 
 ## Uninstall
