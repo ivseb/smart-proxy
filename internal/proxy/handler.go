@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"smart-proxy/internal/k8s"
@@ -27,6 +28,16 @@ type Handler struct {
 	store     *store.Store
 	tmpl      *template.Template
 	Metrics   *Metrics
+	draining  atomic.Bool
+}
+
+// HealthPath answers the kubelet probes. It lives under the reserved /__smart_proxy/ prefix
+// so it can't shadow an application's own /healthz.
+const HealthPath = "/__smart_proxy/healthz"
+
+// SetDraining makes the health check fail so Kubernetes stops sending traffic before shutdown.
+func (h *Handler) SetDraining() {
+	h.draining.Store(true)
 }
 
 func NewHandler(k8sClient *k8s.Client, store *store.Store) *Handler {
@@ -84,6 +95,21 @@ func (m *Metrics) MarshalJSON() ([]byte, error) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == HealthPath {
+		if h.draining.Load() {
+			http.Error(w, "shutting down", http.StatusServiceUnavailable)
+			return
+		}
+		w.Write([]byte("ok"))
+		return
+	}
+
+	// Without a cluster connection nothing can be woken or proxied.
+	if h.k8sClient == nil {
+		http.Error(w, "Smart Proxy: Kubernetes client unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
 	// Special Endpoint: Status Check
 	if r.URL.Path == "/__smart_proxy/status" {
 		h.handleStatusCheck(w, r)

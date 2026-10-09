@@ -93,17 +93,16 @@ func NewClient() (*Client, error) {
 		fmt.Printf("Warning: Failed to create OpenShift Route client: %v\n", err)
 	}
 
-	if routeClient != nil {
-		_ = routeClient.RouteV1().Routes(ns) // Just to verify we can get the interface
-	}
-
-	return &Client{
+	c := &Client{
 		Clientset:      clientset,
-		RouteClient:    routeClient.RouteV1(), // Store the V1 interface to create namespaced clients on fly or just store clientset
 		RouteClientSet: routeClient,
 		Namespace:      ns,
 		probeCache:     make(map[string][]string),
-	}, nil
+	}
+	if routeClient != nil {
+		c.RouteClient = routeClient.RouteV1()
+	}
+	return c, nil
 }
 
 // GetDeploymentStatus checks if a deployment is ready (replicas > 0 and available)

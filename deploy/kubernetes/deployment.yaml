@@ -25,6 +25,16 @@ spec:
               name: proxy
             - containerPort: 8081
               name: admin
+          livenessProbe:
+            httpGet:
+              path: /__smart_proxy/healthz
+              port: proxy
+          readinessProbe:
+            httpGet:
+              path: /__smart_proxy/healthz
+              port: proxy
+            periodSeconds: 5
+            failureThreshold: 1
           resources:
             limits:
               cpu: "200m"

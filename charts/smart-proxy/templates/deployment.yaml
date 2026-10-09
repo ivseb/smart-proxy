@@ -122,6 +122,18 @@ spec:
             - name: AUTH_HEADER_LOGOUT_URL
               value: /oauth/sign_out
             {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /__smart_proxy/healthz
+              port: proxy
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /__smart_proxy/healthz
+              port: proxy
+            periodSeconds: 5
+            failureThreshold: 1
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:

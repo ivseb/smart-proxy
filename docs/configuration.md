@@ -9,7 +9,18 @@
 | `WATCH_NAMESPACE` | The namespace to watch for resources. | `default` (or current NS) |
 | `LOG_LEVEL` | Logging verbosity (debug, info, error). | `info` |
 | `ADMIN_ADDR` | Listen address of the admin dashboard. | `:8081` |
+| `SHUTDOWN_DELAY` | On SIGTERM, how long to fail the readiness probe before closing listeners, so in-flight traffic moves away cleanly. | `5s` |
+| `CONFIG_PATH` | File where route configurations are saved. | `routes.json` |
 | `AUTH_MODE` | Dashboard authentication: `none`, `basic`, `token`, `oidc` or `header`. See [Authentication](authentication.md) for all `AUTH_*` variables. | `none` |
+
+## Reserved paths
+
+Smart Proxy answers these paths itself on the proxy port, for every host:
+
+| Path | Purpose |
+| :--- | :--- |
+| `/__smart_proxy/healthz` | Liveness/readiness probe (returns 503 while shutting down). |
+| `/__smart_proxy/status` | Wake-up status polled by the "waking up" page. |
 
 ## Annotations
 

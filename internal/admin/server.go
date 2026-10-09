@@ -49,14 +49,8 @@ func NewServer(k8sClient *k8s.Client, store *store.Store, metrics *proxy.Metrics
 	}
 }
 
-// ListenAndServe starts the admin server on the specified address.
-// It performs an initial sync of routes from Ingresses and then blocks while serving HTTP requests.
-func (s *Server) ListenAndServe(addr string) error {
-	// Sync Routes from Ingresses on startup
-	if s.k8sClient != nil {
-		go s.SyncRoutesFromIngresses()
-	}
-
+// Handler returns the admin dashboard and API, behind authentication.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	// Static Files (Admin UI)
@@ -69,10 +63,10 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux.HandleFunc("/api/k8s/deployments", s.handleDeployments)
 	mux.HandleFunc("/api/k8s/ingresses", s.handleIngresses)
 	mux.HandleFunc("/api/k8s/routes", s.handleOpenshiftRoutes) // New
-	mux.HandleFunc("/api/patch-ingress", s.handlePatchIngress)
-	mux.HandleFunc("/api/unpatch-ingress", s.handleUnpatchIngress)
-	mux.HandleFunc("/api/patch-route", s.handlePatchRoute)     // New
-	mux.HandleFunc("/api/unpatch-route", s.handleUnpatchRoute) // New
+	mux.HandleFunc("/api/patch-ingress", s.requireK8s(s.handlePatchIngress))
+	mux.HandleFunc("/api/unpatch-ingress", s.requireK8s(s.handleUnpatchIngress))
+	mux.HandleFunc("/api/patch-route", s.requireK8s(s.handlePatchRoute))     // New
+	mux.HandleFunc("/api/unpatch-route", s.requireK8s(s.handleUnpatchRoute)) // New
 	mux.HandleFunc("/api/stats", s.handleStats)
 	// New Endpoints
 	mux.HandleFunc("/api/logs", s.handleLogs)
@@ -83,7 +77,19 @@ func (s *Server) ListenAndServe(addr string) error {
 	// Login/logout endpoints; everything else requires authentication.
 	s.auth.RegisterRoutes(mux)
 
-	return http.ListenAndServe(addr, s.auth.Wrap(mux))
+	return s.auth.Wrap(mux)
+}
+
+// requireK8s answers 503 instead of calling handlers that need the cluster when the
+// Kubernetes client could not be created (offline mode).
+func (s *Server) requireK8s(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.k8sClient == nil {
+			http.Error(w, "Kubernetes client unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		next(w, r)
+	}
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {

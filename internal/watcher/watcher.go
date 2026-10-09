@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,18 +34,27 @@ func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *
 	}
 }
 
-func (w *Watcher) Start() {
+// Start runs the idle and self-healing checks every 30s until ctx is cancelled.
+func (w *Watcher) Start(ctx context.Context) {
 	logger.Println("Watcher started. Checking for idle services every 30s...")
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		w.checkIdleRoutes()
-		w.healUnpatchedRoutes()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			w.checkIdleRoutes()
+			w.healUnpatchedRoutes()
+		}
 	}
 }
 
 func (w *Watcher) checkIdleRoutes() {
+	if w.k8sClient == nil {
+		return
+	}
 	routes := w.store.GetAllRoutes()
 
 	for _, route := range routes {
