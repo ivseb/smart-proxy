@@ -3,6 +3,51 @@ entries:
   smart-proxy:
   - annotations:
       artifacthub.io/changes: |
+        - kind: added
+          description: Requests inspector - record a route's requests and see what was sent and what Smart Proxy did with each
+        - kind: added
+          description: Backends with conditions (header, cookie, query, path, client IP), sticky across cross-site posts such as SAML responses
+        - kind: added
+          description: Built-in protection - sign-in page (shared password or people) and access tokens, X-Smart-Proxy-User for the app
+        - kind: changed
+          description: Smart Proxy keeps its own Secret (<release>-state); the chart grants access to it
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.3.0
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.3.0
+    created: "2026-10-09T18:45:08.353275923Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: a9c2c9b462e70a6b24bcd9010b17a59c2b1a9dcc1f879fa53b624a66509e62de
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.5.0/smart-proxy-0.5.0.tgz
+    version: 0.5.0
+  - annotations:
+      artifacthub.io/changes: |
         - kind: fixed
           description: Applications in other namespaces than Smart Proxy's are reachable once patched (stand-in Services; new RBAC)
         - kind: fixed
@@ -219,4 +264,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-09T16:19:20.266911046Z"
+generated: "2026-10-09T18:45:08.353296093Z"
