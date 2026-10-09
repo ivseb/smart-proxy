@@ -21,6 +21,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	toolscache "k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/retry"
+
+	"smart-proxy/internal/logger"
 )
 
 const (
@@ -77,7 +79,20 @@ func (v *Vault) Start(ctx context.Context) error {
 			v.adopt(secret)
 		}
 	}
-	informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{AddFunc: adopt, UpdateFunc: func(_, obj any) { adopt(obj) }})
+	informer.AddEventHandler(toolscache.ResourceEventHandlerFuncs{
+		AddFunc:    adopt,
+		UpdateFunc: func(_, obj any) { adopt(obj) },
+		// Deleted by hand: re-created at once (with new keys: everyone signs in again, and
+		// protected routes keep refusing strangers meanwhile).
+		DeleteFunc: func(any) {
+			v.mu.Lock()
+			v.state = State{Credentials: map[string]Credentials{}}
+			v.mu.Unlock()
+			if err := v.ensure(ctx); err != nil {
+				logger.Printf("Warning: re-creating Secret %s/%s: %v", v.Namespace, v.Name, err)
+			}
+		},
+	})
 	factory.Start(ctx.Done())
 	syncCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -142,7 +157,10 @@ func (v *Vault) adopt(secret *corev1.Secret) {
 		Credentials: map[string]Credentials{},
 	}
 	if data := secret.Data[keyCredentials]; len(data) > 0 {
-		_ = json.Unmarshal(data, &state.Credentials)
+		if err := json.Unmarshal(data, &state.Credentials); err != nil {
+			logger.Printf("Warning: invalid credentials in Secret %s/%s (%v): protected routes let nobody in", secret.Namespace, secret.Name, err)
+			state.Credentials = map[string]Credentials{}
+		}
 	}
 	v.mu.Lock()
 	v.state, v.ready = state, true
@@ -216,6 +234,9 @@ func (v *Vault) UpdateCredentials(ctx context.Context, routeID string, change fu
 		data, err := json.Marshal(all)
 		if err != nil {
 			return err
+		}
+		if secret.Data == nil {
+			secret.Data = map[string][]byte{}
 		}
 		secret.Data[keyCredentials] = data
 		updated, err := secrets.Update(ctx, secret, metav1.UpdateOptions{})

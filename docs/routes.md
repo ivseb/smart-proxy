@@ -44,7 +44,7 @@ If the provider doesn't send `Origin`, testers open `https://<host>/__smart_prox
 
 The application receives the caller in the `X-Smart-Proxy-User` header (a person's name, or `token:<name>`); Smart Proxy's own credentials and cookie are removed. Requests without credentials never wake the application and don't count as activity.
 
-Passwords (PBKDF2-SHA256) and tokens (SHA-256) are stored hashed in Smart Proxy's own Secret, `<release>-state`; failed sign-ins are limited to 10 per client every 5 minutes.
+Passwords (PBKDF2-SHA256) and tokens (SHA-256) are stored hashed in Smart Proxy's own Secret, `<release>-state`. Failed sign-ins (on the page or with Basic credentials) are limited to 10 per client and 30 per person every 5 minutes. Changing a password signs out everyone who used the old one. Paths are checked the way applications read them (`;` parameters, `..`, backslashes), so an open path can't be used to reach a protected one.
 
 !!! warning "What it doesn't protect"
     Only traffic going through Smart Proxy is checked. If the route is unpatched or Smart Proxy is uninstalled, the application is reachable without signing in again. Inside the cluster, its Service stays reachable directly: use a NetworkPolicy if that matters.

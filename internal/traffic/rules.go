@@ -202,3 +202,22 @@ func SplitList(s string) []string {
 	}
 	return out
 }
+
+// NearestClient is the address the nearest trusted proxy saw the request come from (the last
+// X-Forwarded-For entry it appended), or the peer itself. Unlike ClientIP it can't be chosen by
+// the client when clients are on trusted (private) networks too: what rate limits key on.
+func (t TrustedProxies) NearestClient(req *http.Request) string {
+	host, _, err := net.SplitHostPort(req.RemoteAddr)
+	if err != nil {
+		host = req.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !t.trusts(ip) {
+		return host
+	}
+	hops := strings.Split(strings.Join(req.Header.Values("X-Forwarded-For"), ","), ",")
+	if last := net.ParseIP(strings.TrimSpace(hops[len(hops)-1])); last != nil {
+		return last.String()
+	}
+	return host
+}

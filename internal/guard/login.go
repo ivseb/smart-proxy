@@ -2,9 +2,9 @@ package guard
 
 import (
 	"html/template"
-	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -29,16 +29,23 @@ func cookiePath(route store.RouteConfig) string {
 	return "/"
 }
 
-// safeNext keeps a redirect after login on the same site.
+// safeNext keeps a redirect after login on the same site: a path, without scheme or host, no
+// control characters or backslashes (browsers drop or rewrite those into "//evil.com").
 func safeNext(next string, route store.RouteConfig) string {
-	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.HasPrefix(next, "/\\") {
-		return basePath(route) + "/"
+	fallback := basePath(route) + "/"
+	if next == "" || strings.ContainsAny(next, "\\") || strings.IndexFunc(next, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
+		return fallback
+	}
+	u, err := url.Parse(next)
+	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || !strings.HasPrefix(u.Path, "/") ||
+		strings.HasPrefix(next, "//") || strings.HasPrefix(path.Clean(u.Path), "//") {
+		return fallback
 	}
 	return next
 }
 
 // ServeLogin shows the login page (GET) or checks a login (POST).
-func (g *Guard) ServeLogin(w http.ResponseWriter, r *http.Request, route store.RouteConfig, client net.IP) {
+func (g *Guard) ServeLogin(w http.ResponseWriter, r *http.Request, route store.RouteConfig, client string) {
 	creds := g.Vault.Credentials(route.ID)
 	users := make([]string, 0, len(creds.Users))
 	for name := range creds.Users {
@@ -61,11 +68,13 @@ func (g *Guard) ServeLogin(w http.ResponseWriter, r *http.Request, route store.R
 		return
 	}
 
-	key := clientKey(r, client)
-	if g.tooManyAttempts(key, false) {
-		data.Error = "Too many attempts. Wait a few minutes and try again."
-		renderLogin(w, http.StatusTooManyRequests, data)
-		return
+	// Only this page posts here (no signing people in from another site).
+	if origin := r.Header.Get("Origin"); origin != "" && origin != "null" {
+		if u, err := url.Parse(origin); err != nil || !strings.EqualFold(u.Host, r.Host) {
+			data.Error = "Sign in from this page."
+			renderLogin(w, http.StatusForbidden, data)
+			return
+		}
 	}
 	r.ParseForm()
 	data.Next = safeNext(r.PostForm.Get("next"), route)
@@ -74,8 +83,13 @@ func (g *Guard) ServeLogin(w http.ResponseWriter, r *http.Request, route store.R
 		user = users[0]
 	}
 	data.User = user
+	if g.limited(route.ID, client, user) {
+		data.Error = "Too many attempts. Wait a few minutes and try again."
+		renderLogin(w, http.StatusTooManyRequests, data)
+		return
+	}
 	if !g.checkUser(route.ID, creds, user, r.PostForm.Get("password")) {
-		g.tooManyAttempts(key, true)
+		g.failed(route.ID, client, user)
 		data.Error = "Wrong name or password."
 		if !data.AskName {
 			data.Error = "Wrong password."
@@ -84,7 +98,7 @@ func (g *Guard) ServeLogin(w http.ResponseWriter, r *http.Request, route store.R
 		return
 	}
 	ttl := route.Protection.SessionTTL()
-	value, err := g.sign(session{Route: route.ID, User: user, Expires: time.Now().Add(ttl).Unix()})
+	value, err := g.sign(session{Route: route.ID, User: user, Expires: time.Now().Add(ttl).Unix(), Secret: fingerprint(creds.Users[user].Hash)})
 	if err != nil {
 		data.Error = "Sign-in is unavailable: Smart Proxy's Secret can't be read."
 		renderLogin(w, http.StatusServiceUnavailable, data)

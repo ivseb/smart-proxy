@@ -34,10 +34,23 @@ func matchPath(route store.RouteConfig, path string) bool {
 	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }
 
-// cleanPath resolves "." and ".." segments and duplicate slashes, keeping a trailing slash.
+// cleanPath is the path decisions are made on (routes, protection): "." and ".." resolved,
+// duplicate slashes merged, a trailing slash kept. Matrix parameters (";jsessionid=…") are
+// dropped from each segment and backslashes read as slashes, as Java servers and some proxies
+// do: otherwise "/open/..;/admin" would look open here and reach /admin there.
 func cleanPath(p string) string {
 	if p == "" {
 		return "/"
+	}
+	p = strings.ReplaceAll(p, "\\", "/")
+	if strings.Contains(p, ";") {
+		segments := strings.Split(p, "/")
+		for i, seg := range segments {
+			if j := strings.IndexByte(seg, ';'); j >= 0 {
+				segments[i] = seg[:j]
+			}
+		}
+		p = strings.Join(segments, "/")
 	}
 	cleaned := path.Clean("/" + p)
 	if strings.HasSuffix(p, "/") && cleaned != "/" {

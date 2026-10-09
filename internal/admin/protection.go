@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"smart-proxy/internal/guard"
@@ -41,8 +42,18 @@ func (s *Server) credentials(routeID string) (users, tokens []Credential) {
 	return list(creds.Users), list(creds.Tokens)
 }
 
+// validName accepts printable names (they reach applications in a header) without colons
+// (Basic credentials).
 func validName(name string) bool {
-	return name != "" && utf8.RuneCountInString(name) <= 64 && !strings.ContainsAny(name, ":\n\r\t")
+	if name == "" || utf8.RuneCountInString(name) > 64 || strings.Contains(name, ":") {
+		return false
+	}
+	for _, r := range name {
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
 }
 
 // handleProtectionUsers adds or replaces (POST {id, name, password}) or removes (DELETE ?id&name)

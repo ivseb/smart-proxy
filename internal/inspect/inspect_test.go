@@ -1,9 +1,11 @@
 package inspect
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -66,5 +68,43 @@ func TestPeerHandlerNeedsTheToken(t *testing.T) {
 	rec.PeerHandler(func() string { return "" }).ServeHTTP(w, r)
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("empty token accepted")
+	}
+}
+
+func TestMoreCredentialHeadersAreMasked(t *testing.T) {
+	r := httptest.NewRequest("GET", "http://x/", nil)
+	for _, h := range []string{"Authentication", "X-Auth-Key", "X-Access-Key", "Ocp-Apim-Subscription-Key", "Cf-Access-Jwt-Assertion",
+		"X-Amzn-Oidc-Data", "X-Ms-Client-Principal", "X-Forwarded-Client-Cert", "X-Csrf-Token"} {
+		r.Header.Set(h, "secret-value")
+	}
+	r.Header.Set("Origin", "https://idp.example")
+	e := Describe(r, nil)
+	for name, value := range e.Headers {
+		if value == "secret-value" {
+			t.Errorf("%s recorded in clear", name)
+		}
+	}
+	if e.Headers["Origin"] != "https://idp.example" {
+		t.Error("Origin masked")
+	}
+}
+
+func TestRecordedEntriesAreBounded(t *testing.T) {
+	r := httptest.NewRequest("GET", "http://x/"+strings.Repeat("a", 5000), nil)
+	for i := 0; i < 500; i++ {
+		r.Header.Set(fmt.Sprintf("X-H%d", i), strings.Repeat("v", 1000))
+	}
+	e := Describe(r, nil)
+	if len(e.Path) > 510 || len(e.Headers) > maxNames {
+		t.Fatalf("path %d chars, %d headers", len(e.Path), len(e.Headers))
+	}
+}
+
+func TestStatusIgnoresEarlyHints(t *testing.T) {
+	w := &StatusWriter{ResponseWriter: httptest.NewRecorder()}
+	w.WriteHeader(http.StatusEarlyHints)
+	w.WriteHeader(http.StatusInternalServerError)
+	if w.Status != 500 {
+		t.Fatalf("status = %d", w.Status)
 	}
 }

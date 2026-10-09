@@ -214,9 +214,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		rec.setUser(id.User)
-		guard.Strip(r, route, id)
+		guard.Strip(r, id)
 	} else {
-		r.Header.Del(guard.UserHeader) // Only Smart Proxy says who the user is
+		guard.Scrub(r) // Only Smart Proxy says who the user is, and its cookies stay with it
 	}
 
 	// A backend chosen by a condition (or the client pinned to one) gets the request whatever
@@ -377,6 +377,8 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	path = cleanPath(path) // As for requests: "/open/../admin" is "/admin"
+
 	// Only the request's own host: the page polling this is served under it.
 	route, found := h.matchRoute(requestHost(r), path)
 	if !found {
@@ -390,6 +392,16 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if b, _ := h.explicitBackend(r, h.TrustedProxies.ClientIP(r), route); b != nil {
+		if !b.Managed {
+			// Never woken by Smart Proxy: it serves or it doesn't.
+			status := "waiting"
+			if h.backendServing(route.Namespace, *b) {
+				status = "ready"
+			}
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{"status": status, "details": []workloadState{{Name: b.Service, Status: map[bool]string{true: stateReady, false: stateSleep}[status == "ready"]}}})
+			return
+		}
 		route = routeTo(route, *b) // The backend the page's client was sent to
 	}
 	matchedRoutes := []store.RouteConfig{route}

@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -55,8 +54,17 @@ func HashPassword(password string) (string, error) {
 	return fmt.Sprintf("pbkdf2-sha256$%d$%s$%s", iterations, base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
+// hashing bounds the password checks running at once: each takes tens of milliseconds of CPU,
+// and the proxy must keep serving every application meanwhile.
+var hashing = make(chan struct{}, 4)
+
+// dummyHash is checked for unknown users, so they take as long as known ones.
+var dummyHash, _ = HashPassword("smart-proxy: no such user")
+
 // CheckPassword compares a password with a stored hash.
 func CheckPassword(hash, password string) bool {
+	hashing <- struct{}{}
+	defer func() { <-hashing }()
 	parts := strings.Split(hash, "$")
 	if len(parts) != 4 || parts[0] != "pbkdf2-sha256" {
 		return false
@@ -105,7 +113,7 @@ func CookieName(routeID string) string {
 
 // Authenticate finds valid credentials in a request: an access token, a user's Basic
 // credentials, or a login cookie.
-func (g *Guard) Authenticate(r *http.Request, route store.RouteConfig) (Identity, bool) {
+func (g *Guard) Authenticate(r *http.Request, route store.RouteConfig, client string) (Identity, bool) {
 	creds := g.Vault.Credentials(route.ID)
 	if token := bearer(r); token != "" {
 		if name, ok := matchToken(creds, token); ok {
@@ -117,15 +125,17 @@ func (g *Guard) Authenticate(r *http.Request, route store.RouteConfig) (Identity
 			return Identity{User: "token:" + name, header: TokenHeader}, true
 		}
 	}
-	if user, password, ok := r.BasicAuth(); ok {
+	if user, password, ok := r.BasicAuth(); ok && !g.limited(route.ID, client, user) {
 		if g.checkUser(route.ID, creds, user, password) {
 			return Identity{User: user, header: "Authorization"}, true
 		}
+		g.failed(route.ID, client, user)
 	}
 	if c, err := r.Cookie(CookieName(route.ID)); err == nil {
 		var s session
 		if g.verify(c.Value, &s) == nil && s.Route == route.ID && time.Now().Unix() < s.Expires {
-			if _, exists := creds.Users[s.User]; exists { // Removed users are logged out
+			// Removed users, and sessions opened with a password changed since, are signed out.
+			if secret, exists := creds.Users[s.User]; exists && s.Secret == fingerprint(secret.Hash) {
 				return Identity{User: s.User}, true
 			}
 		}
@@ -156,6 +166,7 @@ func matchToken(creds vault.Credentials, token string) (string, bool) {
 func (g *Guard) checkUser(routeID string, creds vault.Credentials, user, password string) bool {
 	secret, ok := creds.Users[user]
 	if !ok {
+		CheckPassword(dummyHash, password) // Same time as for a real user: names can't be probed
 		return false
 	}
 	sum := sha256.Sum256([]byte(routeID + "\x00" + user + "\x00" + password + "\x00" + secret.Hash))
@@ -180,25 +191,66 @@ func (g *Guard) checkUser(routeID string, creds vault.Credentials, user, passwor
 
 // Strip removes the credentials from a request before it reaches the application, and tells
 // it who the request comes from.
-func Strip(r *http.Request, route store.RouteConfig, id Identity) {
+func Strip(r *http.Request, id Identity) {
 	if id.header != "" {
 		r.Header.Del(id.header)
 	}
-	name := CookieName(route.ID)
-	cookies := r.Cookies()
-	r.Header.Del("Cookie")
-	for _, c := range cookies {
-		if c.Name != name {
-			r.AddCookie(c)
+	Scrub(r)
+	r.Header.Set(UserHeader, id.User)
+}
+
+// Scrub removes what only Smart Proxy may say or see, from every request: the user header in
+// any spelling ("X_Smart_Proxy_User" reaches CGI-style servers as the same variable), a
+// Connection header asking to drop it, and Smart Proxy's login cookies (another application on
+// the host must not receive them).
+func Scrub(r *http.Request) {
+	for name := range r.Header {
+		if strings.EqualFold(strings.ReplaceAll(name, "_", "-"), UserHeader) {
+			delete(r.Header, name)
 		}
 	}
-	r.Header.Set(UserHeader, id.User)
+	if values := r.Header.Values("Connection"); len(values) > 0 {
+		var keep []string
+		for _, v := range values {
+			for _, token := range strings.Split(v, ",") {
+				if t := strings.TrimSpace(token); t != "" && !strings.EqualFold(strings.ReplaceAll(t, "_", "-"), UserHeader) {
+					keep = append(keep, t)
+				}
+			}
+		}
+		r.Header.Del("Connection")
+		if len(keep) > 0 {
+			r.Header.Set("Connection", strings.Join(keep, ", "))
+		}
+	}
+	if raw := r.Header.Values("Cookie"); len(raw) > 0 {
+		var keep []string
+		for _, line := range raw {
+			for _, part := range strings.Split(line, ";") {
+				name, _, _ := strings.Cut(strings.TrimSpace(part), "=")
+				if part = strings.TrimSpace(part); part != "" && !strings.HasPrefix(name, "sp_auth_") {
+					keep = append(keep, part) // As sent: values are not re-encoded
+				}
+			}
+		}
+		r.Header.Del("Cookie")
+		if len(keep) > 0 {
+			r.Header.Set("Cookie", strings.Join(keep, "; "))
+		}
+	}
 }
 
 type session struct {
 	Route   string `json:"r"`
 	User    string `json:"u"`
 	Expires int64  `json:"exp"`
+	Secret  string `json:"s"` // Fingerprint of the password it was opened with: changing it signs out
+}
+
+// fingerprint identifies a stored password hash without revealing it.
+func fingerprint(hash string) string {
+	sum := sha256.Sum256([]byte("session\x00" + hash))
+	return hex.EncodeToString(sum[:8])
 }
 
 func (g *Guard) sign(v any) (string, error) {
@@ -237,30 +289,52 @@ func mac(key []byte, data string) []byte {
 	return h.Sum(nil)
 }
 
-// tooManyAttempts limits failed logins per client: 10 in 5 minutes.
-func (g *Guard) tooManyAttempts(client string, failed bool) bool {
+// Failed sign-ins are limited per client (10 in 5 minutes) and per route and user (30 in 5
+// minutes: many clients guessing one shared password).
+const (
+	failWindow    = 5 * time.Minute
+	maxPerClient  = 10
+	maxPerAccount = 30
+)
+
+func (g *Guard) recent(key string, add bool) int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.attempts == nil || len(g.attempts) > 10000 {
+	now := time.Now()
+	if g.attempts == nil {
 		g.attempts = map[string][]time.Time{}
 	}
-	now := time.Now()
-	recent := g.attempts[client][:0]
-	for _, t := range g.attempts[client] {
-		if now.Sub(t) < 5*time.Minute {
-			recent = append(recent, t)
+	if len(g.attempts) > 10000 { // Forget stale entries only: wiping all would reset everyone's count
+		for k, times := range g.attempts {
+			if len(times) == 0 || now.Sub(times[len(times)-1]) > failWindow {
+				delete(g.attempts, k)
+			}
 		}
 	}
-	if failed {
-		recent = append(recent, now)
+	list := g.attempts[key][:0]
+	for _, t := range g.attempts[key] {
+		if now.Sub(t) < failWindow {
+			list = append(list, t)
+		}
 	}
-	g.attempts[client] = recent
-	return len(recent) >= 10
+	if add {
+		list = append(list, now)
+	}
+	if len(list) == 0 {
+		delete(g.attempts, key)
+	} else {
+		g.attempts[key] = list
+	}
+	return len(list)
 }
 
-func clientKey(r *http.Request, client net.IP) string {
-	if client != nil {
-		return client.String()
-	}
-	return r.RemoteAddr
+// limited reports whether sign-ins are refused for now, for this client or this account.
+func (g *Guard) limited(routeID, client, user string) bool {
+	return g.recent("client "+routeID+" "+client, false) >= maxPerClient ||
+		g.recent("account "+routeID+" "+user, false) >= maxPerAccount
+}
+
+func (g *Guard) failed(routeID, client, user string) {
+	g.recent("client "+routeID+" "+client, true)
+	g.recent("account "+routeID+" "+user, true)
 }

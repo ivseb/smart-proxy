@@ -152,11 +152,12 @@ func isHTTPS(r *http.Request) bool {
 	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
+// cookiePath scopes a route's cookies ("/app" covers "/app" and "/app/...").
 func cookiePath(route store.RouteConfig) string {
-	if route.Path == "" {
-		return "/"
+	if p := strings.TrimSuffix(route.Path, "/"); p != "" {
+		return p
 	}
-	return route.Path
+	return "/"
 }
 
 // routeTo is the route as seen by a request sent to one of its backends: that backend is its

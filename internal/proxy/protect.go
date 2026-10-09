@@ -14,7 +14,7 @@ func (h *Handler) authenticate(r *http.Request, route store.RouteConfig) (guard.
 	if h.Guard == nil {
 		return guard.Identity{}, false
 	}
-	return h.Guard.Authenticate(r, route)
+	return h.Guard.Authenticate(r, route, h.TrustedProxies.NearestClient(r))
 }
 
 // handleLogin serves the login and logout pages of a protected route.
@@ -35,5 +35,5 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		h.Guard.ServeLogout(w, r, route)
 		return
 	}
-	h.Guard.ServeLogin(w, r, route, h.TrustedProxies.ClientIP(r))
+	h.Guard.ServeLogin(w, r, route, h.TrustedProxies.NearestClient(r))
 }

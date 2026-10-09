@@ -253,6 +253,18 @@ func main() {
 	}
 
 	go requestHistory.Run(ctx)
+	// Recorded requests hold header values: forget them a while after recording stops, and at
+	// once for deleted routes.
+	go func() {
+		for range time.Tick(time.Minute) {
+			for _, id := range recorder.Routes() {
+				route, ok := configStore.GetRoute(id)
+				if !ok || route.InspectUntil == nil || time.Since(*route.InspectUntil) > 15*time.Minute {
+					recorder.Clear(id)
+				}
+			}
+		}
+	}()
 
 	select {
 	case err := <-errs:

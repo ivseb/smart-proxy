@@ -87,6 +87,17 @@ func (r *Recorder) Since(routeID string, after time.Time) []Entry {
 	return out
 }
 
+// Routes lists the routes with recorded requests.
+func (r *Recorder) Routes() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	ids := make([]string, 0, len(r.routes))
+	for id := range r.routes {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // Clear forgets a route's requests.
 func (r *Recorder) Clear(routeID string) {
 	r.mu.Lock()
@@ -108,7 +119,11 @@ func Merge(limit int, lists ...[]Entry) []Entry {
 }
 
 // sensitive matches headers whose values are credentials.
-var sensitive = regexp.MustCompile(`(?i)(authorization|cookie|token|secret|password|passwd|api-?key|session|signature|credential)`)
+var sensitive = regexp.MustCompile(`(?i)(auth|cookie|token|secret|passw|key|session|signature|credential|jwt|assertion|principal|oidc|cert|saml|bearer)`)
+
+// maxNames bounds the headers, cookies and parameters recorded per request: recording happens
+// before authentication, so a request's size must not decide the memory used.
+const maxNames = 60
 
 // Masked is shown in place of a credential.
 const Masked = "••••••"
@@ -117,17 +132,23 @@ const Masked = "••••••"
 // cookie and query parameter names.
 func Describe(r *http.Request, client net.IP) Entry {
 	e := Entry{
-		At: time.Now(), Method: r.Method, Host: r.Host, Path: r.URL.Path,
-		UserAgent: r.UserAgent(), Headers: map[string]string{},
+		At: time.Now(), Method: truncate(r.Method, 16), Host: truncate(r.Host, 200), Path: truncate(r.URL.Path, 500),
+		UserAgent: truncate(r.UserAgent(), 300), Headers: map[string]string{},
 	}
 	if client != nil {
 		e.Client = client.String()
 	}
 	for name := range r.URL.Query() {
-		e.Query = append(e.Query, name)
+		if len(e.Query) < maxNames {
+			e.Query = append(e.Query, truncate(name, 100))
+		}
 	}
 	sort.Strings(e.Query)
 	for name, values := range r.Header {
+		if len(e.Headers) >= maxNames {
+			break
+		}
+		name = truncate(name, 100)
 		switch {
 		case name == "Cookie":
 			continue
@@ -138,7 +159,9 @@ func Describe(r *http.Request, client net.IP) Entry {
 		}
 	}
 	for _, c := range r.Cookies() {
-		e.Cookies = append(e.Cookies, c.Name)
+		if len(e.Cookies) < maxNames {
+			e.Cookies = append(e.Cookies, truncate(c.Name, 100))
+		}
 	}
 	sort.Strings(e.Cookies)
 	return e
@@ -159,7 +182,7 @@ type StatusWriter struct {
 }
 
 func (w *StatusWriter) WriteHeader(code int) {
-	if w.Status == 0 {
+	if w.Status == 0 && (code >= 200 || code == http.StatusSwitchingProtocols) { // Not 100 or 103 Early Hints
 		w.Status = code
 	}
 	w.ResponseWriter.WriteHeader(code)
