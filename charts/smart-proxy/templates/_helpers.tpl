@@ -132,6 +132,10 @@ http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
 - apiGroups: ["apps.openshift.io"]
   resources: ["deploymentconfigs", "deploymentconfigs/scale"]
   verbs: ["get", "list", "watch", "update", "patch"]
+# OpenShift refuses Endpoints listing pod IPs (as stand-ins do) without this.
+- apiGroups: [""]
+  resources: ["endpoints/restricted"]
+  verbs: ["create", "update"]
 {{- end }}
 {{- end }}
 
