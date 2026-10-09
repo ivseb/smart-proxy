@@ -200,6 +200,7 @@ export function Dashboard() {
                             onStop={stopRoute}
                             onWake={wakeRoute}
                             onSave={saveRoute}
+                            onChanged={refetch}
                         />
                     ) : (
                         <>

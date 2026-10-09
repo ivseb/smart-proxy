@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"smart-proxy/internal/inspect"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/metrics"
@@ -41,6 +42,8 @@ type Handler struct {
 	Transport http.RoundTripper
 	// ClusterDomain is the cluster's DNS domain (default cluster.local).
 	ClusterDomain string
+	// Inspect records the requests of routes being inspected (nil disables it).
+	Inspect *inspect.Recorder
 	// WakeTimeout is how long requests other than page loads wait for a sleeping app
 	// (default 2 minutes).
 	WakeTimeout time.Duration
@@ -156,6 +159,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.Contains(r.URL.Path, UsePath) {
+		h.handleUse(w, r)
+		return
+	}
+
 	// Special Endpoint: Status Check
 	if strings.HasSuffix(r.URL.Path, "/__smart_proxy/status") {
 		h.handleStatusCheck(w, r)
@@ -177,6 +185,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.Traffic != nil {
 		h.Traffic.Record(route.ID, r, client, reason)
 	}
+	// While the route is inspected, the request is recorded with what happened to it.
+	var rec *recording
+	if h.Inspect != nil && route.Inspecting(time.Now()) {
+		rec = h.record(w, r, client, route)
+		rec.entry.Ignored = reason
+		w = rec.writer
+		defer rec.finish()
+	}
+
+	// A backend chosen by a condition (or the client pinned to one) gets the request whatever
+	// the weights; from here on the route is seen as that backend alone.
+	why := ""
+	if b, reason := h.explicitBackend(r, client, route); b != nil {
+		why = reason
+		if reason == WhyCondition {
+			pin(w, r, route, b.Service, pinFor)
+		}
+		if !b.Managed && !h.backendServing(route.Namespace, *b) {
+			rec.target(target{Service: b.Service, Why: why})
+			rec.set(inspect.OutcomeUnavailable)
+			http.Error(w, "Smart Proxy: backend "+b.Service+" is not running (Smart Proxy doesn't manage it)", http.StatusServiceUnavailable)
+			return
+		}
+		route = routeTo(route, *b)
+	}
 	wake := true
 	if reason == "" {
 		h.store.UpdateActivity(route.ID)
@@ -187,6 +220,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if h.serving(route) {
 			wake = false
 		} else if h.answerAsleep(w, route) {
+			rec.set(inspect.OutcomeAsleep)
 			return
 		}
 	}
@@ -198,10 +232,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if wake {
 		if _, allReady := h.ensureAwake([]store.RouteConfig{route}); !allReady && !h.hasServingPassThrough(route) {
 			if wantsPage(r) {
+				rec.set(inspect.OutcomeWakingPage)
 				h.serveLoadingPage(w)
 				return
 			}
 			if !h.waitAwake(r.Context(), route) {
+				rec.set(inspect.OutcomeUnavailable)
 				if r.Context().Err() == nil {
 					w.Header().Set("Retry-After", "10")
 					http.Error(w, "Smart Proxy: the application is still starting", http.StatusServiceUnavailable)
@@ -209,11 +245,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			woken = true
+			rec.set(inspect.OutcomeWoken)
 		}
 	}
 
 	// 3. Proxy the request.
 	dest := h.pickTarget(w, r, route)
+	if why != "" {
+		dest.Why = why
+	}
+	rec.target(dest)
 	host := fmt.Sprintf("%s.%s.svc.%s:%d", dest.Service, route.Namespace, h.clusterDomain(), dest.Port)
 	if woken && h.Transport == nil {
 		waitReachable(r.Context(), host, 15*time.Second)
@@ -227,7 +268,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.Transport != nil {
 		proxy.Transport = h.Transport
 	}
-	proxy.ErrorHandler = proxyError
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		rec.set(inspect.OutcomeError)
+		proxyError(w, r, err)
+	}
 	if route.InjectBadge && r.Method != http.MethodHead {
 		proxy.ModifyResponse = injectBadge
 		originalDirector := proxy.Director
@@ -313,6 +357,9 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 	if !found {
 		http.NotFound(w, r)
 		return
+	}
+	if b, _ := h.explicitBackend(r, h.TrustedProxies.ClientIP(r), route); b != nil {
+		route = routeTo(route, *b) // The backend the page's client was sent to
 	}
 	matchedRoutes := []store.RouteConfig{route}
 

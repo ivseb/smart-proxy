@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 	_ "time/tzdata" // Schedules use IANA timezones; the runtime image has no zoneinfo
@@ -21,12 +22,14 @@ import (
 	"smart-proxy/internal/auth"
 	"smart-proxy/internal/ha"
 	"smart-proxy/internal/history"
+	"smart-proxy/internal/inspect"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/restore"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
+	"smart-proxy/internal/vault"
 	"smart-proxy/internal/watcher"
 )
 
@@ -116,6 +119,10 @@ func main() {
 		},
 	}
 	adminServer.History = requestHistory
+	// Requests of inspected routes, recorded by each replica and gathered by the dashboard.
+	recorder := &inspect.Recorder{Replica: podName}
+	proxyHandler.Inspect, adminServer.Inspect = recorder, recorder
+	var secrets atomic.Pointer[vault.Vault] // Set once the cluster connection is up
 	// Cancelled at shutdown so long-lived requests (the log stream) end instead of
 	// holding the server open until the deadline.
 	adminCtx, cancelAdmin := context.WithCancel(context.Background())
@@ -146,6 +153,7 @@ func main() {
 	// Prometheus metrics, on their own port: never exposed through the proxy or behind the dashboard login.
 	metricsMux := http.NewServeMux()
 	metricsMux.Handle("/metrics", metrics.Handler())
+	metricsMux.Handle(inspect.PeerPath, recorder.PeerHandler(func() string { return secrets.Load().PeerToken() }))
 	metricsHTTP := &http.Server{Addr: getEnv("METRICS_ADDR", ":9090"), Handler: metricsMux, ReadHeaderTimeout: 10 * time.Second}
 
 	errs := make(chan error, 3)
@@ -166,6 +174,25 @@ func main() {
 		}
 		// Patched resources outside Smart Proxy's namespace reach it through stand-in Services.
 		k8sClient.EnableStandIns(ctx, serviceName)
+		// Smart Proxy's own Secret: peer token, login key, route credentials.
+		v := &vault.Vault{Client: k8sClient.Clientset, Namespace: k8s.OwnNamespace(), Name: serviceName + "-state", Owner: ownDeployment(k8sClient)}
+		if err := v.Start(ctx); err != nil {
+			log.Printf("Warning: Smart Proxy's Secret is unavailable (%v): the inspector shows this replica only, and routes can't be protected", err)
+		} else {
+			secrets.Store(v)
+		}
+		metricsPort := getEnv("METRICS_ADDR", ":9090")
+		ownIP := os.Getenv("POD_IP")
+		adminServer.PeerToken = func() string { return secrets.Load().PeerToken() }
+		adminServer.Peers = func() []string {
+			var peers []string
+			for _, ip := range k8sClient.ProxyPodIPs() {
+				if ip != ownIP {
+					peers = append(peers, "http://"+net.JoinHostPort(ip, strings.TrimPrefix(metricsPort, ":")))
+				}
+			}
+			return peers
+		}
 		replica := &ha.Replica{
 			Client:       k8sClient.Clientset,
 			Namespace:    k8s.OwnNamespace(),
@@ -248,16 +275,7 @@ func main() {
 // On the first start, routes from an older file-based installation (CONFIG_PATH) are imported.
 func newSharedStore(client *k8s.Client, instance, legacyFile string) *store.Store {
 	ns := k8s.OwnNamespace()
-	var owner *metav1.OwnerReference
-	if name := os.Getenv("SMART_PROXY_DEPLOYMENT"); name != "" {
-		// Owned by the Smart Proxy Deployment: deleted with it when uninstalled.
-		if dep, err := client.Clientset.AppsV1().Deployments(ns).Get(context.TODO(), name, metav1.GetOptions{}); err == nil {
-			owner = &metav1.OwnerReference{APIVersion: "apps/v1", Kind: "Deployment", Name: dep.Name, UID: dep.UID}
-		} else {
-			log.Printf("Warning: cannot read Deployment %s/%s (%v); the routes ConfigMap won't be removed on uninstall", ns, name, err)
-		}
-	}
-	backend := store.NewConfigMapBackend(client.Clientset, ns, ha.RoutesConfigMap(instance), instance, owner)
+	backend := store.NewConfigMapBackend(client.Clientset, ns, ha.RoutesConfigMap(instance), instance, ownDeployment(client))
 
 	if exists, err := backend.Exists(); err != nil {
 		log.Fatalf("Cannot read ConfigMap %s/%s: %v", ns, backend.Name(), err)
@@ -277,6 +295,22 @@ func newSharedStore(client *k8s.Client, instance, legacyFile string) *store.Stor
 		}
 	}
 	return store.NewStoreWithBackend(backend)
+}
+
+// ownDeployment references Smart Proxy's own Deployment (SMART_PROXY_DEPLOYMENT), so what it
+// creates for itself (routes ConfigMap, Secret) is deleted with it when uninstalled.
+func ownDeployment(client *k8s.Client) *metav1.OwnerReference {
+	name := os.Getenv("SMART_PROXY_DEPLOYMENT")
+	if name == "" {
+		return nil
+	}
+	ns := k8s.OwnNamespace()
+	dep, err := client.Clientset.AppsV1().Deployments(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		log.Printf("Warning: cannot read Deployment %s/%s (%v); what Smart Proxy creates for itself won't be removed on uninstall", ns, name, err)
+		return nil
+	}
+	return &metav1.OwnerReference{APIVersion: "apps/v1", Kind: "Deployment", Name: dep.Name, UID: dep.UID}
 }
 
 // trafficConfig reads the global rules for requests that never count as activity, and the

@@ -63,6 +63,7 @@ func (w *Watcher) declared(kind, namespace, name, host, path string, backend k8s
 	if existing := w.routeFor(kind, namespace, name); existing != nil {
 		desired.ID = existing.ID // Possibly a legacy ID
 		desired.LastActivity = existing.LastActivity
+		desired.InspectUntil = existing.InspectUntil
 	}
 	desired.Deployment, _ = w.k8sClient.ResolveDeploymentForService(namespace, backend.Service)
 	settings.Apply(desired) // smart-proxy/workload, when set, overrides the resolved workload

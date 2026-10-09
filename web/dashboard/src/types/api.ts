@@ -36,12 +36,30 @@ export interface TrafficSource {
 }
 
 // One of the Services an OpenShift Route balances traffic across.
+export type ConditionField = "header" | "cookie" | "query" | "path" | "client";
+export type ConditionOp = "equals" | "contains" | "prefix" | "exists";
+
+// Sends matching requests to a backend, e.g. header Origin equals https://login.example.com.
+export interface Condition {
+    field: ConditionField;
+    name?: string; // Header, cookie or query parameter name
+    op: ConditionOp;
+    value?: string;
+}
+
 export interface WeightedBackend {
     service: string;
     port: number;
-    weight: number;
+    weight: number; // 0: only requests matching its conditions
     workload?: string;
     managed: boolean; // Sleeps and wakes with the route; others only get traffic while they run
+    when?: Condition[] | null; // Any of these sends the request here (and keeps the client here)
+}
+
+export interface ServiceInfo {
+    name: string;
+    ports: { name?: string; port: number }[];
+    workload?: string;
 }
 
 export interface RouteConfig {
@@ -63,6 +81,7 @@ export interface RouteConfig {
     ignore?: TrafficRules | null; // Requests that don't count as activity (monitors…)
     when_asleep?: WhenAsleep | ""; // Answer to those requests while asleep ("" = respond)
     backends?: WeightedBackend[] | null; // Balanced Route: the Services and their weights
+    inspect_until?: string | null; // Requests are recorded until then
 }
 
 export type DeploymentStatus = "Ready" | "Scaling" | "Sleep" | "Error" | "Unwatched" | "Offline";
@@ -132,4 +151,32 @@ export interface StatsHistory {
 export interface StatsData {
     TotalRequests: number;
     RouteStats: Record<string, number>;
+}
+
+// What happened to a request, as recorded by the inspector.
+export type RequestOutcome = "proxied" | "woken" | "waking_page" | "asleep" | "unavailable" | "login" | "denied" | "error";
+
+export interface InspectedRequest {
+    at: string;
+    replica: string;
+    method: string;
+    host: string;
+    path: string;
+    query?: string[]; // Parameter names
+    status: number;
+    duration_ms: number;
+    outcome: RequestOutcome;
+    backend?: string;
+    why?: string; // Why that backend: "split", "sticky", "condition", "link"
+    ignored?: string; // Why it didn't count as activity
+    user?: string;
+    client: string;
+    user_agent?: string;
+    headers: Record<string, string>; // Credentials masked
+    cookies?: string[]; // Names
+}
+
+export interface InspectedRequests {
+    requests: InspectedRequest[];
+    replicas: number;
 }

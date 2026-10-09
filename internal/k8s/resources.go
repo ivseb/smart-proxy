@@ -345,3 +345,17 @@ func (c *Client) RoutePortFor(namespace, service string, port int) *routev1.Rout
 	}
 	return nil
 }
+
+// ListServices returns the Services of a watched namespace (from the cache), sorted by name.
+func (c *Client) ListServices(namespace string) ([]*corev1.Service, error) {
+	services, err := c.services(namespace)
+	if err != nil {
+		return nil, err
+	}
+	list, err := services.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+	return list, nil
+}

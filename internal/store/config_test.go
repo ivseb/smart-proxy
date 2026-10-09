@@ -65,3 +65,41 @@ func TestAddRouteKeepsNewerRecordedActivity(t *testing.T) {
 		t.Errorf("LastActivity = %v, want %v", r.LastActivity, recorded)
 	}
 }
+
+func TestBackendConditionsAreValidated(t *testing.T) {
+	route := func(c Condition) *RouteConfig {
+		return &RouteConfig{Backends: []WeightedBackend{
+			{Service: "a", Port: 80, Weight: 100, Managed: true},
+			{Service: "b", Port: 80, Weight: 0, When: []Condition{c}},
+		}}
+	}
+	valid := []Condition{
+		{Field: FieldHeader, Name: "Origin", Op: OpEquals, Value: "https://idp"},
+		{Field: FieldCookie, Name: "beta", Op: OpExists},
+		{Field: FieldPath, Op: OpPrefix, Value: "/saml"},
+		{Field: FieldClient, Value: "10.0.0.0/8"},
+	}
+	for _, c := range valid {
+		if err := route(c).NormalizeBackends(); err != nil {
+			t.Errorf("%+v: %v", c, err)
+		}
+	}
+	invalid := []Condition{
+		{Field: FieldHeader, Op: OpEquals, Value: "x"},     // no name
+		{Field: FieldHeader, Name: "Origin", Op: OpEquals}, // no value
+		{Field: FieldPath, Op: OpContains, Value: "/x"},    // path compares with equals/prefix
+		{Field: FieldPath, Op: OpPrefix, Value: "saml"},    // relative
+		{Field: FieldClient, Value: "not-an-ip"},
+		{Field: "body", Op: OpEquals, Value: "x"},
+	}
+	for _, c := range invalid {
+		if err := route(c).NormalizeBackends(); err == nil {
+			t.Errorf("%+v accepted", c)
+		}
+	}
+	r := route(valid[0])
+	r.NormalizeBackends()
+	if r.TargetService != "a" {
+		t.Errorf("main target = %q, want the backend taking traffic", r.TargetService)
+	}
+}

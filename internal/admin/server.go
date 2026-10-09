@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"smart-proxy/internal/auth"
 	"smart-proxy/internal/history"
+	"smart-proxy/internal/inspect"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/metrics"
@@ -37,6 +39,11 @@ type Server struct {
 	Traffic func(routeID string) []traffic.SourceStats
 	// History, when set, holds recent request rates for the charts.
 	History *history.Recorder
+	// Inspect holds this replica's recorded requests; Peers returns the base URLs of the other
+	// replicas, asked for theirs with PeerToken.
+	Inspect   *inspect.Recorder
+	Peers     func() []string
+	PeerToken func() string
 }
 
 // NewServer creates a new instance of the admin Server.
@@ -60,6 +67,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/info", s.handleInfo)
 	mux.HandleFunc("/api/routes", s.handleRoutes)
 	mux.HandleFunc("/api/routes/traffic", s.handleRouteTraffic)
+	mux.HandleFunc("/api/routes/inspect", s.handleInspect)
+	mux.HandleFunc("/api/routes/requests", s.handleRequests)
 	mux.HandleFunc("/api/stats", s.handleStats)
 	mux.HandleFunc("/api/stats/history", s.handleStatsHistory)
 	mux.HandleFunc("/api/logs", s.handleLogs)
@@ -71,6 +80,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/k8s/stop-deployment", s.requireK8s(s.handleStopDeployment))
 	mux.HandleFunc("/api/k8s/wake-deployment", s.requireK8s(s.handleWakeDeployment))
 	mux.HandleFunc("/api/k8s/deployment-service-info", s.requireK8s(s.handleDeploymentServiceInfo))
+	mux.HandleFunc("/api/k8s/services", s.requireK8s(s.handleServices))
 	mux.HandleFunc("/api/k8s/service-routes", s.requireK8s(s.handleServiceRoutes))
 
 	mux.HandleFunc("/api/patch-ingress", s.requireK8s(s.handlePatchIngress))
@@ -218,6 +228,46 @@ func (s *Server) handleDeployments(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, targets)
+}
+
+// ServiceInfo is a Service a route can send traffic to, with the workload behind it.
+type ServiceInfo struct {
+	Name     string        `json:"name"`
+	Ports    []ServicePort `json:"ports"`
+	Workload string        `json:"workload,omitempty"`
+}
+
+// ServicePort is one port of a Service.
+type ServicePort struct {
+	Name string `json:"name,omitempty"`
+	Port int32  `json:"port"`
+}
+
+// handleServices lists a namespace's Services (except Smart Proxy's own stand-in), to add one
+// as a backend of a route.
+func (s *Server) handleServices(w http.ResponseWriter, r *http.Request) {
+	ns, ok := s.namespaceParam(w, r)
+	if !ok {
+		return
+	}
+	services, err := s.k8sClient.ListServices(ns)
+	if err != nil {
+		http.Error(w, err.Error(), httpStatusFor(err))
+		return
+	}
+	result := []ServiceInfo{}
+	for _, svc := range services {
+		if k8s.IsProxyService(svc.Name, s.ServiceName) {
+			continue
+		}
+		info := ServiceInfo{Name: svc.Name}
+		for _, p := range svc.Spec.Ports {
+			info.Ports = append(info.Ports, ServicePort{Name: p.Name, Port: p.Port})
+		}
+		info.Workload, _ = s.k8sClient.ResolveDeploymentForService(ns, svc.Name)
+		result = append(result, info)
+	}
+	writeJSON(w, result)
 }
 
 func (s *Server) handleDeploymentServiceInfo(w http.ResponseWriter, r *http.Request) {
@@ -407,3 +457,5 @@ func (s *Server) handleRouteTraffic(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, views)
 }
+
+func urlQueryEscape(s string) string { return url.QueryEscape(s) }

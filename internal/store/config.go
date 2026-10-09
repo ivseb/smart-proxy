@@ -49,6 +49,9 @@ type RouteConfig struct {
 	// WhenAsleep is the answer to ignored requests while the route sleeps: WhenAsleepRespond
 	// (default), WhenAsleepUnavailable or WhenAsleepWake.
 	WhenAsleep string `json:"when_asleep,omitempty"`
+	// InspectUntil, while in the future, has the requests to this route recorded for the
+	// dashboard (see package inspect).
+	InspectUntil *time.Time `json:"inspect_until,omitempty"`
 	// Backends are the Services traffic is balanced across, by weight (from an OpenShift Route's
 	// alternate backends). Empty means the single TargetService. See WeightedBackend.Managed.
 	Backends []WeightedBackend `json:"backends,omitempty"`
@@ -64,10 +67,86 @@ type WeightedBackend struct {
 	// get their share of traffic only while they run (as with the OpenShift router), so a
 	// backend kept off on purpose stays off.
 	Managed bool `json:"managed"`
+	// When sends requests matching any of these conditions here, whatever the weights; the
+	// client then stays on this backend (cookie). A backend with weight 0 gets only those.
+	When []Condition `json:"when,omitempty"`
+}
+
+// Fields a backend condition looks at.
+const (
+	FieldHeader = "header"
+	FieldCookie = "cookie"
+	FieldQuery  = "query"
+	FieldPath   = "path"
+	FieldClient = "client" // Client IP or CIDR
+)
+
+// Comparisons of a backend condition.
+const (
+	OpEquals   = "equals"
+	OpContains = "contains"
+	OpPrefix   = "prefix"
+	OpExists   = "exists"
+)
+
+// Condition matches a request, e.g. header Origin equals https://login.example.com.
+type Condition struct {
+	Field string `json:"field"`
+	Name  string `json:"name,omitempty"` // Header, cookie or query parameter name
+	Op    string `json:"op"`
+	Value string `json:"value,omitempty"`
+}
+
+// Validate reports an incomplete or invalid condition.
+func (c Condition) Validate() error {
+	switch c.Field {
+	case FieldHeader, FieldCookie, FieldQuery:
+		if strings.TrimSpace(c.Name) == "" {
+			return fmt.Errorf("a %s condition needs a name", c.Field)
+		}
+		switch c.Op {
+		case OpExists:
+			return nil
+		case OpEquals, OpContains, OpPrefix:
+		default:
+			return fmt.Errorf("unknown comparison %q", c.Op)
+		}
+	case FieldPath:
+		if c.Op != OpEquals && c.Op != OpPrefix {
+			return fmt.Errorf("a path condition compares with equals or prefix")
+		}
+		if !strings.HasPrefix(c.Value, "/") {
+			return fmt.Errorf("path %q must start with /", c.Value)
+		}
+	case FieldClient:
+		if _, err := traffic.ParseTrustedProxies([]string{c.Value}); err != nil || strings.TrimSpace(c.Value) == "" {
+			return fmt.Errorf("invalid client IP or CIDR %q", c.Value)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown condition field %q", c.Field)
+	}
+	if c.Value == "" {
+		return fmt.Errorf("the %s condition on %q needs a value", c.Field, c.Name)
+	}
+	return nil
+}
+
+// WakeWorkloads are the workloads a request to the route wakes: its main workload and those of
+// its managed backends taking a share of traffic. A backend reached only through conditions
+// (weight 0) is woken when a request is sent to it.
+func (r RouteConfig) WakeWorkloads() []string {
+	workloads := []string{r.Deployment}
+	for _, b := range r.Backends {
+		if b.Managed && b.Weight > 0 && b.Workload != "" && b.Workload != r.Deployment {
+			workloads = append(workloads, b.Workload)
+		}
+	}
+	return workloads
 }
 
 // ManagedWorkloads are the route's own workloads: its main workload and those of its managed
-// backends (dependencies aside).
+// backends (dependencies aside). They sleep with the route.
 func (r RouteConfig) ManagedWorkloads() []string {
 	workloads := []string{r.Deployment}
 	for _, b := range r.Backends {
@@ -84,18 +163,34 @@ func (r *RouteConfig) NormalizeBackends() error {
 	if len(r.Backends) == 0 {
 		return nil
 	}
+	seen := map[string]bool{}
 	for _, b := range r.Backends {
+		if b.Service == "" || b.Port <= 0 {
+			return fmt.Errorf("every backend needs a Service and a port")
+		}
+		if seen[b.Service] {
+			return fmt.Errorf("backend %s is listed twice", b.Service)
+		}
+		seen[b.Service] = true
 		if b.Weight < 0 || b.Weight > 256 {
 			return fmt.Errorf("backend %s: weight must be between 0 and 256", b.Service)
 		}
-	}
-	for _, b := range r.Backends {
-		if b.Managed {
-			r.TargetService, r.TargetPort = b.Service, b.Port
-			if b.Workload != "" {
-				r.Deployment = b.Workload
+		for _, c := range b.When {
+			if err := c.Validate(); err != nil {
+				return fmt.Errorf("backend %s: %w", b.Service, err)
 			}
-			return nil
+		}
+	}
+	// The main target takes a share of traffic if any managed backend does.
+	for _, takesShare := range []bool{true, false} {
+		for _, b := range r.Backends {
+			if b.Managed && (b.Weight > 0 || !takesShare) {
+				r.TargetService, r.TargetPort = b.Service, b.Port
+				if b.Workload != "" {
+					r.Deployment = b.Workload
+				}
+				return nil
+			}
 		}
 	}
 	return fmt.Errorf("at least one backend must be managed by Smart Proxy")
@@ -169,6 +264,12 @@ func (r RouteConfig) EffectiveIdleTimeout() time.Duration {
 // on every save.
 func (r RouteConfig) AnnotationJSON() string {
 	r.LastActivity = time.Time{}
+	r.InspectUntil = nil // Runtime state, not configuration
 	data, _ := json.Marshal(r)
 	return string(data)
+}
+
+// Inspecting reports whether the route's requests are being recorded.
+func (r RouteConfig) Inspecting(now time.Time) bool {
+	return r.InspectUntil != nil && now.Before(*r.InspectUntil)
 }

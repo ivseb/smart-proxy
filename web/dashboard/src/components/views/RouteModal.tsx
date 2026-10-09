@@ -327,31 +327,10 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                         </div>
                     </div>
 
-                    {(formData.backends?.length || 0) > 1 && (
-                        <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700 space-y-2">
-                            <p className="text-sm text-gray-200 font-medium">Backends</p>
-                            <p className="text-xs text-gray-500">
-                                This Route balances traffic across several Services. Managed ones sleep and wake with the app; the others
-                                are never touched and get their share only while they run (keep a backend that is off on purpose unmanaged).
-                            </p>
-                            {formData.backends!.map((b, idx) => (
-                                <label key={b.service} className="flex items-center justify-between gap-2 bg-gray-800 px-3 py-2 rounded border border-gray-600 cursor-pointer">
-                                    <span className="min-w-0">
-                                        <span className="block font-mono text-sm text-white truncate">{b.service}:{b.port}</span>
-                                        <span className="block text-xs text-gray-500">weight {b.weight}{b.workload ? ` · ${workloadLabel(b.workload)}` : ""}</span>
-                                    </span>
-                                    <span className="flex items-center gap-2 text-xs text-gray-300 shrink-0">
-                                        <input type="checkbox" className="w-4 h-4 rounded bg-gray-700 border-gray-600" checked={b.managed}
-                                            onChange={e => {
-                                                const backends = [...formData.backends!];
-                                                backends[idx] = { ...b, managed: e.target.checked };
-                                                setFormData(prev => ({ ...prev, backends }));
-                                            }} />
-                                        Sleep &amp; wake with the app
-                                    </span>
-                                </label>
-                            ))}
-                        </div>
+                    {(formData.backends?.length || 0) > 0 && (
+                        <p className="text-xs text-gray-500">
+                            This route has several backends: edit them from the route's page (Backends).
+                        </p>
                     )}
 
                     <IgnoreEditor

@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	k8stesting "k8s.io/client-go/testing"
 
+	"smart-proxy/internal/inspect"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/k8s/fakecluster"
 	"smart-proxy/internal/store"
@@ -203,5 +204,39 @@ func TestPlainPrefixFallbackAndExactPaths(t *testing.T) {
 		if got.ID != want {
 			t.Errorf("%s -> %q, want %q", path, got.ID, want)
 		}
+	}
+}
+
+func TestInspectedRoutesRecordWhatHappened(t *testing.T) {
+	route := webRoute("ing-web", "/", "web")
+	until := time.Now().Add(time.Minute)
+	route.InspectUntil = &until
+	h, c, _ := webHandler(t, []*store.RouteConfig{route}, sleeping("web"))
+	h.Inspect = &inspect.Recorder{Replica: "test"}
+
+	page := httptest.NewRequest("GET", "http://web.example.com/", nil)
+	page.Header.Set("Accept", "text/html")
+	h.ServeHTTP(httptest.NewRecorder(), page)
+	markReady(t, c, "web")
+	api := httptest.NewRequest("POST", "http://web.example.com/api?x=1", strings.NewReader("{}"))
+	api.Header.Set("Origin", "https://idp.example.org")
+	h.ServeHTTP(httptest.NewRecorder(), api)
+
+	got := h.Inspect.Since("ing-web", time.Time{})
+	if len(got) != 2 {
+		t.Fatalf("recorded %d requests", len(got))
+	}
+	if got[0].Outcome != inspect.OutcomeWakingPage || got[0].Status != 200 {
+		t.Errorf("page load: %+v", got[0])
+	}
+	if got[1].Outcome != inspect.OutcomeProxied || got[1].Backend != "web" || got[1].Headers["Origin"] != "https://idp.example.org" || got[1].Query[0] != "x" {
+		t.Errorf("API call: %+v", got[1])
+	}
+
+	// Not inspected: nothing recorded.
+	h.store.AddRoute(webRoute("ing-web", "/", "web"))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "http://web.example.com/", nil))
+	if len(h.Inspect.Since("ing-web", time.Time{})) != 2 {
+		t.Error("recorded a request of a route not inspected")
 	}
 }

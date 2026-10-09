@@ -416,3 +416,20 @@ func (c *Client) RemoveStandIns(service string) (int, error) {
 	}
 	return removed, nil
 }
+
+// ProxyPodIPs are the addresses of Smart Proxy's ready pods (known once stand-ins are enabled).
+func (c *Client) ProxyPodIPs() []string {
+	s := c.standIns.Load()
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var ips []string
+	for _, subset := range s.subsets {
+		for _, a := range subset.Addresses {
+			ips = append(ips, a.IP)
+		}
+	}
+	return ips
+}
