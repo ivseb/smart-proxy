@@ -5,6 +5,7 @@ export function usePolling<T>(url: string, interval = 2000) {
     const [data, setData] = useState<T | null>(null);
     const [error, setError] = useState<Error | null>(null);
     const [loading, setLoading] = useState(true);
+    const [fetchedAt, setFetchedAt] = useState(0);
 
     const fetchData = useCallback(async () => {
         try {
@@ -13,6 +14,7 @@ export function usePolling<T>(url: string, interval = 2000) {
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
             const json = await res.json();
             setData(json);
+            setFetchedAt(Date.now());
             setError(null);
         } catch (e) {
             setError(e as Error);
@@ -27,5 +29,5 @@ export function usePolling<T>(url: string, interval = 2000) {
         return () => clearInterval(intervalId);
     }, [fetchData, interval]);
 
-    return { data, error, loading, refetch: fetchData };
+    return { data, error, loading, fetchedAt, refetch: fetchData };
 }

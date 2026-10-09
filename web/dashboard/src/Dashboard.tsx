@@ -23,7 +23,7 @@ export function Dashboard() {
     const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
 
     const { data: routes, refetch } = usePolling<RouteStatus[]>("/api/routes", 2000);
-    const { data: stats } = usePolling<StatsData>("/api/stats", 2000);
+    const { data: stats, fetchedAt: statsFetchedAt } = usePolling<StatsData>("/api/stats", 2000);
     const auth = useAuth();
     // Mock logs for now or pull from LogsView context if we lift state.
     // For MVP, let's just pass empty array or fetch logs if needed.
@@ -184,7 +184,7 @@ export function Dashboard() {
                 </header>
 
                 <main>
-                    {activeTab === "stats" && !selectedRouteId && <StatsView stats={stats} />}
+                    {activeTab === "stats" && !selectedRouteId && <StatsView stats={stats} fetchedAt={statsFetchedAt} />}
 
                     {activeTab === "routes" && !selectedRouteId && (
                         <Card>

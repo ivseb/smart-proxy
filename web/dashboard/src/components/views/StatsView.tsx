@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Activity, Zap, Server } from "lucide-react";
@@ -7,37 +7,32 @@ import type { StatsData } from "@/types/api";
 
 
 interface ChartPoint {
+    at: number; // ms since epoch
     time: string;
     requests: number;
 }
 
 interface StatsViewProps {
     stats: StatsData | null;
+    fetchedAt: number; // When stats was polled
 }
 
-export function StatsView({ stats }: StatsViewProps) {
-    // const { data: stats } = usePolling<StatsData>("/api/stats", 2000); // Lifted to Dashboard
+export function StatsView({ stats, fetchedAt }: StatsViewProps) {
     const [history, setHistory] = useState<ChartPoint[]>([]);
+    const [recordedAt, setRecordedAt] = useState(0);
 
-    // Accumulate history for the chart
-    useEffect(() => {
-        if (stats) {
-            setHistory(prev => {
-                const now = new Date();
-                const timeStr = now.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                const newPoint = { time: timeStr, requests: stats.TotalRequests };
+    // Accumulate one chart point per poll (state derived during render, not in an effect).
+    if (stats && fetchedAt !== recordedAt) {
+        setRecordedAt(fetchedAt);
+        const time = new Date(fetchedAt).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setHistory(prev => [...prev, { at: fetchedAt, time, requests: stats.TotalRequests }].slice(-20));
+    }
 
-                // Keep last 20 points
-                const newHistory = [...prev, newPoint];
-                if (newHistory.length > 20) newHistory.shift();
-                return newHistory;
-            });
-        }
-    }, [stats]);
-
-    // Calculate RPS (approximate based on polling interval)
-    const rps = history.length > 1
-        ? (history[history.length - 1].requests - history[history.length - 2].requests) / 2
+    // Requests per second between the last two polls
+    const last = history[history.length - 1];
+    const prev = history[history.length - 2];
+    const rps = last && prev && last.at > prev.at
+        ? (last.requests - prev.requests) / ((last.at - prev.at) / 1000)
         : 0;
 
     return (

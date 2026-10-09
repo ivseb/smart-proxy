@@ -57,42 +57,6 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData }: RouteModa
     const [resolvedInfo, setResolvedInfo] = useState<string | null>(null);
     const [connectedRoutes, setConnectedRoutes] = useState<{ name: string; host: string }[]>([]);
 
-    // Reset form when opening
-    useEffect(() => {
-        if (isOpen) {
-            setResolvedInfo(null);
-            setConnectedRoutes([]);
-            if (initialData) {
-                setFormData(initialData);
-                if (initialData.idle_timeout) {
-                    setTimeoutInput(formatDuration(initialData.idle_timeout));
-                } else {
-                    setTimeoutInput("30m");
-                }
-                // Load deployments for the namespace of the existing route
-                fetchDeployments(initialData.namespace);
-                if (initialData.deployment) {
-                    resolveSvcDetails(initialData.deployment, initialData.target_service);
-                }
-            } else {
-                setFormData({
-                    host: "",
-                    path: "/",
-                    namespace: "",
-                    deployment: "",
-                    target_service: "",
-                    target_port: 80,
-                    dependencies: [],
-                    inject_badge: false,
-                    idle_timeout: 30 * 60 * 1000 * 1000 * 1000
-                });
-                setTimeoutInput("30m");
-                // Discover namespace and load deployments
-                discoverNamespace();
-            }
-        }
-    }, [isOpen, initialData]);
-
     const resolveSvcDetails = async (dep: string, currentSvc: string) => {
         try {
             const infoRes = await fetch(`/api/k8s/deployment-service-info?deployment=${dep}`);
@@ -166,11 +130,49 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData }: RouteModa
         try {
             const res = await fetch(`/api/k8s/deployments?namespace=${ns}`);
             const deps = await res.json();
-            setDeployments(deps.filter((d: string) => d !== 'smart-proxy'));
+            setDeployments(deps); // The server already leaves out Smart Proxy itself
         } catch (e) {
             console.error("Failed to load deployments", e);
         }
     };
+
+    // Reset form when opening
+    useEffect(() => {
+        if (isOpen) {
+            setResolvedInfo(null);
+            setConnectedRoutes([]);
+            if (initialData) {
+                setFormData(initialData);
+                if (initialData.idle_timeout) {
+                    setTimeoutInput(formatDuration(initialData.idle_timeout));
+                } else {
+                    setTimeoutInput("30m");
+                }
+                // Load deployments for the namespace of the existing route
+                fetchDeployments(initialData.namespace);
+                if (initialData.deployment) {
+                    resolveSvcDetails(initialData.deployment, initialData.target_service);
+                }
+            } else {
+                setFormData({
+                    host: "",
+                    path: "/",
+                    namespace: "",
+                    deployment: "",
+                    target_service: "",
+                    target_port: 80,
+                    dependencies: [],
+                    inject_badge: false,
+                    idle_timeout: 30 * 60 * 1000 * 1000 * 1000
+                });
+                setTimeoutInput("30m");
+                // Discover namespace and load deployments
+                discoverNamespace();
+            }
+        }
+        // Only re-run when the modal opens or its data changes, not when the helpers are recreated.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, initialData]);
 
     if (!isOpen) return null;
 

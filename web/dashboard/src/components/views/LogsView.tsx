@@ -12,16 +12,11 @@ export function LogsView() {
             try {
                 const newLog = JSON.parse(event.data);
                 setLogs((prev) => [...prev, newLog].slice(-1000)); // Keep last 1000 logs
-            } catch (e) {
+            } catch {
                 console.error("Failed to parse log", event.data);
             }
         };
-
-        eventSource.onerror = (e) => {
-            console.error("EventSource failed", e);
-            eventSource.close();
-            // Reconnect logic could go here
-        };
+        // No onerror close: EventSource reconnects by itself (e.g. after a Smart Proxy restart).
 
         return () => {
             eventSource.close();

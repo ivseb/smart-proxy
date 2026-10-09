@@ -358,11 +358,18 @@ func (s *Server) handleDeployments(w http.ResponseWriter, r *http.Request) {
 
 	deployments, err := s.k8sClient.ListDeployments("") // Env var in client handles the NS
 	if err != nil {
-		logger.Printf("Error listing deployments: %v. Returning mock data.", err)
-		json.NewEncoder(w).Encode([]string{"nginx", "frontend", "backend"})
+		logger.Printf("Error listing deployments: %v", err)
+		http.Error(w, "Failed to list deployments: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	json.NewEncoder(w).Encode(deployments)
+	// Smart Proxy's own Deployment shares the Service's name; never offer it as a target.
+	targets := make([]string, 0, len(deployments))
+	for _, d := range deployments {
+		if d != s.ServiceName {
+			targets = append(targets, d)
+		}
+	}
+	json.NewEncoder(w).Encode(targets)
 }
 
 func (s *Server) handleIngresses(w http.ResponseWriter, r *http.Request) {
