@@ -78,3 +78,24 @@ jobs:
           render --set restoreOnUninstall=false
           # Invalid settings must fail the install.
           if render --set auth.mode=oidc 2>/dev/null; then echo "incomplete oidc config was accepted"; exit 1; fi
+
+  e2e:
+    name: End-to-end (kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: azure/setup-helm@v4
+
+      - uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Run test/e2e
+        run: test/e2e/run.sh
+

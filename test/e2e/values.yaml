@@ -1,0 +1,14 @@
+image:
+  repository: smart-proxy
+  tag: e2e
+  pullPolicy: Never
+config:
+  namespaceSelector: smart-proxy=enabled
+  logLevel: debug
+rbac:
+  openshiftRoutes: false
+auth:
+  mode: basic
+  basic:
+    username: admin
+    password: e2e-only

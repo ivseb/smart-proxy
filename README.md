@@ -101,6 +101,8 @@ Then open the dashboard at [http://admin.local](http://admin.local) *(add `127.0
 
 Issues and pull requests are welcome. If Smart Proxy saves you some cluster bills, a ⭐ on GitHub is appreciated!
 
+`go test -race ./...` runs the unit tests. `test/e2e/run.sh` runs the end-to-end tests on a local [kind](https://kind.sigs.k8s.io) cluster (Docker, kind, kubectl and Helm needed): waking from a browser, API calls with large bodies, bursts of requests, WebSockets, gRPC-style HTTP/2, long streams, leader failover and uninstall. CI runs both.
+
 ## License
 
 Released under the [MIT License](LICENSE).
