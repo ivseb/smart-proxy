@@ -3,6 +3,55 @@ entries:
   smart-proxy:
   - annotations:
       artifacthub.io/changes: |
+        - kind: fixed
+          description: Applications in other namespaces than Smart Proxy's are reachable once patched (stand-in Services; new RBAC)
+        - kind: fixed
+          description: With two replicas, an app woken by a follower is no longer put back to sleep by the leader
+        - kind: fixed
+          description: API calls, form posts and WebSockets to a sleeping app wait for it instead of getting the HTML waking page
+        - kind: fixed
+          description: Routing follows the routers (host first, whole path segments, wildcards, Exact paths)
+        - kind: changed
+          description: Self-healing backs off from GitOps tools that keep reverting it
+        - kind: added
+          description: Traffic charts keep the last 30 minutes (config.statsRetention); h2c/gRPC; end-to-end tests
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.2.0
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.2.0
+    created: "2026-10-09T16:19:20.266884877Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: da07db94df78c0f13be38e72d185d89ca14d35c601a34acdefee694ac4f8cf94
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.4.0/smart-proxy-0.4.0.tgz
+    version: 0.4.0
+  - annotations:
+      artifacthub.io/changes: |
         - kind: added
           description: Uptime monitors and health checks never keep applications awake or wake them (ignore.* values)
         - kind: added
@@ -170,4 +219,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-09T12:34:51.905927979Z"
+generated: "2026-10-09T16:19:20.266911046Z"
