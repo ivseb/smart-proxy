@@ -18,9 +18,52 @@ export interface RouteConfig {
     always_on?: boolean;
 }
 
+export type DeploymentStatus = "Ready" | "Scaling" | "Sleep" | "Error" | "Unwatched" | "Offline";
+
+export interface ResourceRef {
+    kind: "Ingress" | "Route";
+    namespace: string;
+    name: string;
+}
+
 export interface RouteStatus extends RouteConfig {
-    status: "Ready" | "Scaling" | "Sleep" | "Error" | "Unknown";
-    dependency_status: Record<string, string>;
+    status: DeploymentStatus;
+    replicas: number;
+    ready_replicas: number;
+    dependency_status: Record<string, DeploymentStatus>;
+    source: ResourceRef | null; // null for manually configured routes
+    sleeps_at: string | null; // null when it never sleeps (Always On, manual, asleep)
+    effective_idle_timeout: number; // nanoseconds
+}
+
+export interface DeploymentSummary {
+    name: string;
+    replicas: number;
+    ready: number;
+}
+
+export interface PatchableResource {
+    type: "Ingress" | "Route";
+    name: string;
+    namespace: string;
+    host: string;
+    path: string;
+    service: string;
+    port: string;
+    patched: boolean;
+    deployment: DeploymentSummary | null;
+    route_id: string;
+    status: string;
+}
+
+export interface ClusterInfo {
+    connected: boolean;
+    scope: string;
+    all_namespaces: boolean;
+    namespaces: string[];
+    default: string;
+    routes_enabled: boolean;
+    proxy_service: string;
 }
 
 export interface LogEntry {

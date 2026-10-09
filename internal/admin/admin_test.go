@@ -235,3 +235,20 @@ func TestNewRouteBindsToIngressInItsNamespace(t *testing.T) {
 		t.Fatalf("create outside scope: %d", code)
 	}
 }
+
+func TestWakeDeploymentRecordsActivity(t *testing.T) {
+	f := newFixture(t, app("team-a", "web", 0)...)
+	f.store.AddRoute(&store.RouteConfig{ID: store.IngressID("team-a", "web"), Namespace: "team-a", Deployment: "web"})
+	f.store.SetActivityForTest(store.IngressID("team-a", "web"), time.Now().Add(-time.Hour))
+
+	if code, body := f.call(t, "POST", "/api/k8s/wake-deployment?namespace=team-a&deployment=web", nil); code != 200 {
+		t.Fatalf("wake: %d %s", code, body)
+	}
+	d, _ := f.cluster.Kube.AppsV1().Deployments("team-a").Get(context.TODO(), "web", metav1.GetOptions{})
+	if *d.Spec.Replicas != 1 {
+		t.Fatalf("replicas = %d", *d.Spec.Replicas)
+	}
+	if r, _ := f.store.GetRoute(store.IngressID("team-a", "web")); time.Since(r.LastActivity) > time.Minute {
+		t.Fatalf("activity not recorded: %v", r.LastActivity)
+	}
+}

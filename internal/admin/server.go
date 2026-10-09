@@ -53,6 +53,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/k8s/ingresses", s.requireK8s(s.handleIngresses))
 	mux.HandleFunc("/api/k8s/routes", s.requireK8s(s.handleOpenshiftRoutes))
 	mux.HandleFunc("/api/k8s/stop-deployment", s.requireK8s(s.handleStopDeployment))
+	mux.HandleFunc("/api/k8s/wake-deployment", s.requireK8s(s.handleWakeDeployment))
 	mux.HandleFunc("/api/k8s/deployment-service-info", s.requireK8s(s.handleDeploymentServiceInfo))
 	mux.HandleFunc("/api/k8s/service-routes", s.requireK8s(s.handleServiceRoutes))
 
@@ -274,6 +275,46 @@ func (s *Server) handleStopDeployment(w http.ResponseWriter, r *http.Request) {
 					logger.Printf("Error stopping dependency %s: %v", dep.Name, err)
 				}
 			}
+		}
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+// handleWakeDeployment wakes a deployment (and the dependencies of its routes) ahead of traffic.
+// Its routes count as active, so the watcher doesn't put it straight back to sleep.
+func (s *Server) handleWakeDeployment(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	deployment := r.URL.Query().Get("deployment")
+	if deployment == "" {
+		http.Error(w, "Missing deployment", http.StatusBadRequest)
+		return
+	}
+	namespace, ok := s.namespaceParam(w, r)
+	if !ok {
+		return
+	}
+
+	toWake := []string{deployment}
+	for _, route := range s.store.GetAllRoutes() {
+		if route.Namespace == namespace && route.Deployment == deployment {
+			s.store.UpdateActivity(route.ID)
+			for _, dep := range route.Dependencies {
+				toWake = append(toWake, dep.Name)
+			}
+		}
+	}
+	for _, name := range toWake {
+		target, err := s.k8sClient.WakeDeployment(namespace, name)
+		if err != nil {
+			logger.Printf("Error waking %s/%s: %v", namespace, name, err)
+			http.Error(w, fmt.Sprintf("Cannot wake %s: %v", name, err), httpStatusFor(err))
+			return
+		}
+		if target > 0 {
+			logger.Printf("Manual wake-up of %s/%s with %d replica(s)", namespace, name, target)
 		}
 	}
 	w.WriteHeader(http.StatusOK)

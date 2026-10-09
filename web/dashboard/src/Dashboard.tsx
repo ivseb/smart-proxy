@@ -1,112 +1,111 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Activity as ActivityIcon, Layers, LayoutDashboard, LogOut, ScrollText, Shield, User } from "lucide-react";
+import { Toaster, toast } from "sonner";
 import { usePolling } from "@/hooks/usePolling";
 import { useAuth } from "@/hooks/useAuth";
-import type { RouteConfig, RouteStatus, StatsData } from "@/types/api";
-import { RouteTable } from "@/components/views/RouteTable";
+import { useStoredState } from "@/hooks/useStoredState";
+import type { ClusterInfo, LogEntry, RouteConfig, RouteStatus, StatsData } from "@/types/api";
+import { RoutesView } from "@/components/views/RoutesView";
 import { LogsView } from "@/components/views/LogsView";
 import { PatchingView } from "@/components/views/PatchingView";
 import { RouteModal } from "@/components/views/RouteModal";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Plus, LayoutDashboard, ScrollText, Shield, Activity as ActivityIcon, LogOut, User } from "lucide-react";
+import { RouteDetailView } from "@/components/views/RouteDetailView";
 import { StatsView } from "@/components/views/StatsView";
-import { Toaster, toast } from "sonner";
+import { Button } from "@/components/ui/Button";
 import { apiRequest, errorMessage } from "@/lib/api";
 
-import { RouteDetailView } from "@/components/views/RouteDetailView";
-import type { LogEntry } from "@/types/api";
+type Tab = "stats" | "routes" | "patching" | "logs";
+
+const query = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 export function Dashboard() {
-    const [activeTab, setActiveTab] = useState<"stats" | "routes" | "patching" | "logs">("stats");
+    const [activeTab, setActiveTab] = useStoredState<Tab>("dashboard.tab", "routes");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRoute, setEditingRoute] = useState<RouteConfig | null>(null);
     const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+    const [routeToDelete, setRouteToDelete] = useState<RouteStatus | null>(null);
 
     const { data: routes, refetch } = usePolling<RouteStatus[]>("/api/routes", 2000);
     const { data: stats, fetchedAt: statsFetchedAt } = usePolling<StatsData>("/api/stats", 2000);
+    // Namespaces can come and go (label selector), so refresh the cluster info now and then.
+    const { data: info } = usePolling<ClusterInfo>("/api/info", 30000);
     const auth = useAuth();
-    // Mock logs for now or pull from LogsView context if we lift state.
-    // For MVP, let's just pass empty array or fetch logs if needed.
-    // Actually, LogsView fetches its own logs. We should lift logs state or fetch here.
-    const [logs, setLogs] = useState<LogEntry[]>([]);
 
-    // Fetch logs separately just to feed detail view
+    // Recent log lines, for the route detail view.
+    const [logs, setLogs] = useState<LogEntry[]>([]);
     useEffect(() => {
-        const es = new EventSource('/api/logs');
+        const es = new EventSource("/api/logs");
         es.onmessage = (e) => {
             const entry = JSON.parse(e.data);
-            setLogs(prev => [...prev.slice(-99), entry]); // Keep last 100
+            setLogs(prev => [...prev.slice(-199), entry]);
         };
         return () => es.close();
     }, []);
 
-    const handleCreateRoute = async (data: Partial<RouteConfig>) => {
+    const run = async (action: () => Promise<unknown>, success: string | null, failure: string) => {
         try {
-            await apiRequest("/api/routes", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data),
-            });
+            await action();
+            if (success) toast.success(success);
+            return true;
         } catch (e) {
-            toast.error(`Failed to save route: ${errorMessage(e)}`);
+            toast.error(`${failure}: ${errorMessage(e)}`);
+            return false;
+        } finally {
+            refetch();
         }
-        refetch();
     };
 
-    const [routeToDelete, setRouteToDelete] = useState<string | null>(null);
+    const saveRoute = (data: Partial<RouteConfig>) =>
+        run(() => apiRequest("/api/routes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+        }), "Route saved", "Failed to save route");
 
     // Routes created by patching an Ingress or OpenShift Route keep that resource pointed at
     // Smart Proxy, so deleting only the configuration would leave the app answering 404.
-    const isPatchedRoute = (id: string) => id.startsWith("ing-") || id.startsWith("route-");
-    const patchedKind = (id: string) => (id.startsWith("route-") ? "Route" : "Ingress");
-
-    const handleDeleteClick = (id: string) => {
-        if (isPatchedRoute(id)) {
-            setRouteToDelete(id);
-        } else {
-            if (confirm("Are you sure you want to delete this route?")) {
-                deleteRoute(id);
-            }
+    const requestDelete = (route: RouteStatus) => {
+        if (route.source) {
+            setRouteToDelete(route);
+        } else if (confirm(`Delete the route for ${route.host || route.deployment}?`)) {
+            deleteRoute(route);
         }
     };
 
-    const deleteRoute = async (id: string) => {
-        try {
-            await apiRequest(`/api/routes?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    const deleteRoute = async (route: RouteStatus) => {
+        if (await run(() => apiRequest(`/api/routes?${query({ id: route.id })}`, { method: "DELETE" }), "Route deleted", "Failed to delete route")) {
             setSelectedRouteId(null);
-        } catch (e) {
-            toast.error(`Failed to delete route: ${errorMessage(e)}`);
         }
         setRouteToDelete(null);
-        refetch();
     };
 
-    const handleUnpatch = async (id: string) => {
-        const kind = patchedKind(id);
-        const name = id.replace(/^(ing|route)-/, "");
-        const endpoint = kind === "Route" ? "/api/unpatch-route" : "/api/unpatch-ingress";
-        try {
-            await apiRequest(`${endpoint}?name=${encodeURIComponent(name)}`, { method: "POST" });
-            toast.success(`Restored original backend for ${kind} ${name}`);
-            setSelectedRouteId(null);
-        } catch (e) {
-            toast.error(`Failed to unpatch ${kind} ${name}: ${errorMessage(e)}`);
-        }
+    const unpatchAndDelete = async (route: RouteStatus) => {
+        const src = route.source!;
+        const endpoint = src.kind === "Route" ? "/api/unpatch-route" : "/api/unpatch-ingress";
+        const ok = await run(
+            () => apiRequest(`${endpoint}?${query({ namespace: src.namespace, name: src.name })}`, { method: "POST" }),
+            `Restored the original backend of ${src.kind} ${src.namespace}/${src.name}`,
+            `Failed to unpatch ${src.kind} ${src.name}`,
+        );
+        if (ok) setSelectedRouteId(null);
         setRouteToDelete(null);
-        refetch();
     };
 
-    const handleStopDeployment = async (route: RouteStatus) => {
-        if (!confirm(`Stop deployment ${route.deployment}?`)) return;
-        try {
-            await apiRequest(`/api/k8s/stop-deployment?namespace=${encodeURIComponent(route.namespace)}&deployment=${encodeURIComponent(route.deployment)}`, {
-                method: "POST"
-            });
-        } catch (e) {
-            toast.error(`Failed to stop ${route.deployment}: ${errorMessage(e)}`);
-        }
-        refetch();
+    const stopRoute = async (route: RouteStatus) => {
+        if (!confirm(`Put ${route.namespace}/${route.deployment} to sleep now?`)) return;
+        await run(
+            () => apiRequest(`/api/k8s/stop-deployment?${query({ namespace: route.namespace, deployment: route.deployment })}`, { method: "POST" }),
+            `${route.deployment} is going to sleep`,
+            `Failed to stop ${route.deployment}`,
+        );
     };
+
+    const wakeRoute = (route: RouteStatus) =>
+        run(
+            () => apiRequest(`/api/k8s/wake-deployment?${query({ namespace: route.namespace, deployment: route.deployment })}`, { method: "POST" }),
+            `Waking up ${route.deployment}`,
+            `Failed to wake ${route.deployment}`,
+        );
 
     const openNewModal = () => {
         setEditingRoute(null);
@@ -118,122 +117,93 @@ export function Dashboard() {
         setIsModalOpen(true);
     };
 
+    const goTo = (tab: Tab) => {
+        setActiveTab(tab);
+        setSelectedRouteId(null);
+    };
+
     const selectedRoute = routes?.find(r => r.id === selectedRouteId);
+    const namespaceCount = info?.namespaces.length ?? 0;
 
     return (
         <div className="min-h-screen bg-gray-950 text-white font-sans selection:bg-blue-500/30">
-            <div className="container mx-auto p-6 max-w-7xl">
-                {/* Header hidden in Detail View for cleaner look, or keep? Keep. */}
-                <header className="flex justify-between items-center pb-6 border-b border-gray-800">
-                    <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 py-4 sm:py-6">
+                <header className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-gray-800">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 shrink-0 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
                             <Shield className="text-white w-6 h-6" />
                         </div>
-                        <div>
-                            <h1 className="text-2xl font-bold tracking-tight">Smart Proxy Admin</h1>
-                            <p className="text-gray-400 text-sm">Cluster Management & Ingress Patching</p>
+                        <div className="min-w-0">
+                            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Smart Proxy</h1>
+                            {info && (
+                                <p className="text-gray-400 text-xs sm:text-sm flex items-center gap-1.5 truncate" title={info.scope}>
+                                    <Layers size={14} className="shrink-0" />
+                                    {!info.connected
+                                        ? "Not connected to a cluster"
+                                        : info.all_namespaces
+                                            ? `${info.scope} (${namespaceCount})`
+                                            : namespaceCount === 1 ? `Namespace ${info.namespaces[0]}` : `${namespaceCount} namespaces`}
+                                </p>
+                            )}
                         </div>
                     </div>
 
-                    <nav className="flex space-x-1 bg-gray-800 p-1 rounded-lg border border-gray-700">
-                        <TabButton
-                            active={activeTab === "stats" && !selectedRouteId}
-                            onClick={() => { setActiveTab("stats"); setSelectedRouteId(null); }}
-                            icon={<ActivityIcon size={18} />}
-                            label="Overview"
-                        />
-                        <TabButton
-                            active={activeTab === "routes" || !!selectedRouteId}
-                            onClick={() => setActiveTab("routes")}
-                            icon={<LayoutDashboard size={18} />}
-                            label="Routes"
-                        />
-                        <TabButton
-                            active={activeTab === "patching"}
-                            onClick={() => { setActiveTab("patching"); setSelectedRouteId(null); }}
-                            icon={<Shield size={18} />}
-                            label="Patching"
-                        />
-                        <TabButton
-                            active={activeTab === "logs"}
-                            onClick={() => { setActiveTab("logs"); setSelectedRouteId(null); }}
-                            icon={<ScrollText size={18} />}
-                            label="Logs"
-                        />
+                    <nav className="order-last w-full md:order-none md:w-auto flex gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700 overflow-x-auto">
+                        <TabButton active={activeTab === "stats" && !selectedRouteId} onClick={() => goTo("stats")} icon={<ActivityIcon size={18} />} label="Overview" />
+                        <TabButton active={activeTab === "routes" || !!selectedRouteId} onClick={() => goTo("routes")} icon={<LayoutDashboard size={18} />} label="Routes" />
+                        <TabButton active={activeTab === "patching" && !selectedRouteId} onClick={() => goTo("patching")} icon={<Shield size={18} />} label="Patching" />
+                        <TabButton active={activeTab === "logs" && !selectedRouteId} onClick={() => goTo("logs")} icon={<ScrollText size={18} />} label="Logs" />
                     </nav>
 
                     {auth && auth.mode !== "none" && (
-                        <div className="flex items-center space-x-3 text-sm text-gray-400">
+                        <div className="flex items-center gap-2 text-sm text-gray-400">
                             {auth.user && (
-                                <span className="flex items-center space-x-1.5" title={`Signed in (${auth.mode})`}>
-                                    <User size={16} />
-                                    <span>{auth.user}</span>
+                                <span className="flex items-center gap-1.5 max-w-[12rem] truncate" title={`Signed in (${auth.mode})`}>
+                                    <User size={16} className="shrink-0" />
+                                    <span className="truncate">{auth.user}</span>
                                 </span>
                             )}
                             {auth.logout_url && (
-                                <a
-                                    href={auth.logout_url}
-                                    className="flex items-center space-x-1.5 px-2 py-1 rounded-md hover:text-white hover:bg-white/5 transition-colors"
-                                >
+                                <a href={auth.logout_url} className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:text-white hover:bg-white/5 transition-colors">
                                     <LogOut size={16} />
-                                    <span>Sign out</span>
+                                    <span className="hidden sm:inline">Sign out</span>
                                 </a>
                             )}
                         </div>
                     )}
                 </header>
 
-                <main>
-                    {activeTab === "stats" && !selectedRouteId && <StatsView stats={stats} fetchedAt={statsFetchedAt} />}
-
-                    {activeTab === "routes" && !selectedRouteId && (
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between">
-                                <CardTitle>Configured Routes</CardTitle>
-                                <Button onClick={openNewModal} size="sm" className="space-x-2">
-                                    <Plus size={16} />
-                                    <span>New Route</span>
-                                </Button>
-                            </CardHeader>
-                            <RouteTable
-                                routes={routes || []}
-                                stats={stats}
-                                onEdit={openEditModal}
-                                onDelete={handleDeleteClick}
-                                onStop={handleStopDeployment}
-                                onSelect={(id) => setSelectedRouteId(id)}
-                            />
-                        </Card>
-                    )}
-
-                    {selectedRouteId && selectedRoute && (
-                        <div className="bg-gray-800/50 p-6 rounded-2xl border border-gray-700">
-                            <RouteDetailView
-                                route={selectedRoute}
-                                stats={stats}
-                                logs={logs}
-                                onBack={() => setSelectedRouteId(null)}
-                                onEdit={openEditModal}
-                                onDelete={handleDeleteClick}
-                                onStop={handleStopDeployment}
-                            />
-                        </div>
-                    )}
-
-                    {activeTab === "patching" && !selectedRouteId && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Ingress Management</CardTitle>
-                                <p className="text-sm text-gray-400">Scan namespace for Ingresses and patch them to route through Smart Proxy.</p>
-                            </CardHeader>
-                            <CardContent>
-                                <PatchingView />
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {activeTab === "logs" && !selectedRouteId && (
-                        <LogsView />
+                <main className="pt-6">
+                    {selectedRouteId && selectedRoute ? (
+                        <RouteDetailView
+                            route={selectedRoute}
+                            stats={stats}
+                            logs={logs}
+                            onBack={() => setSelectedRouteId(null)}
+                            onEdit={openEditModal}
+                            onDelete={requestDelete}
+                            onStop={stopRoute}
+                            onWake={wakeRoute}
+                        />
+                    ) : (
+                        <>
+                            {activeTab === "stats" && <StatsView stats={stats} fetchedAt={statsFetchedAt} routes={routes || []} info={info} />}
+                            {activeTab === "routes" && (
+                                <RoutesView
+                                    routes={routes || []}
+                                    stats={stats}
+                                    info={info}
+                                    onNew={openNewModal}
+                                    onEdit={openEditModal}
+                                    onDelete={requestDelete}
+                                    onStop={stopRoute}
+                                    onWake={wakeRoute}
+                                    onSelect={setSelectedRouteId}
+                                />
+                            )}
+                            {activeTab === "patching" && <PatchingView info={info} onChanged={refetch} />}
+                            {activeTab === "logs" && <LogsView />}
+                        </>
                     )}
                 </main>
             </div>
@@ -241,26 +211,28 @@ export function Dashboard() {
             <RouteModal
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                onSubmit={handleCreateRoute}
+                onSubmit={saveRoute}
                 initialData={editingRoute}
+                info={info}
             />
 
-            {/* Smart Delete Dialog */}
-            {routeToDelete && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            {routeToDelete?.source && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
                     <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-full max-w-md p-6">
-                        <h3 className="text-xl font-bold text-white mb-2">Delete Patched Route?</h3>
-                        <p className="text-gray-400 mb-6">
-                            This route was created by patching {patchedKind(routeToDelete) === "Route" ? "an OpenShift Route" : "an Ingress"}. Unpatching restores its original backend. Deleting only the configuration leaves it pointed at Smart Proxy, which will answer 404 for it.
+                        <h3 className="text-xl font-bold text-white mb-2">Delete patched route?</h3>
+                        <p className="text-gray-400 mb-6 text-sm">
+                            This route comes from {routeToDelete.source.kind === "Route" ? "the OpenShift Route" : "the Ingress"}{" "}
+                            <span className="font-mono text-gray-200">{routeToDelete.source.namespace}/{routeToDelete.source.name}</span>.
+                            Unpatching restores its original backend. Deleting only the configuration leaves it pointed at Smart Proxy, which will answer 404.
                         </p>
                         <div className="flex flex-col gap-3">
-                            <Button variant="primary" onClick={() => handleUnpatch(routeToDelete)} className="w-full justify-center bg-blue-600 hover:bg-blue-500">
-                                Unpatch {patchedKind(routeToDelete)} & Delete
+                            <Button onClick={() => unpatchAndDelete(routeToDelete)} className="w-full">
+                                Unpatch {routeToDelete.source.kind} &amp; delete
                             </Button>
-                            <Button variant="danger" onClick={() => deleteRoute(routeToDelete)} className="w-full justify-center">
-                                Delete Configuration Only
+                            <Button variant="danger" onClick={() => deleteRoute(routeToDelete)} className="w-full">
+                                Delete configuration only
                             </Button>
-                            <Button variant="secondary" onClick={() => setRouteToDelete(null)} className="w-full justify-center mt-2">
+                            <Button variant="secondary" onClick={() => setRouteToDelete(null)} className="w-full mt-2">
                                 Cancel
                             </Button>
                         </div>
@@ -277,7 +249,7 @@ function TabButton({ active, onClick, icon, label }: { active: boolean; onClick:
     return (
         <button
             onClick={onClick}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${active
+            className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-all ${active
                 ? "bg-blue-600 text-white shadow-md"
                 : "text-gray-400 hover:text-white hover:bg-gray-700"
                 }`}
