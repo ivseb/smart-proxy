@@ -256,7 +256,7 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                             <span key={b.service} className="inline-flex items-center gap-1.5"
                                 title={`${b.service}: weight ${b.weight}${b.managed ? "" : ", not managed by Smart Proxy"} — ${b.status}`}>
                                 <StatusDot status={b.status} />
-                                {b.service} <span className="text-gray-500 tabular-nums">{Math.round(b.share)}%</span>
+                                {b.service} <span className="text-gray-500 tabular-nums">{b.weight > 0 ? `${Math.round(b.share)}%` : (b.when?.length || 0) > 0 ? "on condition" : "0%"}</span>
                                 {!b.managed && <span className="text-gray-500">· not managed</span>}
                             </span>
                         ))}

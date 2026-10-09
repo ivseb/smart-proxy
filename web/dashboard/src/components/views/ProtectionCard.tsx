@@ -171,7 +171,7 @@ function UsersSection({ route, users, loginURL, onChanged }: { route: RouteStatu
             <h3 className="text-sm font-medium text-gray-200">People (browsers)</h3>
             <p className="text-xs text-gray-500">
                 They sign in on a page served by Smart Proxy, on the application's own address
-                {loginURL && <> (<span className="font-mono">{loginURL}</span>)</>}. With a single person, the page only asks for the
+                {loginURL && <> (<span className="font-mono break-all">{loginURL}</span>)</>}. With a single person, the page only asks for the
                 password: use it as a shared password for your team.
             </p>
             {users.length > 0 && (
@@ -183,9 +183,9 @@ function UsersSection({ route, users, loginURL, onChanged }: { route: RouteStatu
                 </ul>
             )}
             <div className="flex flex-wrap items-center gap-2">
-                <input className={`${inputClass} w-40`} placeholder="Name" value={name} onChange={e => setName(e.target.value)} aria-label="Name" />
-                <div className="flex items-center gap-1">
-                    <input className={`${inputClass} w-52 font-mono`} placeholder="Password (8+ characters)" value={password}
+                <input className={`${inputClass} w-full sm:w-40`} placeholder="Name" value={name} onChange={e => setName(e.target.value)} aria-label="Name" />
+                <div className="flex items-center gap-1 w-full sm:w-auto">
+                    <input className={`${inputClass} flex-1 min-w-0 sm:w-60 sm:flex-none font-mono`} placeholder="Password (8+ characters)" value={password}
                         onChange={e => setPassword(e.target.value)} aria-label="Password" autoComplete="new-password" />
                     <Button variant="ghost" size="sm" onClick={() => setPassword(generatePassword())} title="Generate a strong password">Generate</Button>
                     {password && <Button variant="ghost" size="icon" onClick={() => copyText(password)} aria-label="Copy password"><Copy size={14} /></Button>}
@@ -234,7 +234,7 @@ function TokensSection({ route, tokens, onChanged }: { route: RouteStatus; token
         <section className="space-y-2">
             <h3 className="text-sm font-medium text-gray-200">Access tokens (scripts, other services)</h3>
             <p className="text-xs text-gray-500">
-                Sent as <span className="font-mono">Authorization: Bearer &lt;token&gt;</span>, or <span className="font-mono">X-Api-Key: &lt;token&gt;</span> if
+                Sent as <span className="font-mono break-all">Authorization: Bearer &lt;token&gt;</span>, or <span className="font-mono break-all">X-Api-Key: &lt;token&gt;</span> if
                 the application uses Authorization itself. The application receives the caller in <span className="font-mono">X-Smart-Proxy-User</span>.
             </p>
             {created && (
@@ -258,7 +258,7 @@ function TokensSection({ route, tokens, onChanged }: { route: RouteStatus; token
                 </ul>
             )}
             <div className="flex flex-wrap items-center gap-2">
-                <input className={`${inputClass} w-56`} placeholder="Who uses it, e.g. jenkins" value={name} onChange={e => setName(e.target.value)} aria-label="Token name" />
+                <input className={`${inputClass} w-full sm:w-56`} placeholder="Who uses it, e.g. jenkins" value={name} onChange={e => setName(e.target.value)} aria-label="Token name" />
                 <Button size="sm" variant="secondary" className="gap-1.5" onClick={create} disabled={busy || !name.trim() || tokens.some(t => t.name === name.trim())}>
                     <Plus size={14} /> New token
                 </Button>
@@ -292,7 +292,7 @@ function OpenPaths({ protection, onSave }: { protection: Protection; onSave: (p:
                 </div>
             )}
             <div className="flex items-center gap-2">
-                <input className={`${inputClass} w-56 font-mono`} placeholder="/saml/acs" value={path} onChange={e => setPath(e.target.value)} aria-label="Open path"
+                <input className={`${inputClass} flex-1 min-w-0 sm:flex-none sm:w-56 font-mono`} placeholder="/saml/acs" value={path} onChange={e => setPath(e.target.value)} aria-label="Open path"
                     onKeyDown={e => { if (e.key === "Enter" && valid) add(); }} />
                 <Button size="sm" variant="secondary" className="gap-1.5" onClick={add} disabled={!valid}><Plus size={14} /> Add</Button>
             </div>

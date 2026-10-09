@@ -28,6 +28,12 @@ export function BackendsEditor({ route, prefill, onClose, onSave }: BackendsEdit
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
+
+    useEffect(() => {
         fetch(`/api/k8s/services?${new URLSearchParams({ namespace: route.namespace })}`)
             .then(res => res.ok ? res.json() : [])
             .then(setServices)
@@ -80,7 +86,7 @@ export function BackendsEditor({ route, prefill, onClose, onSave }: BackendsEdit
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
-            <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
                 <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
                     <h2 className="text-lg font-bold text-white">Where requests go</h2>
                     <button onClick={onClose} className="text-gray-400 hover:text-white" aria-label="Close"><X className="w-6 h-6" /></button>
@@ -164,7 +170,7 @@ export function BackendsEditor({ route, prefill, onClose, onSave }: BackendsEdit
                                                     {OPS[c.field].map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                                                 </select>
                                                 {c.op !== "exists" && (
-                                                    <input className={`${inputClass} flex-1 min-w-[12rem] font-mono`} value={c.value || ""} aria-label="Value"
+                                                    <input className={`${inputClass} flex-1 min-w-[16rem] font-mono`} value={c.value || ""} aria-label="Value"
                                                         placeholder={c.field === "path" ? "/saml/acs" : c.field === "client" ? "10.0.0.0/8" : "value"}
                                                         onChange={e => setCondition(idx, ci, { value: e.target.value })} />
                                                 )}

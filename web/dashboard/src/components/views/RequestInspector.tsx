@@ -38,6 +38,11 @@ const IGNORED: Record<string, string> = {
 
 const DURATIONS = [5, 15, 60];
 
+// Headers that differ on every request or only describe the hop: useless as backend conditions.
+const PER_REQUEST = new Set(["content-length", "content-type", "accept-encoding", "connection", "x-request-id",
+    "x-forwarded-for", "x-forwarded-port", "x-forwarded-proto", "x-forwarded-scheme", "x-forwarded-host", "x-real-ip",
+    "x-scheme", "x-original-forwarded-for", "traceparent", "tracestate", "x-b3-traceid", "x-b3-spanid", "x-b3-sampled"]);
+
 function statusClass(status: number): string {
     if (status >= 500) return "text-red-300";
     if (status >= 400) return "text-orange-300";
@@ -277,10 +282,14 @@ function RequestDetails({ request: r, headerAction }: { request: InspectedReques
                 <table className="w-full text-xs">
                     <tbody className="divide-y divide-gray-800">
                         {headers.map(([name, value]) => (
-                            <tr key={name} className="align-top">
+                            <tr key={name} className="align-top group">
                                 <td className="py-1 pr-3 font-mono text-gray-400 whitespace-nowrap">{name}</td>
                                 <td className="py-1 font-mono text-gray-200 break-all">{value}</td>
-                                {headerAction && <td className="py-1 pl-2 text-right whitespace-nowrap">{headerAction(name, value)}</td>}
+                                {headerAction && (
+                                    <td className="py-1 pl-2 text-right whitespace-nowrap opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                        {!PER_REQUEST.has(name.toLowerCase()) && headerAction(name, value)}
+                                    </td>
+                                )}
                             </tr>
                         ))}
                     </tbody>
