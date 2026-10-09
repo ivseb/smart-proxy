@@ -63,8 +63,7 @@ echo "📦 Applying Proxy Deployment..."
 cat deploy/kubernetes/deployment.yaml | \
 sed "s|namespace: smart-proxy|namespace: $NAMESPACE|g" | \
 sed "s|isebben/smart-proxy:latest|$IMAGE_NAME|g" | \
-sed "s|imagePullPolicy: Always|imagePullPolicy: IfNotPresent|g" | \
-sed '/env:/d' > deploy/kubernetes/deployment.temp.yaml
+sed "s|imagePullPolicy: Always|imagePullPolicy: IfNotPresent|g" > deploy/kubernetes/deployment.temp.yaml
 
 kubectl apply -f deploy/kubernetes/deployment.temp.yaml
 rm deploy/kubernetes/deployment.temp.yaml
