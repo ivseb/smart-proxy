@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 
 	"smart-proxy/internal/logger"
@@ -11,6 +12,7 @@ import (
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -29,6 +31,9 @@ var ErrManagedByKEDA = errors.New("replicas are managed by a KEDA ScaledObject")
 // replicas until something scales it up again.
 func (c *Client) SleepDeployment(namespace, name string) (bool, error) {
 	ns := c.ns(namespace)
+	if !c.Watches(ns) {
+		return false, fmt.Errorf("%w: %q", errNotWatched, ns)
+	}
 	hpa := c.lookupHPA(ns, name)
 	if hpa != nil && IsKEDAManaged(hpa) {
 		return false, ErrManagedByKEDA
@@ -65,6 +70,9 @@ func (c *Client) SleepDeployment(namespace, name string) (bool, error) {
 //   - 1.
 func (c *Client) WakeDeployment(namespace, name string) (int32, error) {
 	ns := c.ns(namespace)
+	if !c.Watches(ns) {
+		return 0, fmt.Errorf("%w: %q", errNotWatched, ns)
+	}
 	hpa := c.lookupHPA(ns, name)
 
 	for attempt := 0; attempt < 2; attempt++ {
@@ -111,27 +119,33 @@ func WakeReplicas(annotations map[string]string, hpa *autoscalingv2.HorizontalPo
 
 // FindHPA returns the HorizontalPodAutoscaler targeting the Deployment, or nil if there is none.
 func (c *Client) FindHPA(namespace, deploymentName string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
-	list, err := c.Clientset.AutoscalingV2().HorizontalPodAutoscalers(c.ns(namespace)).List(context.TODO(), metav1.ListOptions{})
+	lister, err := c.hpas(namespace)
 	if err != nil {
 		return nil, err
 	}
-	for i := range list.Items {
-		ref := list.Items[i].Spec.ScaleTargetRef
+	list, err := lister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	for _, hpa := range list {
+		ref := hpa.Spec.ScaleTargetRef
 		if ref.Kind == "Deployment" && ref.Name == deploymentName {
-			return &list.Items[i], nil
+			return hpa.DeepCopy(), nil
 		}
 	}
 	return nil, nil
 }
 
-// lookupHPA is FindHPA for the sleep/wake paths: a failed lookup (typically RBAC without
-// access to HPAs) must not stop scaling, so it is logged once and treated as "no HPA".
+// lookupHPA is FindHPA for the sleep/wake paths: a failed lookup must not stop scaling,
+// so it is treated as "no HPA". Missing RBAC was already reported when the caches started.
 func (c *Client) lookupHPA(namespace, name string) *autoscalingv2.HorizontalPodAutoscaler {
 	hpa, err := c.FindHPA(namespace, name)
 	if err != nil {
-		c.hpaWarnOnce.Do(func() {
-			logger.Printf("Warning: cannot read HorizontalPodAutoscalers (%v); HPA/KEDA-aware scaling is disabled. Grant get/list on autoscaling/horizontalpodautoscalers.", err)
-		})
+		if c.cache != nil && c.cache.hpaEnabled {
+			c.hpaWarnOnce.Do(func() {
+				logger.Printf("Warning: cannot read HorizontalPodAutoscalers (%v); HPA/KEDA-aware scaling is disabled.", err)
+			})
+		}
 		return nil
 	}
 	return hpa
@@ -161,7 +175,7 @@ func (c *Client) patchDeployment(namespace, name string, patch map[string]any) e
 
 func (c *Client) ns(namespace string) string {
 	if namespace == "" {
-		return c.Namespace
+		return c.DefaultNamespace()
 	}
 	return namespace
 }

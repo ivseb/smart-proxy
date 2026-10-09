@@ -38,7 +38,16 @@ rbac:
 
 # Application configuration (mapped to the container environment variables).
 config:
-  # Namespace Smart Proxy watches. Empty = the release namespace (recommended).
+  # Which namespaces Smart Proxy manages (its Ingresses, Routes and Deployments):
+  #   - nothing set:          only the release namespace
+  #   - watchNamespaces:      an explicit list; a Role is created in each of them
+  #   - allNamespaces: true   every namespace (ClusterRole)
+  #   - namespaceSelector:    every namespace whose labels match, e.g. "smart-proxy=enabled";
+  #                           label a namespace to onboard it, no reinstall needed (ClusterRole)
+  watchNamespaces: []
+  allNamespaces: false
+  namespaceSelector: ""
+  # Deprecated: single namespace, replaced by watchNamespaces.
   watchNamespace: ""
   # Port the proxy listens on (SMART_PROXY_PORT).
   proxyPort: 8080

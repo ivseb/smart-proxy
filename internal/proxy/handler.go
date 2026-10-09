@@ -28,14 +28,24 @@ type Handler struct {
 	store     *store.Store
 	tmpl      *template.Template
 	Metrics   *Metrics
+	ready     atomic.Bool
 	draining  atomic.Bool
 }
 
-// HealthPath answers the kubelet probes. It lives under the reserved /__smart_proxy/ prefix
-// so it can't shadow an application's own /healthz.
-const HealthPath = "/__smart_proxy/healthz"
+// Probe endpoints, under the reserved /__smart_proxy/ prefix so they can't shadow an
+// application's own paths. Liveness only says the process is up; readiness also requires
+// the Kubernetes caches to be synced and no shutdown in progress.
+const (
+	HealthPath = "/__smart_proxy/healthz"
+	ReadyPath  = "/__smart_proxy/readyz"
+)
 
-// SetDraining makes the health check fail so Kubernetes stops sending traffic before shutdown.
+// SetReady marks the proxy as able to serve traffic (caches synced).
+func (h *Handler) SetReady() {
+	h.ready.Store(true)
+}
+
+// SetDraining makes the readiness check fail so Kubernetes stops sending traffic before shutdown.
 func (h *Handler) SetDraining() {
 	h.draining.Store(true)
 }
@@ -95,18 +105,26 @@ func (m *Metrics) MarshalJSON() ([]byte, error) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == HealthPath {
-		if h.draining.Load() {
-			http.Error(w, "shutting down", http.StatusServiceUnavailable)
-			return
-		}
+	switch {
+	case r.URL.Path == HealthPath:
 		w.Write([]byte("ok"))
 		return
-	}
-
-	// Without a cluster connection nothing can be woken or proxied.
-	if h.k8sClient == nil {
+	case r.URL.Path == ReadyPath:
+		switch {
+		case h.draining.Load():
+			http.Error(w, "shutting down", http.StatusServiceUnavailable)
+		case !h.ready.Load():
+			http.Error(w, "starting", http.StatusServiceUnavailable)
+		default:
+			w.Write([]byte("ok"))
+		}
+		return
+	case h.k8sClient == nil:
+		// Without a cluster connection nothing can be woken or proxied.
 		http.Error(w, "Smart Proxy: Kubernetes client unavailable", http.StatusServiceUnavailable)
+		return
+	case !h.ready.Load():
+		http.Error(w, "Smart Proxy is starting", http.StatusServiceUnavailable)
 		return
 	}
 

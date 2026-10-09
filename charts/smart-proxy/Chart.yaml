@@ -33,6 +33,8 @@ annotations:
       email: ivan.sebben.dati@gmail.com
   artifacthub.io/changes: |
     - kind: added
+      description: Manage several namespaces (watchNamespaces), all of them (allNamespaces), or labelled ones (namespaceSelector)
+    - kind: added
       description: Dashboard authentication (basic, token, OIDC, OpenShift oauth-proxy or trusted header), basic auth enabled by default
     - kind: fixed
       description: Patched Ingresses/Routes now target the release Service name instead of a hardcoded "smart-proxy"

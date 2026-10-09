@@ -1,34 +1,24 @@
 {{- if .Values.rbac.create -}}
+{{- $fullname := include "smart-proxy.fullname" . -}}
+{{- $clusterWide := eq (include "smart-proxy.clusterWide" .) "true" -}}
+{{- if $clusterWide }}
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  name: {{ include "smart-proxy.fullname" . }}-role
+  name: {{ $fullname }}-{{ .Release.Namespace }}
   labels:
     {{- include "smart-proxy.labels" . | nindent 4 }}
 rules:
-  - apiGroups: ["apps", "extensions"]
-    resources: ["deployments", "deployments/scale"]
-    verbs: ["get", "list", "watch", "update", "patch"]
+  {{- include "smart-proxy.rbacRules" . | nindent 2 }}
+  # Discover namespaces (and their labels, for namespaceSelector).
   - apiGroups: [""]
-    resources: ["services", "pods"]
+    resources: ["namespaces"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["ingresses"]
-    verbs: ["get", "list", "watch", "update", "patch"]
-  # Read HPAs to wake deployments at their minReplicas and to detect KEDA-managed ones.
-  - apiGroups: ["autoscaling"]
-    resources: ["horizontalpodautoscalers"]
-    verbs: ["get", "list", "watch"]
-  {{- if .Values.rbac.openshiftRoutes }}
-  - apiGroups: ["route.openshift.io"]
-    resources: ["routes"]
-    verbs: ["get", "list", "watch", "update", "patch"]
-  {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
-  name: {{ include "smart-proxy.fullname" . }}-binding
+  name: {{ $fullname }}-{{ .Release.Namespace }}
   labels:
     {{- include "smart-proxy.labels" . | nindent 4 }}
 subjects:
@@ -36,7 +26,37 @@ subjects:
     name: {{ include "smart-proxy.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
 roleRef:
-  kind: Role
-  name: {{ include "smart-proxy.fullname" . }}-role
+  kind: ClusterRole
+  name: {{ $fullname }}-{{ .Release.Namespace }}
   apiGroup: rbac.authorization.k8s.io
+{{- else }}
+{{- range $ns := include "smart-proxy.watchedNamespaces" . | fromJsonArray }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-role
+  namespace: {{ $ns }}
+  labels:
+    {{- include "smart-proxy.labels" $ | nindent 4 }}
+rules:
+  {{- include "smart-proxy.rbacRules" $ | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-binding
+  namespace: {{ $ns }}
+  labels:
+    {{- include "smart-proxy.labels" $ | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "smart-proxy.serviceAccountName" $ }}
+    namespace: {{ $.Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ $fullname }}-role
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- end }}
 {{- end }}

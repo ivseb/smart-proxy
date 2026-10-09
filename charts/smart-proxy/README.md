@@ -28,7 +28,9 @@ Common values (see [`values.yaml`](values.yaml) for the full, commented list and
 | `image.repository` | Container image. | `docker.io/isebben/smart-proxy` |
 | `image.tag` | Image tag (defaults to chart `appVersion`). | `""` |
 | `config.logLevel` | `debug`, `info` or `error`. | `info` |
-| `config.watchNamespace` | Namespace to watch (empty = release namespace). | `""` |
+| `config.watchNamespaces` | Namespaces to manage (empty = release namespace). | `[]` |
+| `config.allNamespaces` | Manage every namespace (creates a ClusterRole). | `false` |
+| `config.namespaceSelector` | Manage namespaces with matching labels, e.g. `smart-proxy=enabled` (ClusterRole). | `""` |
 | `rbac.create` | Create the Role/RoleBinding Smart Proxy needs. | `true` |
 | `rbac.openshiftRoutes` | Also grant permissions on OpenShift Routes. | `true` |
 | `route.enabled` | Expose the admin dashboard via an OpenShift Route. | `false` |

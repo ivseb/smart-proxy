@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -70,7 +71,10 @@ func (s *Store) AddRoute(config *RouteConfig) error {
 	}
 	s.clampActivity(config)
 
-	s.routes[config.ID] = config
+	// Store a copy: callers keep using their struct, which must not alias state that
+	// UpdateActivity changes under the lock.
+	stored := *config
+	s.routes[config.ID] = &stored
 	return s.saveToFile()
 }
 
@@ -81,11 +85,16 @@ func (s *Store) RemoveRoute(id string) error {
 	return s.saveToFile()
 }
 
+// GetRoute returns a copy of a route.
 func (s *Store) GetRoute(id string) (*RouteConfig, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	config, exists := s.routes[id]
-	return config, exists
+	if !exists {
+		return nil, false
+	}
+	c := *config
+	return &c, true
 }
 
 func (s *Store) UpdateActivity(id string) {
@@ -164,4 +173,78 @@ func (s *Store) saveToFile() error {
 	}
 
 	return os.WriteFile(s.filePath, data, 0644)
+}
+
+// Kinds of cluster resources a route can be bound to by patching.
+const (
+	KindIngress = "Ingress"
+	KindRoute   = "Route"
+)
+
+// IngressID is the route ID for a patched Ingress.
+func IngressID(namespace, name string) string { return "ing-" + namespace + "/" + name }
+
+// RouteID is the route ID for a patched OpenShift Route.
+func RouteID(namespace, name string) string { return "route-" + namespace + "/" + name }
+
+// Resource returns the Ingress or Route a route was created by patching. IDs are
+// "ing-<namespace>/<name>" or "route-<namespace>/<name>"; older versions stored
+// "ing-<name>", which refers to the route's own namespace. Manual routes (UUIDs) have none.
+func (r RouteConfig) Resource() (kind, namespace, name string, ok bool) {
+	var rest string
+	switch {
+	case strings.HasPrefix(r.ID, "ing-"):
+		kind, rest = KindIngress, r.ID[len("ing-"):]
+	case strings.HasPrefix(r.ID, "route-"):
+		kind, rest = KindRoute, r.ID[len("route-"):]
+	default:
+		return "", "", "", false
+	}
+	if ns, n, found := strings.Cut(rest, "/"); found {
+		return kind, ns, n, true
+	}
+	return kind, r.Namespace, rest, true
+}
+
+// RemoveResource deletes every route bound to the given Ingress or Route.
+func (s *Store) RemoveResource(kind, namespace, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, r := range s.routes {
+		if k, ns, n, ok := r.Resource(); ok && k == kind && ns == namespace && n == name {
+			delete(s.routes, id)
+		}
+	}
+	return s.saveToFile()
+}
+
+// DefaultIdleTimeout applies to routes saved without one; a zero timeout would put the
+// deployment back to sleep on every watcher tick.
+const DefaultIdleTimeout = 30 * time.Minute
+
+// EffectiveIdleTimeout is the route's idle timeout, or DefaultIdleTimeout when unset.
+func (r RouteConfig) EffectiveIdleTimeout() time.Duration {
+	if r.IdleTimeout <= 0 {
+		return DefaultIdleTimeout
+	}
+	return r.IdleTimeout
+}
+
+// AnnotationJSON is the configuration stored in the smart-proxy/config annotation of a patched
+// Ingress/Route. LastActivity is runtime state; leaving it out avoids rewriting the annotation
+// on every save.
+func (r RouteConfig) AnnotationJSON() string {
+	r.LastActivity = time.Time{}
+	data, _ := json.Marshal(r)
+	return string(data)
+}
+
+// SetActivityForTest overwrites a route's LastActivity, including rewinding it.
+// Only for tests that need idle routes.
+func (s *Store) SetActivityForTest(id string, at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if r, ok := s.routes[id]; ok {
+		r.LastActivity = at
+	}
 }

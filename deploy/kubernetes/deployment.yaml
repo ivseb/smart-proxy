@@ -31,7 +31,7 @@ spec:
               port: proxy
           readinessProbe:
             httpGet:
-              path: /__smart_proxy/healthz
+              path: /__smart_proxy/readyz
               port: proxy
             periodSeconds: 5
             failureThreshold: 1

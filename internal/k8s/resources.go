@@ -1,0 +1,292 @@
+package k8s
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+
+	routev1 "github.com/openshift/api/route/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/intstr"
+)
+
+// Objects returned by these methods are copies, so callers may modify them.
+
+// GetDeploymentStatus returns the desired and ready replicas of a Deployment, from the cache.
+func (c *Client) GetDeploymentStatus(namespace, name string) (int32, int32, error) {
+	dep, err := c.getDeployment(namespace, name)
+	if err != nil {
+		return 0, 0, err
+	}
+	replicas := int32(1)
+	if dep.Spec.Replicas != nil {
+		replicas = *dep.Spec.Replicas
+	}
+	return replicas, dep.Status.ReadyReplicas, nil
+}
+
+func (c *Client) getDeployment(namespace, name string) (*appsv1.Deployment, error) {
+	lister, err := c.deployments(namespace)
+	if err != nil {
+		return nil, err
+	}
+	return lister.Get(name)
+}
+
+// ListDeployments returns the names of the Deployments in a namespace, sorted.
+func (c *Client) ListDeployments(namespace string) ([]string, error) {
+	lister, err := c.deployments(namespace)
+	if err != nil {
+		return nil, err
+	}
+	list, err := lister.List(labels.Everything())
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(list))
+	for _, d := range list {
+		names = append(names, d.Name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+// DeploymentSummary is the replica state shown next to patchable resources.
+type DeploymentSummary struct {
+	Name     string `json:"name"`
+	Replicas int32  `json:"replicas"`
+	Ready    int32  `json:"ready"`
+}
+
+// GetDeploymentProbePaths returns the HTTP paths of the Deployment's probes (readiness,
+// liveness, startup). Requests to them must not count as user activity.
+func (c *Client) GetDeploymentProbePaths(namespace, name string) ([]string, error) {
+	dep, err := c.getDeployment(namespace, name)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var paths []string
+	for _, container := range dep.Spec.Template.Spec.Containers {
+		for _, probe := range []*corev1.Probe{container.ReadinessProbe, container.LivenessProbe, container.StartupProbe} {
+			if probe != nil && probe.HTTPGet != nil && probe.HTTPGet.Path != "" && !seen[probe.HTTPGet.Path] {
+				seen[probe.HTTPGet.Path] = true
+				paths = append(paths, probe.HTTPGet.Path)
+			}
+		}
+	}
+	return paths, nil
+}
+
+// ListIngresses returns the Ingresses of every watched namespace.
+func (c *Client) ListIngresses() ([]*networkingv1.Ingress, error) {
+	var result []*networkingv1.Ingress
+	for _, ns := range c.WatchedNamespaces() {
+		lister, err := c.ingresses(ns)
+		if err != nil {
+			return nil, err
+		}
+		list, err := lister.List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+		for _, ing := range list {
+			result = append(result, ing.DeepCopy())
+		}
+	}
+	sortByNamespaceName(result, func(i *networkingv1.Ingress) metav1.Object { return i })
+	return result, nil
+}
+
+// GetIngress returns a copy of an Ingress from the cache.
+func (c *Client) GetIngress(namespace, name string) (*networkingv1.Ingress, error) {
+	lister, err := c.ingresses(namespace)
+	if err != nil {
+		return nil, err
+	}
+	ing, err := lister.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return ing.DeepCopy(), nil
+}
+
+// UpdateIngress writes an Ingress to the API.
+func (c *Client) UpdateIngress(ing *networkingv1.Ingress) error {
+	if !c.Watches(ing.Namespace) {
+		return fmt.Errorf("%w: %q", errNotWatched, ing.Namespace)
+	}
+	_, err := c.Clientset.NetworkingV1().Ingresses(ing.Namespace).Update(context.TODO(), ing, metav1.UpdateOptions{})
+	return err
+}
+
+// ListRoutes returns the OpenShift Routes of every watched namespace (none if Routes are unavailable).
+func (c *Client) ListRoutes() ([]*routev1.Route, error) {
+	if !c.RoutesEnabled() {
+		return nil, nil
+	}
+	var result []*routev1.Route
+	for _, ns := range c.WatchedNamespaces() {
+		lister, err := c.routes(ns)
+		if err != nil {
+			return nil, err
+		}
+		list, err := lister.List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+		for _, rt := range list {
+			result = append(result, rt.DeepCopy())
+		}
+	}
+	sortByNamespaceName(result, func(r *routev1.Route) metav1.Object { return r })
+	return result, nil
+}
+
+// GetRoute returns a copy of an OpenShift Route from the cache.
+func (c *Client) GetRoute(namespace, name string) (*routev1.Route, error) {
+	lister, err := c.routes(namespace)
+	if err != nil {
+		return nil, err
+	}
+	rt, err := lister.Get(name)
+	if err != nil {
+		return nil, err
+	}
+	return rt.DeepCopy(), nil
+}
+
+// UpdateRoute writes an OpenShift Route to the API.
+func (c *Client) UpdateRoute(rt *routev1.Route) error {
+	if !c.RoutesEnabled() {
+		return fmt.Errorf("OpenShift Routes are not available")
+	}
+	if !c.Watches(rt.Namespace) {
+		return fmt.Errorf("%w: %q", errNotWatched, rt.Namespace)
+	}
+	_, err := c.RouteClientSet.RouteV1().Routes(rt.Namespace).Update(context.TODO(), rt, metav1.UpdateOptions{})
+	return err
+}
+
+// ResolveDeploymentForService finds the Deployment behind a Service: "<name>" without a
+// "-svc" suffix, a Deployment with the same name, or the one whose pods the Service selects.
+// It falls back to the Service name.
+func (c *Client) ResolveDeploymentForService(namespace, serviceName string) (string, error) {
+	deployments, err := c.deployments(namespace)
+	if err != nil {
+		return serviceName, err
+	}
+	if trimmed, ok := strings.CutSuffix(serviceName, "-svc"); ok {
+		if _, err := deployments.Get(trimmed); err == nil {
+			return trimmed, nil
+		}
+	}
+	if _, err := deployments.Get(serviceName); err == nil {
+		return serviceName, nil
+	}
+
+	services, err := c.services(namespace)
+	if err != nil {
+		return serviceName, err
+	}
+	if svc, err := services.Get(serviceName); err == nil && len(svc.Spec.Selector) > 0 {
+		list, _ := deployments.List(labels.Everything())
+		sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+		for _, dep := range list {
+			if selects(svc, dep) {
+				return dep.Name, nil
+			}
+		}
+	}
+	return serviceName, nil
+}
+
+// ResolveServicePort finds the Service port a Route targets: the numeric target port, the
+// port with the given name, or the Service's first port.
+func (c *Client) ResolveServicePort(namespace, serviceName string, routePort *routev1.RoutePort) (int, error) {
+	services, err := c.services(namespace)
+	if err != nil {
+		return 0, err
+	}
+	svc, err := services.Get(serviceName)
+	if err != nil {
+		return 0, err
+	}
+	if len(svc.Spec.Ports) == 0 {
+		return 0, fmt.Errorf("service %s has no ports", serviceName)
+	}
+	if routePort == nil || routePort.TargetPort.String() == "" {
+		return int(svc.Spec.Ports[0].Port), nil
+	}
+	if routePort.TargetPort.Type == intstr.Int {
+		return int(routePort.TargetPort.IntVal), nil
+	}
+	for _, p := range svc.Spec.Ports {
+		if p.Name == routePort.TargetPort.StrVal {
+			return int(p.Port), nil
+		}
+	}
+	return int(svc.Spec.Ports[0].Port), nil
+}
+
+// ResolveServiceForDeployment finds the Service (and its first port) exposing a Deployment:
+// "<name>-svc", a Service with the same name, or one selecting the Deployment's pods.
+func (c *Client) ResolveServiceForDeployment(namespace, deploymentName string) (string, int, error) {
+	services, err := c.services(namespace)
+	if err != nil {
+		return "", 0, err
+	}
+	for _, name := range []string{deploymentName + "-svc", deploymentName} {
+		if svc, err := services.Get(name); err == nil && len(svc.Spec.Ports) > 0 {
+			return svc.Name, int(svc.Spec.Ports[0].Port), nil
+		}
+	}
+
+	dep, err := c.getDeployment(namespace, deploymentName)
+	if err == nil {
+		list, _ := services.List(labels.Everything())
+		sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+		for _, svc := range list {
+			if len(svc.Spec.Ports) > 0 && selects(svc, dep) {
+				return svc.Name, int(svc.Spec.Ports[0].Port), nil
+			}
+		}
+	}
+	return "", 0, fmt.Errorf("could not find service for deployment %s", deploymentName)
+}
+
+// DeploymentForBackend resolves the Deployment behind a Service and returns its replica state.
+func (c *Client) DeploymentForBackend(namespace, serviceName string) (*DeploymentSummary, bool) {
+	name, err := c.ResolveDeploymentForService(namespace, serviceName)
+	if err != nil {
+		return nil, false
+	}
+	replicas, ready, err := c.GetDeploymentStatus(namespace, name)
+	if err != nil {
+		return nil, false
+	}
+	return &DeploymentSummary{Name: name, Replicas: replicas, Ready: ready}, true
+}
+
+// selects reports whether a Service's selector matches a Deployment's pod template labels.
+func selects(svc *corev1.Service, dep *appsv1.Deployment) bool {
+	if len(svc.Spec.Selector) == 0 {
+		return false
+	}
+	return labels.SelectorFromSet(svc.Spec.Selector).Matches(labels.Set(dep.Spec.Template.Labels))
+}
+
+func sortByNamespaceName[T any](items []T, meta func(T) metav1.Object) {
+	sort.Slice(items, func(i, j int) bool {
+		a, b := meta(items[i]), meta(items[j])
+		if a.GetNamespace() != b.GetNamespace() {
+			return a.GetNamespace() < b.GetNamespace()
+		}
+		return a.GetName() < b.GetName()
+	})
+}

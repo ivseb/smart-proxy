@@ -82,3 +82,42 @@ http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
 {{- fail "auth.mode=openshift requires route.enabled or ingress.enabled (the OAuth redirect needs a public host)" -}}
 {{- end -}}
 {{- end -}}
+
+{{/* "true" when Smart Proxy watches all namespaces (optionally filtered by a label selector). */}}
+{{- define "smart-proxy.clusterWide" -}}
+{{- if or .Values.config.allNamespaces .Values.config.namespaceSelector -}}true{{- else -}}false{{- end -}}
+{{- end -}}
+
+{{/* JSON list of the explicitly watched namespaces (the release namespace by default). */}}
+{{- define "smart-proxy.watchedNamespaces" -}}
+{{- $list := .Values.config.watchNamespaces | default list -}}
+{{- if and (not $list) .Values.config.watchNamespace -}}
+{{- $list = list .Values.config.watchNamespace -}}
+{{- end -}}
+{{- if not $list -}}
+{{- $list = list .Release.Namespace -}}
+{{- end -}}
+{{- $list | uniq | toJson -}}
+{{- end -}}
+
+{{/* Permissions Smart Proxy needs in each managed namespace. */}}
+{{- define "smart-proxy.rbacRules" -}}
+- apiGroups: ["apps", "extensions"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: [""]
+  resources: ["services", "pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+# Read HPAs to wake deployments at their minReplicas and to detect KEDA-managed ones.
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list", "watch"]
+{{- if .Values.rbac.openshiftRoutes }}
+- apiGroups: ["route.openshift.io"]
+  resources: ["routes"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+{{- end }}
+{{- end }}

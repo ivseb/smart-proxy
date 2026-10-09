@@ -32,6 +32,7 @@ Idle environments burn money. Preview, dev, staging and demo namespaces sit runn
 | 💤 **Auto-sleep & instant wake** | Scale idle deployments to zero; the next request transparently wakes them back up. |
 | 🔗 **Dependency chains** | Keep `app → api → db` awake together and let them sleep together. Traffic to one keeps the chain alive. |
 | 🔀 **Ingress *and* Routes** | One dashboard for both vanilla Kubernetes Ingresses and OpenShift Routes. |
+| 🗂️ **Many namespaces** | Manage a list of namespaces, all of them, or any namespace you label `smart-proxy=enabled`. |
 | 🎛️ **Admin dashboard** | A modern React UI with real-time logs, status and one-click patching. |
 | 🔐 **Secure by default** | Dashboard sign-in with basic auth, tokens, SSO via OIDC (Keycloak, Entra ID, Google…) or OpenShift login. |
 | 🪶 **Zero app changes** | Fully annotation-based and reversible — nothing to add to your images. |

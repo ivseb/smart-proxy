@@ -26,8 +26,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 
-	// 1. Initialize K8s Client
-	k8sClient, err := k8s.NewClient()
+	// 1. Initialize K8s Client for the watched namespaces
+	ownNamespace := k8s.OwnNamespace()
+	scope, err := k8s.ParseScope(os.Getenv("WATCH_NAMESPACE"), os.Getenv("WATCH_NAMESPACE_SELECTOR"), ownNamespace)
+	if err != nil {
+		log.Fatalf("Invalid namespace configuration: %v", err)
+	}
+	k8sClient, err := k8s.NewClient(scope, ownNamespace)
 	if err != nil {
 		log.Printf("Warning: Failed to initialize Kubernetes client: %v", err)
 		log.Println("Running in offline/demo mode (K8s features disabled)")
@@ -66,15 +71,8 @@ func main() {
 	// 3. Initialize Proxy Handler
 	proxyHandler := proxy.NewHandler(k8sClient, configStore)
 
-	// 4. Initialize Watcher (Auto-scaler)
-	watcherService := watcher.NewWatcher(k8sClient, configStore, serviceName)
-	go watcherService.Start(ctx)
-
-	// 5. Admin Server
+	// 4. Admin Server
 	adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics, serviceName, authn)
-	if k8sClient != nil {
-		go adminServer.SyncRoutesFromIngresses()
-	}
 	// Cancelled at shutdown so long-lived requests (the log stream) end instead of
 	// holding the server open until the deadline.
 	adminCtx, cancelAdmin := context.WithCancel(context.Background())
@@ -101,6 +99,17 @@ func main() {
 			}
 		}(name, srv)
 	}
+
+	// 5. Fill the Kubernetes caches, then start serving and watching. The listeners are
+	// already up so liveness passes meanwhile; readiness waits for this.
+	if k8sClient != nil {
+		if err := k8sClient.Start(ctx, 2*time.Minute); err != nil {
+			log.Fatalf("Failed to start Kubernetes caches: %v", err)
+		}
+		adminServer.SyncRoutesFromCluster()
+	}
+	proxyHandler.SetReady()
+	go watcher.NewWatcher(k8sClient, configStore, serviceName).Start(ctx)
 
 	select {
 	case err := <-errs:

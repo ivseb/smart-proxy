@@ -72,5 +72,8 @@ jobs:
           render --set auth.mode=oidc --set ingress.enabled=true --set ingress.host=admin.example.com \
             --set auth.oidc.issuerURL=https://idp.example.com --set auth.oidc.clientID=sp \
             --set auth.oidc.clientSecret=secret --set 'auth.oidc.allowedDomains={example.com}'
+          render --set 'config.watchNamespaces={team-a,team-b}'
+          render --set config.allNamespaces=true
+          render --set config.namespaceSelector=smart-proxy=enabled
           # Invalid settings must fail the install.
           if render --set auth.mode=oidc 2>/dev/null; then echo "incomplete oidc config was accepted"; exit 1; fi
