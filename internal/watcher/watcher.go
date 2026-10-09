@@ -23,6 +23,14 @@ type Watcher struct {
 	serviceName string            // Service fronting Smart Proxy; patched Ingresses/Routes point at it
 	kedaWarned  map[string]bool   // Deployments already reported as KEDA-managed (only touched by the watcher loop)
 	invalid     map[string]string // Resource -> last reported annotation error, to log each error once
+
+	// Fighting another controller (typically a GitOps tool reverting the cluster to Git) is
+	// detected and stopped for a while; see fights.go.
+	heals  map[string][]time.Time // Resource -> recent re-patches
+	sleeps map[string]sleepRecord // Workload -> our latest sleep
+	paused map[string]time.Time   // Resource or workload -> left alone until
+
+	released map[string]time.Time // Routes of unwatched namespaces restored (or tried) -> when
 }
 
 func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *Watcher {
@@ -32,6 +40,10 @@ func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *
 		serviceName: serviceName,
 		kedaWarned:  make(map[string]bool),
 		invalid:     make(map[string]string),
+		heals:       make(map[string][]time.Time),
+		sleeps:      make(map[string]sleepRecord),
+		paused:      make(map[string]time.Time),
+		released:    make(map[string]time.Time),
 	}
 }
 
@@ -45,6 +57,8 @@ func (w *Watcher) Start(ctx context.Context) {
 		w.reconcileDeclarative()
 		w.checkIdleRoutes()
 		w.healUnpatchedRoutes()
+		w.clearStaleSleepMarks()
+		w.releaseUnwatched()
 	}
 	tick() // Don't make annotation changes wait a full interval after (re)gaining leadership
 	for {
@@ -67,11 +81,17 @@ func (w *Watcher) checkIdleRoutes() {
 	// Scheduled hours: keep those routes (and their dependencies) awake.
 	for _, route := range routes {
 		if route.ScheduledAwake(now) && w.k8sClient.Watches(route.Namespace) {
-			for _, workload := range route.ManagedWorkloads() {
-				w.wake(route.Namespace, workload)
-			}
+			chain := make([]string, 0, len(route.Dependencies)+1)
 			for _, dep := range route.Dependencies {
-				w.wake(route.Namespace, dep.Name)
+				chain = append(chain, dep.Name)
+			}
+			chain = append(chain, route.ManagedWorkloads()...)
+			for _, workload := range chain {
+				w.wake(route.Namespace, workload)
+				// In order: the next one waits for this one to serve (a later tick wakes it).
+				if replicas, ready, err := w.k8sClient.GetDeploymentStatus(route.Namespace, workload); route.StartInOrder && err == nil && (replicas == 0 || ready == 0) {
+					break
+				}
 			}
 		}
 	}
@@ -90,6 +110,13 @@ func (w *Watcher) checkIdleRoutes() {
 		// Always On deployments and those still needed by another active route stay up.
 		// (Not logged: this runs every tick for every idle route and would flood the log view.)
 		// Only the route's own workloads: backends it doesn't manage are left as they are.
+		// Requests may have arrived since the snapshot (this loop makes API calls): check again
+		// right before scaling anything down.
+		if fresh, ok := w.store.GetRoute(route.ID); !ok || time.Since(fresh.LastActivity) <= fresh.EffectiveIdleTimeout() {
+			continue
+		}
+		routes = w.store.GetAllRoutes()
+
 		// A workload woken less than an idle timeout ago stays up: the request that woke it may
 		// have reached another replica, whose activity arrives here a little later.
 		minAwake := route.EffectiveIdleTimeout()
@@ -108,10 +135,25 @@ func (w *Watcher) checkIdleRoutes() {
 	}
 }
 
+func (w *Watcher) clearStaleSleepMarks() {
+	if w.k8sClient == nil {
+		return
+	}
+	if _, err := w.k8sClient.ClearStaleSleepMarks(); err != nil {
+		logger.Printf("Warning: cleaning up sleep annotations: %v", err)
+	}
+}
+
 // sleep scales a deployment to zero if it is running, logging only when something happens.
 func (w *Watcher) sleep(namespace, deployment string, minAwake time.Duration, reason string) {
-	key := namespace + "/" + deployment
+	key := namespace + "/" + canonical(deployment)
+	if !w.maySleep(namespace, deployment, key) {
+		return
+	}
 	slept, err := w.k8sClient.SleepIdleDeployment(namespace, deployment, minAwake)
+	if slept {
+		w.sleeps[key] = sleepRecord{at: time.Now(), external: w.sleeps[key].external}
+	}
 	switch {
 	case errors.Is(err, k8s.ErrManagedByKEDA):
 		if !w.kedaWarned[key] {
@@ -201,12 +243,26 @@ func (w *Watcher) healUnpatchedRoutes() {
 				if rt.Namespace != ns || (rt.Name != name && !(containsFold(hosts, rt.Spec.Host) && samePath(k8s.RoutePath(rt), config.Path))) {
 					continue
 				}
-				if k8s.IsRoutePatched(rt, w.serviceName) {
+				if k8s.IsRoutePatched(rt, w.serviceName) || !w.stillExists(config.ID) {
+					continue
+				}
+				if !w.mayHeal("Route " + rt.Namespace + "/" + rt.Name) {
 					continue
 				}
 				logger.Printf("Self-Healing: Route %s/%s has been unpatched (likely by Helm). Re-applying patch...", rt.Namespace, rt.Name)
 				original := k8s.Backend{Service: config.TargetService, Port: config.TargetPort}
-				if !k8s.IsProxyService(rt.Spec.To.Name, w.serviceName) {
+				if k8s.IsProxyService(rt.Spec.To.Name, w.serviceName) && !k8s.RecordsRouteOriginal(rt) {
+					// Still pointing at us but its annotations were stripped: rebuild what it
+					// pointed at from the route, or unpatching would leave it on Smart Proxy's port.
+					targets := []k8s.RouteTarget{{Service: config.TargetService, Weight: 100}}
+					if len(config.Backends) > 0 {
+						targets = targets[:0]
+						for _, b := range config.Backends {
+							targets = append(targets, k8s.RouteTarget{Service: b.Service, Weight: b.Weight})
+						}
+					}
+					k8s.SetRouteTargets(rt, targets, w.k8sClient.RoutePortFor(ns, config.TargetService, config.TargetPort))
+				} else if !k8s.IsProxyService(rt.Spec.To.Name, w.serviceName) {
 					// The spec holds the application again (e.g. re-deployed by Helm): it is the source of truth.
 					original.Service = rt.Spec.To.Name
 					if port, err := w.k8sClient.ResolveServicePort(rt.Namespace, rt.Spec.To.Name, rt.Spec.Port); err == nil {
@@ -222,11 +278,14 @@ func (w *Watcher) healUnpatchedRoutes() {
 
 		case store.KindIngress:
 			ing, err := w.k8sClient.GetIngress(ns, name)
-			if err != nil || k8s.IsIngressPatched(ing, w.serviceName) {
+			if err != nil || k8s.IsIngressPatched(ing, w.serviceName) || !w.stillExists(config.ID) {
 				continue
 			}
 			original, ok := k8s.IngressBackend(ing)
 			if !ok {
+				continue
+			}
+			if !w.mayHeal("Ingress " + ns + "/" + name) {
 				continue
 			}
 			logger.Printf("Self-Healing: Ingress %s/%s has been unpatched. Re-applying patch...", ns, name)
@@ -249,6 +308,13 @@ func (w *Watcher) healUnpatchedRoutes() {
 			w.report(fmt.Sprintf("Ingress %s/%s", ns, name), w.k8sClient.UpdateIngress(ing))
 		}
 	}
+}
+
+// stillExists reports whether a route is still configured: it may have been deleted (and its
+// resources restored) since this pass took its snapshot.
+func (w *Watcher) stillExists(id string) bool {
+	_, ok := w.store.GetRoute(id)
+	return ok
 }
 
 // retarget follows an application whose Ingress/Route now points at another Service or port

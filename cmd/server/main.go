@@ -130,6 +130,13 @@ func main() {
 		Addr:              proxyAddr,
 		Handler:           proxyHandler,
 		ReadHeaderTimeout: 10 * time.Second,
+		// HTTP/2 without TLS too (h2c), as ingress controllers send gRPC.
+		Protocols: func() *http.Protocols {
+			var p http.Protocols
+			p.SetHTTP1(true)
+			p.SetUnencryptedHTTP2(true)
+			return &p
+		}(),
 	}
 
 	// Prometheus metrics, on their own port: never exposed through the proxy or behind the dashboard login.

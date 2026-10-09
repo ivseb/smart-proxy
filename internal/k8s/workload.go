@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -138,27 +139,37 @@ func (c *Client) getWorkload(namespace, ref string) (*workload, error) {
 	return fromDeployment(d), nil
 }
 
+// apiTimeout bounds calls to the API server made while serving requests: a slow API server
+// must not hold requests (and goroutines) forever.
+const apiTimeout = 10 * time.Second
+
+func apiContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), apiTimeout)
+}
+
 // fetchWorkload reads a workload from the API (fresh, with its current resourceVersion).
 func (c *Client) fetchWorkload(namespace, ref string) (*workload, error) {
+	ctx, cancel := apiContext()
+	defer cancel()
 	kind, name := ParseWorkload(ref)
 	if kind == KindDeploymentConfig {
 		if c.AppsClientSet == nil {
 			return nil, fmt.Errorf("OpenShift DeploymentConfigs are not available")
 		}
-		dc, err := c.AppsClientSet.AppsV1().DeploymentConfigs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		dc, err := c.AppsClientSet.AppsV1().DeploymentConfigs(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
 		return fromDeploymentConfig(dc), nil
 	}
 	if kind == KindStatefulSet {
-		s, err := c.Clientset.AppsV1().StatefulSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		s, err := c.Clientset.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
 			return nil, err
 		}
 		return fromStatefulSet(s), nil
 	}
-	d, err := c.Clientset.AppsV1().Deployments(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	d, err := c.Clientset.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +178,8 @@ func (c *Client) fetchWorkload(namespace, ref string) (*workload, error) {
 
 // patchWorkload applies a JSON merge patch to a workload.
 func (c *Client) patchWorkload(namespace, ref string, patch map[string]any) error {
+	ctx, cancel := apiContext()
+	defer cancel()
 	data, err := json.Marshal(patch)
 	if err != nil {
 		return err
@@ -174,14 +187,14 @@ func (c *Client) patchWorkload(namespace, ref string, patch map[string]any) erro
 	kind, name := ParseWorkload(ref)
 	switch kind {
 	case KindStatefulSet:
-		_, err = c.Clientset.AppsV1().StatefulSets(namespace).Patch(context.TODO(), name, types.MergePatchType, data, metav1.PatchOptions{})
+		_, err = c.Clientset.AppsV1().StatefulSets(namespace).Patch(ctx, name, types.MergePatchType, data, metav1.PatchOptions{})
 	case KindDeploymentConfig:
 		if c.AppsClientSet == nil {
 			return fmt.Errorf("OpenShift DeploymentConfigs are not available")
 		}
-		_, err = c.AppsClientSet.AppsV1().DeploymentConfigs(namespace).Patch(context.TODO(), name, types.MergePatchType, data, metav1.PatchOptions{})
+		_, err = c.AppsClientSet.AppsV1().DeploymentConfigs(namespace).Patch(ctx, name, types.MergePatchType, data, metav1.PatchOptions{})
 	default:
-		_, err = c.Clientset.AppsV1().Deployments(namespace).Patch(context.TODO(), name, types.MergePatchType, data, metav1.PatchOptions{})
+		_, err = c.Clientset.AppsV1().Deployments(namespace).Patch(ctx, name, types.MergePatchType, data, metav1.PatchOptions{})
 	}
 	return err
 }

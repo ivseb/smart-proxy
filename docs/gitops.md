@@ -68,6 +68,8 @@ spec:
 
 Leaving `replicas` out of your Deployment manifests (as you would with an HPA) also avoids the conflict.
 
+Without this, Argo CD's self-heal and Smart Proxy undo each other's changes. Smart Proxy notices: after a resource has been reverted 3 times within 10 minutes (or a workload scaled back up 3 times without a request waking it), it leaves it alone for an hour and logs why.
+
 ## Flux
 
 Flux's kustomize-controller doesn't ignore fields, but it can leave objects alone once created. Annotate the Ingresses/Routes and workloads managed by Smart Proxy with:

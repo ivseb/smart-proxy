@@ -308,3 +308,30 @@ func (c *Client) SleepingDeployments() ([]SleepingWorkload, error) {
 	}
 	return result, nil
 }
+
+// RoutePortFor is the Route port that targets a Service port: by name when it has one (Routes
+// name the endpoint port), else by the port its traffic goes to on the pods. Nil when the
+// Service or port is unknown (the router then uses the first port).
+func (c *Client) RoutePortFor(namespace, service string, port int) *routev1.RoutePort {
+	services, err := c.services(namespace)
+	if err != nil {
+		return nil
+	}
+	svc, err := services.Get(service)
+	if err != nil {
+		return nil
+	}
+	for _, p := range svc.Spec.Ports {
+		if int(p.Port) != port {
+			continue
+		}
+		if p.Name != "" {
+			return &routev1.RoutePort{TargetPort: intstr.FromString(p.Name)}
+		}
+		if p.TargetPort.IntValue() != 0 {
+			return &routev1.RoutePort{TargetPort: intstr.FromInt(p.TargetPort.IntValue())}
+		}
+		return &routev1.RoutePort{TargetPort: intstr.FromInt(port)}
+	}
+	return nil
+}

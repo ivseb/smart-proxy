@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
@@ -93,6 +94,15 @@ type Client struct {
 	cache        *informerCache
 
 	hpaWarnOnce sync.Once
+
+	wakeMu  sync.Mutex
+	waking  map[string]*wakeCall // Wake-ups in progress, shared by concurrent requests
+	wokenAt map[string]time.Time // Recent wake-ups, so a burst of requests doesn't repeat them
+}
+
+type wakeCall struct {
+	done chan struct{}
+	err  error
 }
 
 // NewClient connects to the cluster (in-cluster config, or ~/.kube/config outside a cluster).

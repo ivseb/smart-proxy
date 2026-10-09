@@ -108,7 +108,19 @@ func (s *Server) deleteRoute(id string) ([]patchedResource, error) {
 		return nil, nil
 	}
 	var restored []patchedResource
-	if s.k8sClient != nil {
+	if kind, ns, name, bound := route.Resource(); s.k8sClient != nil && bound && !s.k8sClient.Watches(ns) {
+		// Outside the watched namespaces (not in the caches): restore through the API directly.
+		owns := func(o k8s.RouteOwner) bool {
+			return o.Patched && (o.ID == route.ID || (o.ID == "" && o.Kind == kind && o.Name == name))
+		}
+		workloads := route.ManagedWorkloads()
+		for _, d := range route.Dependencies {
+			workloads = append(workloads, d.Name)
+		}
+		if _, err := s.k8sClient.ReleaseNamespace(ns, owns, workloads); err != nil {
+			return nil, fmt.Errorf("restoring route %s in unwatched namespace %s: %w", id, ns, err)
+		}
+	} else if s.k8sClient != nil {
 		for _, res := range s.patchedByRoute()[id] {
 			if err := s.unpatch(res.ResourceRef); err != nil {
 				return restored, fmt.Errorf("restoring %s %s/%s: %w", res.Kind, res.Namespace, res.Name, err)

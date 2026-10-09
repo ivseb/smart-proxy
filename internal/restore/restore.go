@@ -26,14 +26,30 @@ type Result struct {
 	Errors      []error
 }
 
-// Run unpatches every Ingress and Route in the watched namespaces and wakes every Deployment
-// Smart Proxy put to sleep. It keeps going after a failure and reports all of them.
+// Run wakes every workload Smart Proxy put to sleep and unpatches every Ingress and Route in
+// the watched namespaces. It keeps going after a failure and reports all of them.
 func Run(c *k8s.Client) Result {
 	var res Result
 	fail := func(format string, args ...any) {
 		err := fmt.Errorf(format, args...)
 		logger.Printf("Restore: %v", err)
 		res.Errors = append(res.Errors, err)
+	}
+
+	// Wake first: unpatched resources send traffic straight to the applications, which should
+	// already be starting by then.
+	sleeping, err := c.SleepingDeployments()
+	if err != nil {
+		fail("listing deployments: %w", err)
+	}
+	for _, d := range sleeping {
+		replicas, err := c.WakeDeployment(d.Namespace, d.Ref)
+		if err != nil {
+			fail("waking %s/%s: %w", d.Namespace, d.Ref, err)
+			continue
+		}
+		logger.Printf("Restore: woke %s/%s with %d replica(s)", d.Namespace, d.Ref, replicas)
+		res.Deployments++
 	}
 
 	ings, err := c.ListIngresses()
@@ -74,20 +90,6 @@ func Run(c *k8s.Client) Result {
 		}
 		logger.Printf("Restore: Route %s/%s points at its original backend again", rt.Namespace, rt.Name)
 		res.Routes++
-	}
-
-	sleeping, err := c.SleepingDeployments()
-	if err != nil {
-		fail("listing deployments: %w", err)
-	}
-	for _, d := range sleeping {
-		replicas, err := c.WakeDeployment(d.Namespace, d.Ref)
-		if err != nil {
-			fail("waking %s/%s: %w", d.Namespace, d.Ref, err)
-			continue
-		}
-		logger.Printf("Restore: woke %s/%s with %d replica(s)", d.Namespace, d.Ref, replicas)
-		res.Deployments++
 	}
 
 	logger.Printf("Restore: %d Ingress(es) and %d Route(s) unpatched, %d Deployment(s) woken, %d error(s)",

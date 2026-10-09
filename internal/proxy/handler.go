@@ -160,7 +160,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Find the route for this host and path.
-	route, found := h.matchRoute(requestHost(r), r.URL.Path)
+	// Matched on the cleaned path: "/api/../admin" is "/admin" to the application.
+	route, found := h.matchRoute(requestHost(r), cleanPath(r.URL.Path))
 	if !found {
 		http.NotFound(w, r)
 		return
@@ -219,7 +220,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics.Request(route.Namespace, route.ID)
 
 	proxy := httputil.NewSingleHostReverseProxy(&url.URL{Scheme: "http", Host: host})
-	proxy.Transport = transport
+	proxy.Transport = transportFor(r)
 	if h.Transport != nil {
 		proxy.Transport = h.Transport
 	}

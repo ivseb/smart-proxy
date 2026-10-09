@@ -45,7 +45,26 @@ func NewStoreWithBackend(backend Backend) *Store {
 	if routes, err := backend.Load(); err == nil {
 		s.Replace(routes)
 	}
+	if seeded, ok := backend.(interface{ SetSeed(func() []*RouteConfig) }); ok {
+		seeded.SetSeed(func() []*RouteConfig {
+			all := s.GetAllRoutes()
+			list := make([]*RouteConfig, len(all))
+			for i := range all {
+				list[i] = &all[i]
+			}
+			return list
+		})
+	}
 	return s
+}
+
+// Adopt replaces the routes with a version written elsewhere (e.g. by another replica), unless
+// the backend knows that version predates a write made here.
+func (s *Store) Adopt(version string, routes []*RouteConfig) {
+	if v, ok := s.backend.(interface{ Stale(string) bool }); ok && v.Stale(version) {
+		return
+	}
+	s.Replace(routes)
 }
 
 // AddRoute adds or updates a route. ID is generated if empty.

@@ -3,6 +3,8 @@ package k8s_test
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -175,5 +177,54 @@ func TestRecentlyWokenWorkloadsAreNotSleptAgain(t *testing.T) {
 	}
 	if slept, err := c.SleepDeployment(ns, "web"); !slept || err != nil {
 		t.Fatalf("an explicit sleep must still work: %v %v", slept, err)
+	}
+}
+
+func TestManualScaleUpClearsTheSleepMark(t *testing.T) {
+	c := cluster(t, fakecluster.Options{}, deployment(ns, "web", 2))
+	if slept, _ := c.SleepDeployment(ns, "web"); !slept {
+		t.Fatal("not slept")
+	}
+	d, _ := c.Kube.AppsV1().Deployments(ns).Get(context.TODO(), "web", metav1.GetOptions{})
+	three := int32(3)
+	d.Spec.Replicas = &three // kubectl scale, by hand
+	c.Kube.AppsV1().Deployments(ns).Update(context.TODO(), d, metav1.UpdateOptions{})
+	fakecluster.Eventually(t, func() bool { r, _, _ := c.GetDeploymentStatus(ns, "web"); return r == 3 }, "cache")
+
+	if n, err := c.ClearStaleSleepMarks(); n != 1 || err != nil {
+		t.Fatalf("cleared %d, %v", n, err)
+	}
+	d, _ = c.Kube.AppsV1().Deployments(ns).Get(context.TODO(), "web", metav1.GetOptions{})
+	if _, ok := d.Annotations[k8s.AnnotationReplicasBeforeSleep]; ok {
+		t.Fatal("sleep mark left on a running workload")
+	}
+}
+
+// A burst of requests to a sleeping app makes one wake-up, not one API call per request.
+func TestConcurrentWakesShareOneCall(t *testing.T) {
+	c := cluster(t, fakecluster.Options{}, deployment(ns, "web", 0))
+	c.Kube.ClearActions()
+	var wg sync.WaitGroup
+	var total atomic.Int32
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			n, err := c.WakeDeployment(ns, "web")
+			if err != nil {
+				t.Error(err)
+			}
+			total.Add(n)
+		}()
+	}
+	wg.Wait()
+	calls := 0
+	for _, a := range c.Kube.Actions() {
+		if a.GetResource().Resource == "deployments" && (a.GetVerb() == "get" || a.GetVerb() == "patch") {
+			calls++
+		}
+	}
+	if total.Load() != 1 || calls > 4 {
+		t.Fatalf("woken with %d replica(s) in total, %d API calls", total.Load(), calls)
 	}
 }

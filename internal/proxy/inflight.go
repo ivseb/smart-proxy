@@ -103,13 +103,30 @@ func waitReachable(ctx context.Context, addr string, timeout time.Duration) {
 	}
 }
 
-// transport is shared by all proxied requests, keeping connections to the applications alive.
-var transport = func() *http.Transport {
+// dial connects to the applications (replaced in tests).
+var dial = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+
+// Transports shared by all proxied requests, keeping connections to the applications alive:
+// HTTP/1.1, and HTTP/2 without TLS (h2c) for requests that arrive that way, such as gRPC from
+// an ingress controller configured for it.
+var transport, h2cTransport = func() (*http.Transport, *http.Transport) {
 	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) { return dial(ctx, network, addr) }
 	t.MaxIdleConns = 512
 	t.MaxIdleConnsPerHost = 64
-	return t
+	h2c := t.Clone()
+	h2c.Protocols = new(http.Protocols)
+	h2c.Protocols.SetUnencryptedHTTP2(true)
+	return t, h2c
 }()
+
+// transportFor picks the protocol to the application: the one the request came with.
+func transportFor(r *http.Request) http.RoundTripper {
+	if r.ProtoMajor == 2 && r.TLS == nil {
+		return h2cTransport
+	}
+	return transport
+}
 
 // proxyError answers a request the application couldn't take. Clients that went away are not
 // worth a log line.

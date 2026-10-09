@@ -21,7 +21,10 @@ func EncodeRoutes(routes map[string]*RouteConfig, keepActivity bool) ([]byte, er
 		list = append(list, c)
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
-	return json.MarshalIndent(list, "", "  ")
+	if keepActivity {
+		return json.MarshalIndent(list, "", "  ") // The file is meant to be readable
+	}
+	return json.Marshal(list) // Compact: the ConfigMap is limited to 1 MiB
 }
 
 // DecodeRoutes parses what EncodeRoutes produced (an empty input means no routes).

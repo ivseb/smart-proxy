@@ -254,6 +254,32 @@ func PatchRoute(rt *routev1.Route, proxyService string, original Backend, config
 	rt.Spec.Port.TargetPort = intstr.FromString(ProxyPortName)
 }
 
+// RecordsRouteOriginal reports whether a Route pointing at Smart Proxy still records its original
+// traffic split and port.
+func RecordsRouteOriginal(rt *routev1.Route) bool {
+	return rt.Annotations[AnnotationOriginalBackends] != ""
+}
+
+// SetRouteTargets rewrites a Route's backends: its main Service, the alternates with their
+// weights, and the port. Used to rebuild a Route that points at Smart Proxy but lost the
+// annotations recording what it pointed at.
+func SetRouteTargets(rt *routev1.Route, targets []RouteTarget, port *routev1.RoutePort) {
+	if len(targets) == 0 {
+		return
+	}
+	weight := func(w int32) *int32 { return &w }
+	rt.Spec.To = routev1.RouteTargetReference{Kind: "Service", Name: targets[0].Service}
+	rt.Spec.AlternateBackends = nil
+	if len(targets) > 1 {
+		rt.Spec.To.Weight = weight(targets[0].Weight)
+		for _, t := range targets[1:] {
+			rt.Spec.AlternateBackends = append(rt.Spec.AlternateBackends,
+				routev1.RouteTargetReference{Kind: "Service", Name: t.Service, Weight: weight(t.Weight)})
+		}
+	}
+	rt.Spec.Port = port
+}
+
 // UnpatchRoute restores the original backend and traffic split and removes Smart Proxy's annotations.
 func UnpatchRoute(rt *routev1.Route) error {
 	if rt.Annotations[AnnotationPatched] != "true" {

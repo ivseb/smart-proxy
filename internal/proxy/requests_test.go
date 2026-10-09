@@ -90,6 +90,11 @@ func TestPathsMatchWholeSegmentsAndHostsTrailingDots(t *testing.T) {
 			t.Errorf("%s -> %s, want %s", path, got.ID, want)
 		}
 	}
+	for raw, want := range map[string]string{"/api/../old": "/old", "//api//x/": "/api/x/", "/./": "/", "": "/"} {
+		if got := cleanPath(raw); got != want {
+			t.Errorf("cleanPath(%q) = %q, want %q", raw, got, want)
+		}
+	}
 	r := httptest.NewRequest("GET", "http://web.example.com./", nil)
 	if requestHost(r) != "web.example.com" {
 		t.Errorf("requestHost = %q", requestHost(r))

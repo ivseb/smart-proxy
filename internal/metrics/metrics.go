@@ -95,10 +95,9 @@ func WakeStarted(namespace, deployment, trigger string) {
 	wakeups.WithLabelValues(namespace, deployment, trigger).Inc()
 	wakeMu.Lock()
 	defer wakeMu.Unlock()
-	key := namespace + "/" + deployment
-	if _, ok := wakeStarted[key]; !ok {
-		wakeStarted[key] = time.Now()
-	}
+	// A new wake-up starts a new cold start: one whose end this replica never saw (e.g. ready
+	// while traffic went elsewhere) must not inflate the next one.
+	wakeStarted[namespace+"/"+deployment] = time.Now()
 }
 
 // Ready records that a deployment serves again, completing its cold start if one was pending.
@@ -116,6 +115,9 @@ func Ready(namespace, deployment string) {
 // Slept records that a deployment was scaled to zero.
 func Slept(namespace, deployment, reason string) {
 	sleeps.WithLabelValues(namespace, deployment, reason).Inc()
+	wakeMu.Lock()
+	delete(wakeStarted, namespace+"/"+deployment)
+	wakeMu.Unlock()
 }
 
 // SetLeader records whether this replica leads.

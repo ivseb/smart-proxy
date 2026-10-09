@@ -118,3 +118,12 @@ Patched applications receive their traffic through Smart Proxy, so the chart run
 
 Each replica streams only its own logs to the dashboard.
 
+## Robustness
+
+- **Bursts.** Many requests reaching a sleeping application at once share a single wake-up: one call to the API server, not one per request.
+- **Wake-ups on any replica.** A replica that isn't the leader records when it woke a workload (`smart-proxy/woken-at`); the leader never puts a workload to sleep less than an idle timeout after it was woken, even before that replica's activity reaches it.
+- **Long connections.** WebSockets, server-sent events and long downloads keep their route active for as long as they are open.
+- **gRPC.** Requests arriving over HTTP/2 without TLS (h2c, as ingress controllers send gRPC) reach the application the same way, trailers included.
+- **API server trouble.** Calls made while serving requests time out after 10 seconds; requests are served from the caches meanwhile.
+- **Lost state.** If the routes ConfigMap is deleted, the replicas keep serving from memory and re-create it with every route on the next change.
+

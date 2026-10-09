@@ -46,6 +46,8 @@ kubectl label namespace pr-1234 smart-proxy=enabled
 
 Smart Proxy keeps a local cache of the managed namespaces (Deployments, Services, Ingresses, Routes and HPAs), so proxied requests never wait on the Kubernetes API. Patching, waking and sleeping happen only inside managed namespaces; the API refuses anything else.
 
+When a namespace stops being managed (removed from `watchNamespaces`, or its label removed), Smart Proxy restores it: its patched Ingresses/Routes point at the applications again and the workloads it put to sleep are woken. Its routes stay in the dashboard as *Unwatched* and are patched again if the namespace comes back. This needs Smart Proxy's permissions in that namespace, which `namespaceSelector` and `allNamespaces` keep; with `watchNamespaces`, the chart removes the Role together with the namespace, so delete its routes first.
+
 ## Metrics
 
 Prometheus metrics are served on a separate port (`METRICS_ADDR`, default `:9090`, path `/metrics`), never through the proxy or behind the dashboard login. The chart exposes it on the Service and can create a ServiceMonitor (`metrics.serviceMonitor.enabled`).

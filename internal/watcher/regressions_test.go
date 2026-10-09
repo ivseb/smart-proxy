@@ -37,7 +37,10 @@ func TestHealLeavesSiblingRoutesOfOtherPathsAlone(t *testing.T) {
 	rt, _ := c.Routes.RouteV1().Routes("team-a").Get(context.TODO(), "api", metav1.GetOptions{})
 	k8s.PatchRoute(rt, proxyService, k8s.Backend{Service: "api-svc", Port: 8080}, cfg.AnnotationJSON())
 	c.Routes.RouteV1().Routes("team-a").Update(context.TODO(), rt, metav1.UpdateOptions{})
-	fakecluster.Eventually(t, func() bool { r, err := c.GetRoute("team-a", "api"); return err == nil && k8s.IsRoutePatched(r, proxyService) }, "cache")
+	fakecluster.Eventually(t, func() bool {
+		r, err := c.GetRoute("team-a", "api")
+		return err == nil && k8s.IsRoutePatched(r, proxyService)
+	}, "cache")
 
 	w.healUnpatchedRoutes()
 
@@ -113,5 +116,29 @@ func TestHealFollowsARedeployedService(t *testing.T) {
 	r, _ := st.GetRoute(store.IngressID("team-a", "web"))
 	if got.Annotations[k8s.AnnotationOriginalService] != "web-v2" || r.TargetService != "web-v2" {
 		t.Errorf("original-service=%q, proxy forwards to %s; want web-v2", got.Annotations[k8s.AnnotationOriginalService], r.TargetService)
+	}
+}
+
+// A Route still pointing at Smart Proxy whose annotations were stripped: healing must not record
+// Smart Proxy's own port as the original, or unpatching would break the Route.
+func TestHealRebuildsARouteThatLostItsAnnotations(t *testing.T) {
+	rt := osRoute("team-a", "api", "api.example.com", "/", proxyService)
+	rt.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromString(k8s.ProxyPortName)}
+	svc := &corev1.Service{ObjectMeta: metav1.ObjectMeta{Name: "api-svc", Namespace: "team-a"},
+		Spec: corev1.ServiceSpec{Ports: []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromInt(8080)}}}}
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{}, rt, svc)
+	st := store.NewStore(filepath.Join(t.TempDir(), "routes.json"))
+	st.AddRoute(&store.RouteConfig{ID: store.RouteID("team-a", "api"), Namespace: "team-a", Host: "api.example.com",
+		Deployment: "api", TargetService: "api-svc", TargetPort: 80})
+	fakecluster.Eventually(t, func() bool { _, err := c.ResolveServicePort("team-a", "api-svc", nil); return err == nil }, "cache")
+
+	NewWatcher(c.Client, st, proxyService).healUnpatchedRoutes()
+
+	got, _ := c.Routes.RouteV1().Routes("team-a").Get(context.TODO(), "api", metav1.GetOptions{})
+	if err := k8s.UnpatchRoute(got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.To.Name != "api-svc" || got.Spec.Port == nil || got.Spec.Port.TargetPort.StrVal != "http" {
+		t.Fatalf("restored to %s port %+v", got.Spec.To.Name, got.Spec.Port)
 	}
 }

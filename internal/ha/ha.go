@@ -98,11 +98,13 @@ func (r *Replica) Start(ctx context.Context) error {
 			logger.Printf("Warning: ignoring invalid routes in ConfigMap %s: %v", cm.Name, err)
 			return
 		}
-		r.Store.Replace(routes)
+		r.Store.Adopt(cm.ResourceVersion, routes)
 	}
 	informer.Informer().AddEventHandler(toolscache.ResourceEventHandlerFuncs{
 		AddFunc:    onRoutes,
 		UpdateFunc: func(_, obj interface{}) { onRoutes(obj) },
+		// Deleted (by hand, or garbage-collected): keep serving the routes in memory; the next
+		// change re-creates the ConfigMap with all of them.
 	})
 
 	factory.Start(ctx.Done())

@@ -3,6 +3,7 @@ package proxy
 import (
 	"net"
 	"net/http"
+	"path"
 	"strings"
 
 	"smart-proxy/internal/store"
@@ -32,6 +33,18 @@ func matchPath(route store.RouteConfig, path string) bool {
 		return true
 	}
 	return path[len(prefix)] == '/'
+}
+
+// cleanPath resolves "." and ".." segments and duplicate slashes, keeping a trailing slash.
+func cleanPath(p string) string {
+	if p == "" {
+		return "/"
+	}
+	cleaned := path.Clean("/" + p)
+	if strings.HasSuffix(p, "/") && cleaned != "/" {
+		cleaned += "/"
+	}
+	return cleaned
 }
 
 // matchRoute finds the route serving a host and path: the longest matching path, and a route

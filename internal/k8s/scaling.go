@@ -76,11 +76,55 @@ func (c *Client) SleepIdleDeployment(namespace, name string, minAwake time.Durat
 //   - the HPA's minReplicas, when an HPA manages it (the HPA then takes over);
 //   - the replica count recorded when it was put to sleep;
 //   - 1.
+//
+// Concurrent calls for one workload (a burst of requests to a sleeping app) share a single
+// wake-up, and calls within a few seconds of it return 0 without asking the API server again.
 func (c *Client) WakeDeployment(namespace, name string) (int32, error) {
 	ns := c.ns(namespace)
 	if !c.Watches(ns) {
 		return 0, fmt.Errorf("%w: %q", errNotWatched, ns)
 	}
+	key := ns + "/" + WorkloadRef(ParseWorkload(name))
+	c.wakeMu.Lock()
+	if c.waking == nil {
+		c.waking, c.wokenAt = map[string]*wakeCall{}, map[string]time.Time{}
+	}
+	if at, ok := c.wokenAt[key]; ok && time.Since(at) < recentWake {
+		c.wakeMu.Unlock()
+		return 0, nil
+	}
+	if call, ok := c.waking[key]; ok {
+		c.wakeMu.Unlock()
+		<-call.done
+		return 0, call.err // The first caller reports the replica count
+	}
+	call := &wakeCall{done: make(chan struct{})}
+	c.waking[key] = call
+	c.wakeMu.Unlock()
+
+	target, err := c.wake(ns, name)
+
+	c.wakeMu.Lock()
+	delete(c.waking, key)
+	if err == nil {
+		for k, at := range c.wokenAt {
+			if time.Since(at) >= recentWake {
+				delete(c.wokenAt, k)
+			}
+		}
+		c.wokenAt[key] = time.Now()
+	}
+	c.wakeMu.Unlock()
+	call.err = err
+	close(call.done)
+	return target, err
+}
+
+// recentWake is how long a wake-up is trusted without checking again: the cache shows the new
+// replica count well within it.
+const recentWake = 3 * time.Second
+
+func (c *Client) wake(ns, name string) (int32, error) {
 	hpa := c.lookupHPA(ns, name)
 
 	for attempt := 0; attempt < 2; attempt++ {
@@ -180,4 +224,43 @@ func (c *Client) ns(namespace string) string {
 		return c.DefaultNamespace()
 	}
 	return namespace
+}
+
+// ClearStaleSleepMarks removes the replicas-before-sleep annotation from workloads someone
+// scaled up by hand while they slept. Left there, a later deliberate stop to zero would look
+// like a Smart Proxy sleep, and restore (or uninstall) would wake it.
+func (c *Client) ClearStaleSleepMarks() (int, error) {
+	cleared := 0
+	for _, ns := range c.WatchedNamespaces() {
+		list, err := c.listWorkloads(ns)
+		if err != nil {
+			return cleared, err
+		}
+		for _, w := range list {
+			if _, ok := w.Annotations[AnnotationReplicasBeforeSleep]; !ok || w.replicas() == 0 {
+				continue
+			}
+			err := c.patchWorkload(ns, w.ref(), map[string]any{"metadata": map[string]any{
+				"resourceVersion": w.ResourceVersion, // Unless it changed meanwhile (e.g. slept again)
+				"annotations":     map[string]any{AnnotationReplicasBeforeSleep: nil},
+			}})
+			if err != nil && !apierrors.IsConflict(err) {
+				return cleared, err
+			}
+			if err == nil {
+				cleared++
+			}
+		}
+	}
+	return cleared, nil
+}
+
+// WokenAt returns when Smart Proxy last woke a workload (from the cache), if it ever did.
+func (c *Client) WokenAt(namespace, ref string) (time.Time, bool) {
+	w, err := c.getWorkload(c.ns(namespace), ref)
+	if err != nil {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(time.RFC3339, w.Annotations[AnnotationWokenAt])
+	return t, err == nil
 }
