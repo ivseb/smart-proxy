@@ -38,8 +38,9 @@ for i in $(seq 1 30); do # ingress-nginx's admission webhook takes a moment to a
   sleep 2
 done
 kubectl apply -f test/e2e/app.yaml
-kubectl -n e2e rollout restart deployment/echo >/dev/null 2>&1 || true
+kubectl -n e2e rollout restart deployment/echo deployment/echo-b >/dev/null 2>&1 || true
 kubectl -n e2e rollout status deployment/echo --timeout=120s
+kubectl -n e2e rollout status deployment/echo-b --timeout=120s
 helm upgrade --install e2e charts/smart-proxy -n smart-proxy --create-namespace -f test/e2e/values.yaml --wait --timeout 180s
 kubectl -n smart-proxy rollout restart deployment/e2e-smart-proxy >/dev/null
 kubectl -n smart-proxy rollout status deployment/e2e-smart-proxy --timeout=180s

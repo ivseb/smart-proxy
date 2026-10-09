@@ -15,6 +15,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -72,6 +74,9 @@ func TestE2E(t *testing.T) {
 	t.Run("BurstSharesOneWakeUp", testBurst)
 	t.Run("WebSocketWaitsForTheApp", testWebSocket)
 	t.Run("H2CReachesTheAppAsH2C", testH2C)
+	t.Run("InspectorRecordsRequestsOfEveryReplica", testInspector)
+	t.Run("ConditionsSendRequestsToAnotherBackend", testConditions)
+	t.Run("ProtectionRequiresSignInOrToken", testProtection)
 	t.Run("LongStreamKeepsTheAppAwake", testLongStream)
 	t.Run("NewLeaderPutsTheIdleAppToSleep", testFailover)
 	t.Run("UninstallRestoresEverything", testUninstall)
@@ -281,7 +286,213 @@ func testUninstall(t *testing.T) {
 	})
 }
 
+func testInspector(t *testing.T) {
+	adminJSON(t, "POST", "/api/routes/inspect?id="+url.QueryEscape(routeID)+"&minutes=5", nil, nil)
+	defer adminJSON(t, "POST", "/api/routes/inspect?id="+url.QueryEscape(routeID)+"&minutes=0", nil, nil)
+	time.Sleep(3 * time.Second) // Every replica sees the route change
+
+	marker := fmt.Sprint(time.Now().UnixNano())
+	for i := 0; i < 30; i++ {
+		req, _ := http.NewRequest("GET", proxyURL+"/echo?q=1", nil)
+		req.Host = appHost
+		req.Header.Set("X-E2e-Marker", marker)
+		req.Header.Set("Authorization", "Bearer must-not-be-shown")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+	}
+	var got struct {
+		Requests []struct {
+			Replica string            `json:"replica"`
+			Outcome string            `json:"outcome"`
+			Headers map[string]string `json:"headers"`
+			Query   []string          `json:"query"`
+		} `json:"requests"`
+		Replicas int `json:"replicas"`
+	}
+	adminJSON(t, "GET", "/api/routes/requests?id="+url.QueryEscape(routeID), nil, &got)
+	seen, replicas := 0, map[string]bool{}
+	for _, r := range got.Requests {
+		if r.Headers["X-E2e-Marker"] != marker {
+			continue
+		}
+		seen++
+		replicas[r.Replica] = true
+		if r.Headers["Authorization"] == "Bearer must-not-be-shown" || r.Outcome != "proxied" || len(r.Query) != 1 {
+			t.Fatalf("recorded %+v", r)
+		}
+	}
+	if seen != 30 || len(replicas) != 2 || got.Replicas != 2 {
+		t.Fatalf("recorded %d of 30 requests from replicas %v (reported %d)", seen, replicas, got.Replicas)
+	}
+}
+
+func testConditions(t *testing.T) {
+	route := getRoute(t)
+	route["backends"] = []map[string]any{
+		{"service": "echo", "port": 80, "weight": 100, "workload": "echo", "managed": true},
+		{"service": "echo-b", "port": 80, "weight": 0, "workload": "echo-b", "managed": false,
+			"when": []map[string]any{{"field": "header", "name": "Origin", "op": "equals", "value": "https://idp.e2e.test"}}},
+	}
+	saveRoute(t, route)
+	defer func() {
+		route := getRoute(t)
+		route["backends"] = []any{}
+		saveRoute(t, route)
+	}()
+	time.Sleep(3 * time.Second)
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	variant := func(method, path, origin string) string {
+		req, _ := http.NewRequest(method, proxyURL+path, nil)
+		req.Host = appHost
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var echo struct {
+			Variant string `json:"variant"`
+		}
+		json.NewDecoder(resp.Body).Decode(&echo)
+		return echo.Variant
+	}
+	// The jar keys cookies by URL host: requests go to localhost with Host echo.e2e.test.
+	if v := variant("GET", "/echo", ""); v != "a" {
+		t.Fatalf("ordinary request answered by %q", v)
+	}
+	if v := variant("POST", "/echo", "https://idp.e2e.test"); v != "b" {
+		t.Fatalf("request from the identity provider answered by %q", v)
+	}
+	if v := variant("GET", "/echo", ""); v != "b" {
+		t.Fatalf("follow-up answered by %q: the client wasn't kept on b", v)
+	}
+	variant("GET", "/__smart_proxy/use/default", "")
+	if v := variant("GET", "/echo", ""); v != "a" {
+		t.Fatalf("after use/default answered by %q", v)
+	}
+	variant("GET", "/__smart_proxy/use/echo-b", "")
+	if v := variant("GET", "/echo", ""); v != "b" {
+		t.Fatalf("after use/echo-b answered by %q", v)
+	}
+}
+
+func testProtection(t *testing.T) {
+	adminJSON(t, "POST", "/api/routes/protection/users", map[string]string{"id": routeID, "name": "team", "password": "e2e-password-1"}, nil)
+	var created struct{ Token string }
+	adminJSON(t, "POST", "/api/routes/protection/tokens", map[string]string{"id": routeID, "name": "ci"}, &created)
+	route := getRoute(t)
+	route["protection"] = map[string]any{"enabled": true, "open": []string{"/healthz"}}
+	saveRoute(t, route)
+	defer func() {
+		route := getRoute(t)
+		route["protection"] = nil
+		saveRoute(t, route)
+		adminJSON(t, "DELETE", "/api/routes/protection/users?id="+url.QueryEscape(routeID)+"&name=team", nil, nil)
+		adminJSON(t, "DELETE", "/api/routes/protection/tokens?id="+url.QueryEscape(routeID)+"&name=ci", nil, nil)
+	}()
+	time.Sleep(3 * time.Second)
+
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	call := func(method, path string, header http.Header, body string) (*http.Response, map[string]any) {
+		req, _ := http.NewRequest(method, proxyURL+path, strings.NewReader(body))
+		req.Host = appHost
+		for k, v := range header {
+			req.Header[k] = v
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var echo map[string]any
+		json.NewDecoder(resp.Body).Decode(&echo)
+		return resp, echo
+	}
+
+	if resp, _ := call("GET", "/echo", http.Header{"Accept": {"application/json"}}, ""); resp.StatusCode != 401 {
+		t.Fatalf("without credentials: %d", resp.StatusCode)
+	}
+	if resp, _ := call("GET", "/healthz", nil, ""); resp.StatusCode != 200 {
+		t.Fatalf("open path: %d", resp.StatusCode)
+	}
+	resp, echo := call("GET", "/echo", http.Header{"Authorization": {"Bearer " + created.Token}}, "")
+	if resp.StatusCode != 200 || echo["user"] != "token:ci" || echo["authorization"] != "" {
+		t.Fatalf("with the token: %d %v", resp.StatusCode, echo)
+	}
+
+	resp, _ = call("GET", "/orders", http.Header{"Accept": {"text/html"}}, "")
+	if resp.StatusCode != 302 || !strings.Contains(resp.Header.Get("Location"), "/__smart_proxy/login") {
+		t.Fatalf("browser without login: %d %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	resp, _ = call("POST", "/__smart_proxy/login", http.Header{"Content-Type": {"application/x-www-form-urlencoded"}},
+		url.Values{"password": {"e2e-password-1"}, "next": {"/echo"}}.Encode())
+	if resp.StatusCode != 303 {
+		t.Fatalf("login: %d", resp.StatusCode)
+	}
+	// The jar keeps the login cookie for localhost; send it explicitly to the app host.
+	var session string
+	for _, c := range resp.Cookies() {
+		if strings.HasPrefix(c.Name, "sp_auth_") {
+			session = c.Name + "=" + c.Value
+		}
+	}
+	resp, echo = call("GET", "/echo", http.Header{"Cookie": {session + "; app=1"}}, "")
+	if resp.StatusCode != 200 || echo["user"] != "team" || strings.Contains(fmt.Sprint(echo["cookies"]), "sp_auth_") {
+		t.Fatalf("signed in: %d %v", resp.StatusCode, echo)
+	}
+}
+
 // Helpers
+
+func adminJSON(t *testing.T, method, path string, body, out any) {
+	t.Helper()
+	var data []byte
+	if body != nil {
+		data, _ = json.Marshal(body)
+	}
+	req, _ := http.NewRequest(method, adminURL+path, bytes.NewReader(data))
+	req.SetBasicAuth("admin", "e2e-only")
+	req.Header.Set("Origin", adminURL)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		msg, _ := io.ReadAll(resp.Body)
+		t.Fatalf("%s %s: %d %s", method, path, resp.StatusCode, msg)
+	}
+	if out != nil {
+		json.NewDecoder(resp.Body).Decode(out)
+	}
+}
+
+func getRoute(t *testing.T) map[string]any {
+	t.Helper()
+	var routes []map[string]any
+	adminJSON(t, "GET", "/api/routes", nil, &routes)
+	for _, r := range routes {
+		if r["id"] == routeID {
+			return r
+		}
+	}
+	t.Fatalf("route %s not found", routeID)
+	return nil
+}
+
+func saveRoute(t *testing.T, route map[string]any) {
+	t.Helper()
+	adminJSON(t, "POST", "/api/routes", route, nil)
+}
 
 func admin(method, path string, body []byte) (*http.Response, error) {
 	req, err := http.NewRequest(method, adminURL+path, bytes.NewReader(body))

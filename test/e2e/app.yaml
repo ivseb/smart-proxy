@@ -22,6 +22,7 @@ spec:
         - name: echo
           image: smart-proxy-e2e-echo:latest
           imagePullPolicy: Never
+          env: [{name: VARIANT, value: a}]
           ports: [{name: http, containerPort: 8080}]
           readinessProbe:
             httpGet: {path: /healthz, port: http}
@@ -55,3 +56,36 @@ spec:
               service:
                 name: echo
                 port: {number: 80}
+---
+# A second version of the app, for backend conditions.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-b
+  namespace: e2e
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: echo-b}
+  template:
+    metadata:
+      labels: {app: echo-b}
+    spec:
+      containers:
+        - name: echo
+          image: smart-proxy-e2e-echo:latest
+          imagePullPolicy: Never
+          env: [{name: VARIANT, value: b}]
+          ports: [{name: http, containerPort: 8080}]
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-b
+  namespace: e2e
+spec:
+  selector: {app: echo-b}
+  ports: [{name: http, port: 80, targetPort: http}]

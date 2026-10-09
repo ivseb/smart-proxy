@@ -34,6 +34,8 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]any{
 			"method": r.Method, "path": r.URL.Path, "proto": r.Proto, "host": r.Host,
 			"bytes": n, "sha256": hex.EncodeToString(h.Sum(nil)), "pod": os.Getenv("HOSTNAME"),
+			"variant": os.Getenv("VARIANT"), "user": r.Header.Get("X-Smart-Proxy-User"),
+			"authorization": r.Header.Get("Authorization"), "cookies": r.Header.Get("Cookie"),
 		})
 	})
 	// Server-sent events, one per second.

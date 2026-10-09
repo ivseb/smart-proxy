@@ -66,6 +66,7 @@ nav:
   - Starting:
     - Installation: installation.md
     - Configuration: configuration.md
+    - Inspect, route, protect: routes.md
     - Authentication: authentication.md
     - GitOps: gitops.md
     - Upgrading: upgrading.md

@@ -91,6 +91,8 @@ Smart Proxy answers these paths itself on the proxy port, for every host:
 | `/__smart_proxy/healthz` | Liveness probe (the process is up). |
 | `/__smart_proxy/readyz` | Readiness probe: 503 until the Kubernetes caches are synced, and while shutting down. |
 | `/__smart_proxy/status` | Wake-up status polled by the "waking up" page. |
+| `/__smart_proxy/use/<backend>` | Keeps a browser on one of the route's backends for 12 hours (`default` goes back to the weights). See [Backends](routes.md#backends-send-some-requests-elsewhere). |
+| `/__smart_proxy/login`, `/__smart_proxy/logout` | Sign-in page of a [protected route](routes.md#access-require-sign-in-or-a-token). |
 
 ## Annotations
 

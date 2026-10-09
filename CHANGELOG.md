@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Requests inspector**: record a route's requests for a few minutes and see what was sent (headers with credentials masked, cookie and parameter names) and what Smart Proxy did with each. Gathered from every replica. See [Inspect, route, protect](docs/routes.md).
+- **Backends with conditions**: any route can get more backends (Services of its namespace). Requests matching a backend's conditions (header, cookie, query parameter, path, client IP) go there whatever the weights, and the browser stays there, cross-site posts included (e.g. a SAML response). `/__smart_proxy/use/<backend>` pins a browser for testing.
+- **Built-in protection**: require sign-in (a page on the application's own address, shared password or named people) or access tokens for scripts. The application gets the caller in `X-Smart-Proxy-User`.
+- Smart Proxy keeps its own Secret, `<release>-state` (peer token, login key, hashed credentials), created on first start; the chart grants access to it.
+
 ## 2.2.0 — chart 0.4.0
 
 A robustness release: two rounds of review plus an end-to-end suite on a real cluster (`test/e2e`, run in CI through ingress-nginx) found and fixed the issues below. Upgrading from 2.1: see [the upgrade notes](docs/upgrading.md#from-21-to-22).
