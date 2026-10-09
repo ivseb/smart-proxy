@@ -140,7 +140,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Special Endpoint: Status Check
-	if r.URL.Path == "/__smart_proxy/status" {
+	if strings.HasSuffix(r.URL.Path, "/__smart_proxy/status") {
 		h.handleStatusCheck(w, r)
 		return
 	}
@@ -333,8 +333,19 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 	host := r.URL.Query().Get("host") // Client needs to send this
 
 	if path == "" {
-		http.Error(w, "Missing path", http.StatusBadRequest)
-		return
+		if strings.HasSuffix(r.URL.Path, "/__smart_proxy/status") {
+			path = strings.TrimSuffix(r.URL.Path, "/__smart_proxy/status")
+		}
+		if path == "" {
+			path = "/"
+		}
+	}
+
+	reqHost := r.Host
+	if strings.Contains(reqHost, ":") {
+		if h, _, err := net.SplitHostPort(reqHost); err == nil {
+			reqHost = h
+		}
 	}
 
 	// Find Routes
@@ -351,7 +362,7 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		hostMatches := matchHost(route.Host, checkHost)
+		hostMatches := matchHost(route.Host, checkHost) || matchHost(route.Host, reqHost)
 		if hostMatches && strings.HasPrefix(path, route.Path) {
 			matchedRoutes = append(matchedRoutes, route)
 			found = true

@@ -23,3 +23,9 @@ charts/smart-proxy/*.tgz
 
 # Temp
 tmp/
+
+# Local custom manifests
+local/
+*.local.yaml
+
+

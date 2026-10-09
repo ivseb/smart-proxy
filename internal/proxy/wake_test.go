@@ -2,6 +2,9 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
@@ -113,5 +116,39 @@ func TestWithoutOrderEverythingWakesAtOnce(t *testing.T) {
 		if replicas(t, c, name) == 0 {
 			t.Errorf("%s not woken", name)
 		}
+	}
+}
+
+func TestStatusCheckSubpathAndHost(t *testing.T) {
+	h, _ := newHandler(t, sleeping("web"))
+	h.SetReady()
+	_ = h.store.AddRoute(&store.RouteConfig{
+		ID:            "route-test",
+		Host:          "internal-route.example.com",
+		Path:          "/subapp",
+		TargetService: "web-svc",
+		TargetPort:    8080,
+		Namespace:     ns,
+		Deployment:    "web",
+	})
+
+	// Request from external domain (client host parameter != route host, but HTTP Host header matches route host)
+	// and endpoint is prefixed with the application subpath.
+	req := httptest.NewRequest("GET", "/subapp/dashboard/__smart_proxy/status?path=%2Fsubapp%2Fdashboard&host=external-public.example.com", nil)
+	req.Host = "internal-route.example.com"
+	rec := httptest.NewRecorder()
+
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 OK, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to parse json response: %v", err)
+	}
+	if res["status"] != "waiting" && res["status"] != "ready" {
+		t.Fatalf("unexpected status in response: %v", res["status"])
 	}
 }

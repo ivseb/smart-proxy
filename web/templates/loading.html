@@ -80,8 +80,11 @@
 
         async function checkStatus() {
             try {
-                // Pass current path/host so backend knows which route to check
-                const url = `/__smart_proxy/status?path=${encodeURIComponent(window.location.pathname)}&host=${encodeURIComponent(window.location.host)}`;
+                // Keep the current subpath so path-based reverse proxies forward the status check to Smart Proxy
+                const currentPath = window.location.pathname;
+                const trimmedPath = currentPath.replace(/\/+$/, '');
+                const statusEndpoint = trimmedPath ? `${trimmedPath}/__smart_proxy/status` : `/__smart_proxy/status`;
+                const url = `${statusEndpoint}?path=${encodeURIComponent(currentPath)}&host=${encodeURIComponent(window.location.host)}`;
                 const res = await fetch(url);
                 if (!res.ok) throw new Error("API Error");
 
