@@ -47,8 +47,8 @@ func New(t *testing.T, scope k8s.Scope, opts Options, objects ...runtime.Object)
 		}
 	}
 
-	kube := fake.NewSimpleClientset(kubeObjs...)
-	routes := routefake.NewSimpleClientset(routeObjs...)
+	kube := fake.NewClientset(kubeObjs...)
+	routes := routefake.NewClientset(routeObjs...)
 
 	denied := map[string]bool{}
 	for _, d := range opts.Deny {

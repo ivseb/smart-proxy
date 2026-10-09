@@ -47,7 +47,7 @@ func newReplica(t *testing.T, ctx context.Context, client *fake.Clientset, pod s
 func TestReplicasShareRoutesActivityAndRequests(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	var reqA, reqB atomic.Int64
 	a := newReplica(t, ctx, client, "sp-a", &reqA)
 	b := newReplica(t, ctx, client, "sp-b", &reqB)
@@ -82,7 +82,7 @@ func TestReplicasShareRoutesActivityAndRequests(t *testing.T) {
 func TestOnlyOneReplicaLeads(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 
 	var mu sync.Mutex
 	leaders := map[string]bool{}
