@@ -34,9 +34,7 @@ jobs:
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign
         if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@v3.1.1
-        with:
-          cosign-release: 'v2.1.1'
+        uses: sigstore/cosign-installer@v3
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -79,6 +77,18 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Keyless signature with the workflow's GitHub OIDC identity (recorded in the public
+      # Rekor transparency log). Verify with the command in docs/installation.md.
+      - name: Sign the published image
+        if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: |
+          for tag in ${TAGS}; do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
 
       # The Docker Hub "Overview" is maintained from docker/README.md.
       # Automating it requires a Docker Hub token allowed to edit repository

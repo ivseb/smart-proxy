@@ -103,6 +103,16 @@ For a full local environment with Smart Proxy and a demo application, use the se
     - Add `127.0.0.1 admin.local` to your `/etc/hosts`.
     - Visit `http://admin.local`.
 
+## Verifying the image
+
+Images published from this repository are signed with [cosign](https://docs.sigstore.dev/) using the GitHub Actions identity (keyless):
+
+```bash
+cosign verify docker.io/isebben/smart-proxy:<tag> \
+  --certificate-identity-regexp '^https://github.com/ivseb/smart-proxy/\.github/workflows/docker-publish\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 ## Docker Image
 
 The image is published on Docker Hub:
