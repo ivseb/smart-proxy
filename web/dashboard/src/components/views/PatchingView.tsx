@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
 import { StatusDot } from "@/components/ui/StatusBadge";
 import { apiRequest, errorMessage } from "@/lib/api";
+import { workloadLabel } from "@/lib/format";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { ClusterInfo, PatchableResource } from "@/types/api";
 
@@ -170,7 +171,7 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
                                         </div>
                                         <div className="flex items-center gap-1.5 text-xs text-gray-400">
                                             <StatusDot status={deploymentStatus(res)} />
-                                            {res.deployment ? <>{res.deployment.name} · {res.deployment.ready}/{res.deployment.replicas}</> : "deployment not found"}
+                                            {res.deployment ? <>{workloadLabel(res.deployment.name)} · {res.deployment.ready}/{res.deployment.replicas}</> : "workload not found"}
                                         </div>
                                     </div>
                                     <div className="flex justify-end pl-6 md:pl-0">

@@ -13,7 +13,6 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/informers"
-	appslisters "k8s.io/client-go/listers/apps/v1"
 	autoscalinglisters "k8s.io/client-go/listers/autoscaling/v2"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	networkinglisters "k8s.io/client-go/listers/networking/v1"
@@ -72,6 +71,7 @@ func (c *Client) Start(ctx context.Context, timeout time.Duration) error {
 		ic.factories[ns] = f
 		synced = append(synced,
 			register(f.Apps().V1().Deployments().Informer()),
+			register(f.Apps().V1().StatefulSets().Informer()),
 			register(f.Core().V1().Services().Informer()),
 			register(f.Networking().V1().Ingresses().Informer()),
 		)
@@ -221,14 +221,6 @@ func (c *Client) factory(namespace string) (informers.SharedInformerFactory, err
 		return c.cache.factories[metav1.NamespaceAll], nil
 	}
 	return c.cache.factories[namespace], nil
-}
-
-func (c *Client) deployments(namespace string) (appslisters.DeploymentNamespaceLister, error) {
-	f, err := c.factory(namespace)
-	if err != nil {
-		return nil, err
-	}
-	return f.Apps().V1().Deployments().Lister().Deployments(namespace), nil
 }
 
 func (c *Client) services(namespace string) (corelisters.ServiceNamespaceLister, error) {

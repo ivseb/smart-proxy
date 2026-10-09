@@ -103,7 +103,7 @@ http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
 {{/* Permissions Smart Proxy needs in each managed namespace. */}}
 {{- define "smart-proxy.rbacRules" -}}
 - apiGroups: ["apps", "extensions"]
-  resources: ["deployments", "deployments/scale"]
+  resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale"]
   verbs: ["get", "list", "watch", "update", "patch"]
 - apiGroups: [""]
   resources: ["services", "pods"]

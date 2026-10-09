@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { LogEntry, RouteStatus, StatsData } from "@/types/api";
-import { formatDuration, formatRelative, formatSchedule, splitHosts } from "@/lib/format";
+import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 
 interface RouteDetailViewProps {
@@ -99,7 +99,7 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                 <Card>
                     <CardHeader><CardTitle className="text-sm text-gray-400 font-medium">Target</CardTitle></CardHeader>
                     <CardContent className="space-y-2 text-sm">
-                        <div><span className="text-gray-500">Deployment</span> <span className="font-mono text-gray-100">{route.deployment}</span></div>
+                        <div><span className="text-gray-500">Workload</span> <span className="font-mono text-gray-100">{workloadLabel(route.deployment)}</span></div>
                         <div><span className="text-gray-500">Service</span> <span className="font-mono text-gray-100">{route.target_service}:{route.target_port}</span></div>
                         <div className="flex items-center gap-1.5 text-gray-300">
                             {route.source ? (
@@ -122,7 +122,7 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                         {(route.dependencies || []).length === 0 && <span className="text-sm text-gray-500 italic">None</span>}
                         {(route.dependencies || []).map(d => (
                             <div key={d.name} className="flex justify-between items-center gap-2 text-sm">
-                                <span className="truncate font-mono">{d.name}</span>
+                                <span className="truncate font-mono">{workloadLabel(d.name)}</span>
                                 <span className="flex items-center gap-2 shrink-0">
                                     {d.stop_on_idle && <span className="text-[10px] text-gray-400 border border-gray-600 px-1 rounded">sleeps too</span>}
                                     <StatusBadge status={route.dependency_status?.[d.name] || "Unknown"} />

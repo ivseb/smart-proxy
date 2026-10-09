@@ -81,12 +81,12 @@ func Run(c *k8s.Client) Result {
 		fail("listing deployments: %w", err)
 	}
 	for _, d := range sleeping {
-		replicas, err := c.WakeDeployment(d.Namespace, d.Name)
+		replicas, err := c.WakeDeployment(d.Namespace, d.Ref)
 		if err != nil {
-			fail("waking Deployment %s/%s: %w", d.Namespace, d.Name, err)
+			fail("waking %s/%s: %w", d.Namespace, d.Ref, err)
 			continue
 		}
-		logger.Printf("Restore: woke Deployment %s/%s with %d replica(s)", d.Namespace, d.Name, replicas)
+		logger.Printf("Restore: woke %s/%s with %d replica(s)", d.Namespace, d.Ref, replicas)
 		res.Deployments++
 	}
 

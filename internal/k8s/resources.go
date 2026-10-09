@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	routev1 "github.com/openshift/api/route/v1"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,43 +16,28 @@ import (
 
 // Objects returned by these methods are copies, so callers may modify them.
 
-// GetDeploymentStatus returns the desired and ready replicas of a Deployment, from the cache.
-func (c *Client) GetDeploymentStatus(namespace, name string) (int32, int32, error) {
-	dep, err := c.getDeployment(namespace, name)
+// GetDeploymentStatus returns the desired and ready replicas of a workload (a Deployment name
+// or "statefulset/<name>", see ParseWorkload), from the cache.
+func (c *Client) GetDeploymentStatus(namespace, ref string) (int32, int32, error) {
+	w, err := c.getWorkload(namespace, ref)
 	if err != nil {
 		return 0, 0, err
 	}
-	replicas := int32(1)
-	if dep.Spec.Replicas != nil {
-		replicas = *dep.Spec.Replicas
-	}
-	return replicas, dep.Status.ReadyReplicas, nil
+	return w.replicas(), w.Ready, nil
 }
 
-func (c *Client) getDeployment(namespace, name string) (*appsv1.Deployment, error) {
-	lister, err := c.deployments(namespace)
-	if err != nil {
-		return nil, err
-	}
-	return lister.Get(name)
-}
-
-// ListDeployments returns the names of the Deployments in a namespace, sorted.
+// ListDeployments returns the workloads of a namespace as references: Deployment names, then
+// "statefulset/<name>" for StatefulSets.
 func (c *Client) ListDeployments(namespace string) ([]string, error) {
-	lister, err := c.deployments(namespace)
+	list, err := c.listWorkloads(namespace)
 	if err != nil {
 		return nil, err
 	}
-	list, err := lister.List(labels.Everything())
-	if err != nil {
-		return nil, err
+	refs := make([]string, 0, len(list))
+	for _, w := range list {
+		refs = append(refs, w.ref())
 	}
-	names := make([]string, 0, len(list))
-	for _, d := range list {
-		names = append(names, d.Name)
-	}
-	sort.Strings(names)
-	return names, nil
+	return refs, nil
 }
 
 // DeploymentSummary is the replica state shown next to patchable resources.
@@ -65,14 +49,14 @@ type DeploymentSummary struct {
 
 // GetDeploymentProbePaths returns the HTTP paths of the Deployment's probes (readiness,
 // liveness, startup). Requests to them must not count as user activity.
-func (c *Client) GetDeploymentProbePaths(namespace, name string) ([]string, error) {
-	dep, err := c.getDeployment(namespace, name)
+func (c *Client) GetDeploymentProbePaths(namespace, ref string) ([]string, error) {
+	w, err := c.getWorkload(namespace, ref)
 	if err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
 	var paths []string
-	for _, container := range dep.Spec.Template.Spec.Containers {
+	for _, container := range w.Containers {
 		for _, probe := range []*corev1.Probe{container.ReadinessProbe, container.LivenessProbe, container.StartupProbe} {
 			if probe != nil && probe.HTTPGet != nil && probe.HTTPGet.Path != "" && !seen[probe.HTTPGet.Path] {
 				seen[probe.HTTPGet.Path] = true
@@ -173,20 +157,24 @@ func (c *Client) UpdateRoute(rt *routev1.Route) error {
 	return err
 }
 
-// ResolveDeploymentForService finds the Deployment behind a Service: "<name>" without a
-// "-svc" suffix, a Deployment with the same name, or the one whose pods the Service selects.
-// It falls back to the Service name.
+// ResolveDeploymentForService finds the workload behind a Service: a Deployment named like the
+// Service (without a "-svc" suffix, or exactly), else the workload whose pods the Service
+// selects (Deployments before StatefulSets). It falls back to the Service name.
 func (c *Client) ResolveDeploymentForService(namespace, serviceName string) (string, error) {
-	deployments, err := c.deployments(namespace)
+	workloads, err := c.listWorkloads(namespace)
 	if err != nil {
 		return serviceName, err
 	}
-	if trimmed, ok := strings.CutSuffix(serviceName, "-svc"); ok {
-		if _, err := deployments.Get(trimmed); err == nil {
-			return trimmed, nil
+	byName := map[string]bool{}
+	for _, w := range workloads {
+		if w.Kind == KindDeployment {
+			byName[w.Name] = true
 		}
 	}
-	if _, err := deployments.Get(serviceName); err == nil {
+	if trimmed, ok := strings.CutSuffix(serviceName, "-svc"); ok && byName[trimmed] {
+		return trimmed, nil
+	}
+	if byName[serviceName] {
 		return serviceName, nil
 	}
 
@@ -194,12 +182,10 @@ func (c *Client) ResolveDeploymentForService(namespace, serviceName string) (str
 	if err != nil {
 		return serviceName, err
 	}
-	if svc, err := services.Get(serviceName); err == nil && len(svc.Spec.Selector) > 0 {
-		list, _ := deployments.List(labels.Everything())
-		sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
-		for _, dep := range list {
-			if selects(svc, dep) {
-				return dep.Name, nil
+	if svc, err := services.Get(serviceName); err == nil {
+		for _, w := range workloads {
+			if selects(svc, w.TemplateLabels) {
+				return w.ref(), nil
 			}
 		}
 	}
@@ -234,30 +220,30 @@ func (c *Client) ResolveServicePort(namespace, serviceName string, routePort *ro
 	return int(svc.Spec.Ports[0].Port), nil
 }
 
-// ResolveServiceForDeployment finds the Service (and its first port) exposing a Deployment:
-// "<name>-svc", a Service with the same name, or one selecting the Deployment's pods.
-func (c *Client) ResolveServiceForDeployment(namespace, deploymentName string) (string, int, error) {
+// ResolveServiceForDeployment finds the Service (and its first port) exposing a workload:
+// "<name>-svc", a Service with the same name, or one selecting the workload's pods.
+func (c *Client) ResolveServiceForDeployment(namespace, ref string) (string, int, error) {
+	_, name := ParseWorkload(ref)
 	services, err := c.services(namespace)
 	if err != nil {
 		return "", 0, err
 	}
-	for _, name := range []string{deploymentName + "-svc", deploymentName} {
-		if svc, err := services.Get(name); err == nil && len(svc.Spec.Ports) > 0 {
+	for _, candidate := range []string{name + "-svc", name} {
+		if svc, err := services.Get(candidate); err == nil && len(svc.Spec.Ports) > 0 {
 			return svc.Name, int(svc.Spec.Ports[0].Port), nil
 		}
 	}
 
-	dep, err := c.getDeployment(namespace, deploymentName)
-	if err == nil {
+	if w, err := c.getWorkload(namespace, ref); err == nil {
 		list, _ := services.List(labels.Everything())
 		sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
 		for _, svc := range list {
-			if len(svc.Spec.Ports) > 0 && selects(svc, dep) {
+			if len(svc.Spec.Ports) > 0 && selects(svc, w.TemplateLabels) {
 				return svc.Name, int(svc.Spec.Ports[0].Port), nil
 			}
 		}
 	}
-	return "", 0, fmt.Errorf("could not find service for deployment %s", deploymentName)
+	return "", 0, fmt.Errorf("could not find service for %s", ref)
 }
 
 // DeploymentForBackend resolves the Deployment behind a Service and returns its replica state.
@@ -273,12 +259,12 @@ func (c *Client) DeploymentForBackend(namespace, serviceName string) (*Deploymen
 	return &DeploymentSummary{Name: name, Replicas: replicas, Ready: ready}, true
 }
 
-// selects reports whether a Service's selector matches a Deployment's pod template labels.
-func selects(svc *corev1.Service, dep *appsv1.Deployment) bool {
+// selects reports whether a Service's selector matches a workload's pod template labels.
+func selects(svc *corev1.Service, podLabels map[string]string) bool {
 	if len(svc.Spec.Selector) == 0 {
 		return false
 	}
-	return labels.SelectorFromSet(svc.Spec.Selector).Matches(labels.Set(dep.Spec.Template.Labels))
+	return labels.SelectorFromSet(svc.Spec.Selector).Matches(labels.Set(podLabels))
 }
 
 func sortByNamespaceName[T any](items []T, meta func(T) metav1.Object) {
@@ -291,25 +277,28 @@ func sortByNamespaceName[T any](items []T, meta func(T) metav1.Object) {
 	})
 }
 
-// SleepingDeployments returns the Deployments Smart Proxy put to sleep (they carry the
+// SleepingWorkload is a workload Smart Proxy put to sleep.
+type SleepingWorkload struct {
+	Namespace string
+	Ref       string // See ParseWorkload
+	// Recorded is the replica count saved when it went to sleep.
+	Recorded string
+}
+
+// SleepingDeployments returns the workloads Smart Proxy put to sleep (they carry the
 // replicas-before-sleep annotation and are at zero replicas), in every watched namespace.
-func (c *Client) SleepingDeployments() ([]*appsv1.Deployment, error) {
-	var result []*appsv1.Deployment
+func (c *Client) SleepingDeployments() ([]SleepingWorkload, error) {
+	var result []SleepingWorkload
 	for _, ns := range c.WatchedNamespaces() {
-		lister, err := c.deployments(ns)
+		list, err := c.listWorkloads(ns)
 		if err != nil {
 			return nil, err
 		}
-		list, err := lister.List(labels.Everything())
-		if err != nil {
-			return nil, err
-		}
-		for _, d := range list {
-			if _, ok := d.Annotations[AnnotationReplicasBeforeSleep]; ok && d.Spec.Replicas != nil && *d.Spec.Replicas == 0 {
-				result = append(result, d.DeepCopy())
+		for _, w := range list {
+			if recorded, ok := w.Annotations[AnnotationReplicasBeforeSleep]; ok && w.replicas() == 0 {
+				result = append(result, SleepingWorkload{Namespace: ns, Ref: w.ref(), Recorded: recorded})
 			}
 		}
 	}
-	sortByNamespaceName(result, func(d *appsv1.Deployment) metav1.Object { return d })
 	return result, nil
 }

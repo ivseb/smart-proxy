@@ -3,7 +3,7 @@ import { CalendarClock, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, 
 import type { ClusterInfo, RouteStatus, StatsData } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
-import { formatDuration, formatRelative, formatSchedule, splitHosts } from "@/lib/format";
+import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 import { useStoredState } from "@/hooks/useStoredState";
 
@@ -237,7 +237,7 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
             {/* What it reaches */}
             <div className="min-w-0 space-y-1 pl-4 md:pl-0">
                 <div className="text-sm text-gray-200 truncate" title={`${route.target_service}:${route.target_port}`}>
-                    {route.deployment}
+                    {workloadLabel(route.deployment)}
                     <span className="text-gray-500"> → {route.target_service}:{route.target_port}</span>
                 </div>
                 {deps.length > 0 && (
@@ -245,7 +245,7 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                         {deps.map(dep => (
                             <span key={dep.name} className="inline-flex items-center gap-1.5" title={`${dep.name}: ${route.dependency_status?.[dep.name] || "Unknown"}`}>
                                 <StatusDot status={route.dependency_status?.[dep.name] || "Unknown"} />
-                                {dep.name}
+                                {workloadLabel(dep.name)}
                             </span>
                         ))}
                     </div>

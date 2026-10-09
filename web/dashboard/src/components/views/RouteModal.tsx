@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import type { ClusterInfo, RouteConfig, Schedule } from "@/types/api";
 import { Button } from "@/components/ui/Button";
-import { formatDuration, parseDuration, splitHosts } from "@/lib/format";
+import { formatDuration, parseDuration, splitHosts, workloadLabel } from "@/lib/format";
 
 const DEFAULT_TIMEOUT = "30m";
 const DAYS: { value: string; label: string }[] = [
@@ -195,11 +195,11 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                             </select>
                         </div>
                         <div>
-                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-deployment">Deployment</label>
+                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-deployment">Workload</label>
                             <select id="rm-deployment" className={inputClass} value={formData.deployment} onChange={e => selectDeployment(e.target.value)} required>
-                                <option value="">Select a deployment…</option>
-                                {formData.deployment && !deployments.includes(formData.deployment) && <option value={formData.deployment}>{formData.deployment}</option>}
-                                {deployments.map(d => <option key={d} value={d}>{d}</option>)}
+                                <option value="">Select a Deployment or StatefulSet…</option>
+                                {formData.deployment && !deployments.includes(formData.deployment) && <option value={formData.deployment}>{workloadLabel(formData.deployment)}</option>}
+                                {deployments.map(d => <option key={d} value={d}>{workloadLabel(d)}</option>)}
                             </select>
                         </div>
                     </div>
@@ -274,7 +274,7 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                             <div key={dep.name} className="flex justify-between items-center gap-2 bg-gray-800 px-3 py-2 rounded border border-gray-600">
                                 <span className="flex items-center gap-2 min-w-0">
                                     {formData.start_in_order && <span className="text-gray-500 font-mono text-xs">{idx + 1}.</span>}
-                                    <span className="text-white font-mono text-sm truncate">{dep.name}</span>
+                                    <span className="text-white font-mono text-sm truncate">{workloadLabel(dep.name)}</span>
                                 </span>
                                 <div className="flex items-center gap-3 shrink-0">
                                     <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-300">
@@ -311,7 +311,7 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                                 <option value="">Add a dependency…</option>
                                 {deployments
                                     .filter(d => d !== formData.deployment && !formData.dependencies?.some(dep => dep.name === d))
-                                    .map(d => <option key={d} value={d}>{d}</option>)}
+                                    .map(d => <option key={d} value={d}>{workloadLabel(d)}</option>)}
                             </select>
                             <Button type="button" size="sm" onClick={addDependency} disabled={!selectedDepToAdd} aria-label="Add dependency"><Plus size={16} /></Button>
                         </div>

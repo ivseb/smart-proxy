@@ -11,7 +11,7 @@ metadata:
   namespace: test-namespace
 rules:
   - apiGroups: ["apps", "extensions"]
-    resources: ["deployments", "deployments/scale"]
+    resources: ["deployments", "deployments/scale", "statefulsets", "statefulsets/scale"]
     verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["services", "pods"]

@@ -1,8 +1,6 @@
 package k8s
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -11,9 +9,7 @@ import (
 
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/types"
 )
 
 // AnnotationReplicasBeforeSleep records the replica count a Deployment had when Smart Proxy
@@ -39,23 +35,20 @@ func (c *Client) SleepDeployment(namespace, name string) (bool, error) {
 		return false, ErrManagedByKEDA
 	}
 
-	dep, err := c.Clientset.AppsV1().Deployments(ns).Get(context.TODO(), name, metav1.GetOptions{})
+	w, err := c.fetchWorkload(ns, name)
 	if err != nil {
 		return false, err
 	}
-	replicas := int32(1)
-	if dep.Spec.Replicas != nil {
-		replicas = *dep.Spec.Replicas
-	}
+	replicas := w.replicas()
 	if replicas == 0 {
 		return false, nil
 	}
 
 	// One patch for the annotation and the scale-down; resourceVersion makes it fail
 	// instead of overwriting a concurrent change (e.g. a wake-up).
-	err = c.patchDeployment(ns, name, map[string]any{
+	err = c.patchWorkload(ns, name, map[string]any{
 		"metadata": map[string]any{
-			"resourceVersion": dep.ResourceVersion,
+			"resourceVersion": w.ResourceVersion,
 			"annotations":     map[string]any{AnnotationReplicasBeforeSleep: strconv.Itoa(int(replicas))},
 		},
 		"spec": map[string]any{"replicas": 0},
@@ -76,18 +69,18 @@ func (c *Client) WakeDeployment(namespace, name string) (int32, error) {
 	hpa := c.lookupHPA(ns, name)
 
 	for attempt := 0; attempt < 2; attempt++ {
-		dep, err := c.Clientset.AppsV1().Deployments(ns).Get(context.TODO(), name, metav1.GetOptions{})
+		w, err := c.fetchWorkload(ns, name)
 		if err != nil {
 			return 0, err
 		}
-		if dep.Spec.Replicas == nil || *dep.Spec.Replicas > 0 {
+		if w.replicas() > 0 {
 			return 0, nil
 		}
 
-		target := WakeReplicas(dep.Annotations, hpa)
-		err = c.patchDeployment(ns, name, map[string]any{
+		target := WakeReplicas(w.Annotations, hpa)
+		err = c.patchWorkload(ns, name, map[string]any{
 			"metadata": map[string]any{
-				"resourceVersion": dep.ResourceVersion,
+				"resourceVersion": w.ResourceVersion,
 				"annotations":     map[string]any{AnnotationReplicasBeforeSleep: nil},
 			},
 			"spec": map[string]any{"replicas": target},
@@ -118,7 +111,8 @@ func WakeReplicas(annotations map[string]string, hpa *autoscalingv2.HorizontalPo
 }
 
 // FindHPA returns the HorizontalPodAutoscaler targeting the Deployment, or nil if there is none.
-func (c *Client) FindHPA(namespace, deploymentName string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
+func (c *Client) FindHPA(namespace, ref string) (*autoscalingv2.HorizontalPodAutoscaler, error) {
+	kind, name := ParseWorkload(ref)
 	lister, err := c.hpas(namespace)
 	if err != nil {
 		return nil, err
@@ -128,8 +122,7 @@ func (c *Client) FindHPA(namespace, deploymentName string) (*autoscalingv2.Horiz
 		return nil, err
 	}
 	for _, hpa := range list {
-		ref := hpa.Spec.ScaleTargetRef
-		if ref.Kind == "Deployment" && ref.Name == deploymentName {
+		if target := hpa.Spec.ScaleTargetRef; target.Kind == kind && target.Name == name {
 			return hpa.DeepCopy(), nil
 		}
 	}
@@ -162,15 +155,6 @@ func IsKEDAManaged(hpa *autoscalingv2.HorizontalPodAutoscaler) bool {
 		}
 	}
 	return false
-}
-
-func (c *Client) patchDeployment(namespace, name string, patch map[string]any) error {
-	data, err := json.Marshal(patch)
-	if err != nil {
-		return err
-	}
-	_, err = c.Clientset.AppsV1().Deployments(namespace).Patch(context.TODO(), name, types.MergePatchType, data, metav1.PatchOptions{})
-	return err
 }
 
 func (c *Client) ns(namespace string) string {

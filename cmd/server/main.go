@@ -158,7 +158,7 @@ func main() {
 			sleeping, _ := k8sClient.SleepingDeployments()
 			namespaces, recorded := make([]string, len(sleeping)), make([]string, len(sleeping))
 			for i, d := range sleeping {
-				namespaces[i], recorded[i] = d.Namespace, d.Annotations[k8s.AnnotationReplicasBeforeSleep]
+				namespaces[i], recorded[i] = d.Namespace, d.Recorded
 			}
 			return metrics.SleepingFromAnnotations(namespaces, recorded)
 		})

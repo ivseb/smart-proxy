@@ -52,3 +52,9 @@ export function formatSchedule(s: { days?: string[]; from: string; to: string })
 export function splitHosts(host: string): string[] {
     return host.split(",").map(h => h.trim()).filter(Boolean);
 }
+
+// workloadLabel shows a workload reference ("web" or "statefulset/db") readably.
+export function workloadLabel(ref: string): string {
+    const [prefix, name] = ref.includes("/") ? ref.split("/", 2) : ["", ref];
+    return prefix.toLowerCase().startsWith("statefulset") || prefix.toLowerCase() === "sts" ? `${name} · StatefulSet` : name;
+}
