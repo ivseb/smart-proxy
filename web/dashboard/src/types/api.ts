@@ -25,6 +25,7 @@ export interface RouteConfig {
     always_on?: boolean;
     start_in_order?: boolean;
     schedule?: Schedule | null;
+    declarative?: boolean; // Defined by smart-proxy/* annotations on its Ingress/Route
 }
 
 export type DeploymentStatus = "Ready" | "Scaling" | "Sleep" | "Error" | "Unwatched" | "Offline";

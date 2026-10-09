@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CalendarClock, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
+import { CalendarClock, FileCode2, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
 import type { ClusterInfo, RouteStatus, StatsData } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
@@ -230,6 +230,11 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-400 pl-4 min-w-0">
                     <SourceChip route={route} />
+                    {route.declarative && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-200 shrink-0" title="Configured by smart-proxy/* annotations on the resource (e.g. from Git)">
+                            <FileCode2 size={11} /> annotations
+                        </span>
+                    )}
                     {showNamespace && <span className="font-mono truncate">{route.namespace}</span>}
                 </div>
             </div>

@@ -17,6 +17,9 @@ const (
 	AnnotationOriginalPort     = "smart-proxy/original-port"
 	AnnotationOriginalBackends = "smart-proxy/original-backends"
 	AnnotationConfig           = "smart-proxy/config"
+	// AnnotationDeclarative marks resources patched because their own annotations asked for it
+	// (smart-proxy/enabled), as opposed to from the dashboard.
+	AnnotationDeclarative = "smart-proxy/declarative"
 )
 
 // LegacyServiceName is the Service name older versions always patched resources to,
@@ -223,7 +226,7 @@ func setAnnotations(annotations *map[string]string, original Backend, configJSON
 }
 
 func clearAnnotations(annotations map[string]string) {
-	for _, key := range []string{AnnotationPatched, AnnotationOriginalService, AnnotationOriginalPort, AnnotationOriginalBackends, AnnotationConfig} {
+	for _, key := range []string{AnnotationPatched, AnnotationOriginalService, AnnotationOriginalPort, AnnotationOriginalBackends, AnnotationConfig, AnnotationDeclarative} {
 		delete(annotations, key)
 	}
 }

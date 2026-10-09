@@ -35,6 +35,9 @@ type RouteConfig struct {
 	StartInOrder bool `json:"start_in_order"`
 	// Schedule keeps the route awake during given hours, regardless of traffic.
 	Schedule *Schedule `json:"schedule,omitempty"`
+	// Declarative routes are defined by annotations on their Ingress/Route (smart-proxy/enabled);
+	// changes made elsewhere are overwritten by those annotations.
+	Declarative bool `json:"declarative,omitempty"`
 }
 
 // Kinds of cluster resources a route can be bound to by patching.

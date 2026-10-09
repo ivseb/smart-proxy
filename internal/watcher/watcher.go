@@ -16,8 +16,9 @@ import (
 type Watcher struct {
 	k8sClient   *k8s.Client
 	store       *store.Store
-	serviceName string          // Service fronting Smart Proxy; patched Ingresses/Routes point at it
-	kedaWarned  map[string]bool // Deployments already reported as KEDA-managed (only touched by the watcher loop)
+	serviceName string            // Service fronting Smart Proxy; patched Ingresses/Routes point at it
+	kedaWarned  map[string]bool   // Deployments already reported as KEDA-managed (only touched by the watcher loop)
+	invalid     map[string]string // Resource -> last reported annotation error, to log each error once
 }
 
 func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *Watcher {
@@ -26,6 +27,7 @@ func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *
 		store:       store,
 		serviceName: serviceName,
 		kedaWarned:  make(map[string]bool),
+		invalid:     make(map[string]string),
 	}
 }
 
@@ -35,13 +37,18 @@ func (w *Watcher) Start(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
+	tick := func() {
+		w.reconcileDeclarative()
+		w.checkIdleRoutes()
+		w.healUnpatchedRoutes()
+	}
+	tick() // Don't make annotation changes wait a full interval after (re)gaining leadership
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			w.checkIdleRoutes()
-			w.healUnpatchedRoutes()
+			tick()
 		}
 	}
 }

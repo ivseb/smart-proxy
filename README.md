@@ -37,7 +37,7 @@ Idle environments burn money. Preview, dev, staging and demo namespaces sit runn
 | 🗂️ **Many namespaces** | Manage a list of namespaces, all of them, or any namespace you label `smart-proxy=enabled`. |
 | 🎛️ **Admin dashboard** | Routes grouped by namespace with search and filters, live status and "sleeps in" timers, one-click patching, wake and sleep. |
 | 🔐 **Secure by default** | Dashboard sign-in with basic auth, tokens, SSO via OIDC (Keycloak, Entra ID, Google…) or OpenShift login. |
-| 🪶 **Zero app changes** | Fully annotation-based and reversible — nothing to add to your images. |
+| 🪶 **Zero app changes** | Fully annotation-based and reversible — nothing to add to your images. Opt in from the dashboard or with annotations in Git. |
 
 ## 🎬 How it works
 
@@ -85,6 +85,7 @@ Then open the dashboard at [http://admin.local](http://admin.local) *(add `127.0
 - [Installation Guide](docs/installation.md) — Helm, from source, and all values
 - [Architecture Overview](docs/architecture.md) — how patching, waking and dependencies work
 - [Configuration Reference](docs/configuration.md) — environment variables and annotations
+- [GitOps](docs/gitops.md) — configure routes with annotations; Argo CD and Flux settings
 - [Authentication](docs/authentication.md) — securing the dashboard with basic, token, OIDC/SSO or OpenShift login
 
 ## 🤝 Contributing

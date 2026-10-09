@@ -33,6 +33,8 @@ annotations:
       email: ivan.sebben.dati@gmail.com
   artifacthub.io/changes: |
     - kind: added
+      description: Declarative routes from smart-proxy/* annotations on Ingresses/Routes (GitOps)
+    - kind: added
       description: StatefulSets can be put to sleep and woken like Deployments (Role covers statefulsets)
     - kind: added
       description: Prometheus metrics on a dedicated port, with an optional ServiceMonitor

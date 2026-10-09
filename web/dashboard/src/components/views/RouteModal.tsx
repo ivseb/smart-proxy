@@ -178,6 +178,12 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                    {initialData?.declarative && (
+                        <div className="bg-purple-900/20 border border-purple-800 text-purple-200 px-4 py-3 rounded-lg text-sm">
+                            This route is defined by <span className="font-mono">smart-proxy/*</span> annotations on its Ingress/Route.
+                            Changes made here are overwritten within 30 seconds; edit the annotations instead (usually in Git).
+                        </div>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-namespace">Namespace</label>
