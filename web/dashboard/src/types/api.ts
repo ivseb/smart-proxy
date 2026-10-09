@@ -3,6 +3,13 @@ export interface DependencyConfig {
     stop_on_idle: boolean;
 }
 
+export interface Schedule {
+    days?: string[]; // "mon".."sun"; empty = every day
+    from: string; // "HH:MM"
+    to: string;
+    timezone?: string; // IANA name
+}
+
 export interface RouteConfig {
     id: string;
     host: string;
@@ -17,6 +24,7 @@ export interface RouteConfig {
     inject_badge: boolean;
     always_on?: boolean;
     start_in_order?: boolean;
+    schedule?: Schedule | null;
 }
 
 export type DeploymentStatus = "Ready" | "Scaling" | "Sleep" | "Error" | "Unwatched" | "Offline";
@@ -35,6 +43,7 @@ export interface RouteStatus extends RouteConfig {
     source: ResourceRef | null; // null for manually configured routes
     sleeps_at: string | null; // null when it never sleeps (Always On, manual, asleep)
     effective_idle_timeout: number; // nanoseconds
+    schedule_active: boolean;
 }
 
 export interface DeploymentSummary {

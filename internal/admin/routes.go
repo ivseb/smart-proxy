@@ -41,6 +41,8 @@ type RouteStatus struct {
 	SleepsAt *time.Time `json:"sleeps_at"`
 	// EffectiveIdleTimeout is the timeout in force, in nanoseconds (idle_timeout may be 0).
 	EffectiveIdleTimeout time.Duration `json:"effective_idle_timeout"`
+	// ScheduleActive is true while the route's schedule keeps it awake.
+	ScheduleActive bool `json:"schedule_active"`
 }
 
 func (s *Server) deploymentStatus(namespace, name string) (string, int32, int32) {
@@ -73,9 +75,10 @@ func (s *Server) routeStatus(r store.RouteConfig) RouteStatus {
 	for _, dep := range r.Dependencies {
 		rs.DependencyStatus[dep.Name], _, _ = s.deploymentStatus(r.Namespace, dep.Name)
 	}
+	rs.ScheduleActive = r.ScheduledAwake(time.Now())
 	if kind, ns, name, ok := r.Resource(); ok {
 		rs.Source = &ResourceRef{Kind: kind, Namespace: ns, Name: name}
-		if !r.AlwaysOn && rs.Status != StatusSleep {
+		if !r.AlwaysOn && !rs.ScheduleActive && rs.Status != StatusSleep {
 			at := r.LastActivity.Add(rs.EffectiveIdleTimeout)
 			rs.SleepsAt = &at
 		}
@@ -105,6 +108,12 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 		if route.Namespace == "" || route.Deployment == "" {
 			http.Error(w, "Missing required fields", http.StatusBadRequest)
 			return
+		}
+		if route.Schedule != nil {
+			if err := route.Schedule.Validate(); err != nil {
+				http.Error(w, "Invalid schedule: "+err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		if s.k8sClient != nil && !s.k8sClient.Watches(route.Namespace) {
 			http.Error(w, "Namespace "+route.Namespace+" is not managed by Smart Proxy", http.StatusForbidden)

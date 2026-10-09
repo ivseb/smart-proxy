@@ -109,3 +109,28 @@ func TestHealMigratesLegacyNumericPortPatch(t *testing.T) {
 		t.Fatalf("not migrated: backend=%+v annotations=%v", got.Spec.Rules[0].HTTP.Paths[0].Backend, got.Annotations)
 	}
 }
+
+func TestScheduledRoutesStayAwake(t *testing.T) {
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{},
+		dep("team-a", "web", 0), dep("team-a", "db", 0), dep("team-a", "api", 1))
+	st := store.NewStore(filepath.Join(t.TempDir(), "routes.json"))
+	w := NewWatcher(c.Client, st, proxyService)
+
+	now := time.Now().UTC()
+	window := &store.Schedule{From: now.Add(-time.Hour).Format("15:04"), To: now.Add(time.Hour).Format("15:04")}
+	st.AddRoute(&store.RouteConfig{ID: store.IngressID("team-a", "web"), Namespace: "team-a", Deployment: "web",
+		Dependencies: []store.DependencyConfig{{Name: "db", StopOnIdle: true}}, Schedule: window})
+	st.AddRoute(&store.RouteConfig{ID: store.IngressID("team-a", "api"), Namespace: "team-a", Deployment: "api",
+		Schedule: &store.Schedule{From: now.Add(2 * time.Hour).Format("15:04"), To: now.Add(3 * time.Hour).Format("15:04")}})
+	for _, id := range []string{store.IngressID("team-a", "web"), store.IngressID("team-a", "api")} {
+		st.SetActivityForTest(id, time.Now().Add(-time.Hour)) // Idle for an hour
+	}
+
+	w.checkIdleRoutes()
+
+	for name, want := range map[string]int32{"web": 1, "db": 1, "api": 0} {
+		if got := replicas(t, c, "team-a", name); got != want {
+			t.Errorf("%s: replicas = %d, want %d", name, got, want)
+		}
+	}
+}

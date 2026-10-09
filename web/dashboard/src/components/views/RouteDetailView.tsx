@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { LogEntry, RouteStatus, StatsData } from "@/types/api";
-import { formatDuration, formatRelative, splitHosts } from "@/lib/format";
+import { formatDuration, formatRelative, formatSchedule, splitHosts } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 
 interface RouteDetailViewProps {
@@ -81,11 +81,18 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                         </div>
                         <div className="text-sm text-gray-400">
                             {route.always_on ? "Always on: never put to sleep"
+                                : route.schedule_active ? "Kept awake by its schedule"
                                 : !route.source ? "Manual route: not put to sleep automatically"
                                     : route.sleeps_at ? <>Sleeps <span className="text-gray-200">{formatRelative(route.sleeps_at, now)}</span> without traffic</>
                                         : "Wakes on the next request"}
                         </div>
                         <div className="text-xs text-gray-500">Idle timeout {formatDuration(route.effective_idle_timeout)}</div>
+                        {route.schedule && (
+                            <div className="text-xs text-gray-400">
+                                Awake {formatSchedule(route.schedule)}{route.schedule.timezone ? ` (${route.schedule.timezone})` : " (UTC)"}
+                                {route.schedule_active && <span className="text-green-400"> · now</span>}
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
 

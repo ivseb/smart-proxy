@@ -33,6 +33,8 @@ type RouteConfig struct {
 	// previous one is ready, and the main deployment last (e.g. database, then API, then app).
 	// Otherwise everything is woken at once.
 	StartInOrder bool `json:"start_in_order"`
+	// Schedule keeps the route awake during given hours, regardless of traffic.
+	Schedule *Schedule `json:"schedule,omitempty"`
 }
 
 // Kinds of cluster resources a route can be bound to by patching.

@@ -1,10 +1,24 @@
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
-import type { ClusterInfo, RouteConfig } from "@/types/api";
+import type { ClusterInfo, RouteConfig, Schedule } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { formatDuration, parseDuration, splitHosts } from "@/lib/format";
 
 const DEFAULT_TIMEOUT = "30m";
+const DAYS: { value: string; label: string }[] = [
+    { value: "mon", label: "Mon" }, { value: "tue", label: "Tue" }, { value: "wed", label: "Wed" },
+    { value: "thu", label: "Thu" }, { value: "fri", label: "Fri" }, { value: "sat", label: "Sat" }, { value: "sun", label: "Sun" },
+];
+
+function defaultSchedule(): Schedule {
+    let timezone = "UTC";
+    try {
+        timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    } catch {
+        // Keep UTC
+    }
+    return { days: ["mon", "tue", "wed", "thu", "fri"], from: "08:00", to: "19:00", timezone };
+}
 
 interface ConnectedResource {
     name: string;
@@ -303,6 +317,11 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                         </div>
                     </div>
 
+                    <ScheduleEditor
+                        schedule={formData.schedule || null}
+                        onChange={schedule => setFormData(prev => ({ ...prev, schedule }))}
+                    />
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                         <div>
                             <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-timeout">Sleep after</label>
@@ -333,6 +352,54 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                     </div>
                 </form>
             </div>
+        </div>
+    );
+}
+
+function ScheduleEditor({ schedule, onChange }: { schedule: Schedule | null; onChange: (s: Schedule | null) => void }) {
+    const days = schedule?.days || [];
+    const toggleDay = (day: string) => {
+        if (!schedule) return;
+        const next = days.includes(day) ? days.filter(d => d !== day) : [...days, day];
+        onChange({ ...schedule, days: next });
+    };
+    const timeClass = "bg-gray-700 border border-gray-600 rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500";
+
+    return (
+        <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700 space-y-3">
+            <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" className="mt-0.5 w-4 h-4 rounded bg-gray-700 border-gray-600" checked={!!schedule}
+                    onChange={e => onChange(e.target.checked ? defaultSchedule() : null)} />
+                <span>
+                    <span className="block text-sm text-gray-200 font-medium">Keep awake on a schedule</span>
+                    <span className="block text-xs text-gray-500">Woken at the start and never put to sleep during these hours, e.g. office hours. Outside them the idle timeout applies.</span>
+                </span>
+            </label>
+            {schedule && (
+                <div className="space-y-3 pl-6">
+                    <div className="flex flex-wrap gap-1" role="group" aria-label="Days">
+                        {DAYS.map(d => (
+                            <button key={d.value} type="button" onClick={() => toggleDay(d.value)}
+                                aria-pressed={days.includes(d.value)}
+                                className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${days.includes(d.value) ? "bg-blue-600 border-blue-500 text-white" : "bg-gray-800 border-gray-600 text-gray-400 hover:text-white"}`}>
+                                {d.label}
+                            </button>
+                        ))}
+                        <span className="text-xs text-gray-500 self-center ml-1">{days.length === 0 ? "every day" : ""}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-300">
+                        <span>From</span>
+                        <input type="time" className={timeClass} value={schedule.from} onChange={e => onChange({ ...schedule, from: e.target.value })} aria-label="From" required />
+                        <span>to</span>
+                        <input type="time" className={timeClass} value={schedule.to} onChange={e => onChange({ ...schedule, to: e.target.value })} aria-label="To" required />
+                        <input type="text" className={`${timeClass} flex-1 min-w-[10rem]`} value={schedule.timezone || ""} placeholder="UTC"
+                            onChange={e => onChange({ ...schedule, timezone: e.target.value })} aria-label="Timezone" title="IANA timezone, e.g. Europe/Rome" />
+                    </div>
+                    {schedule.from && schedule.to && schedule.to < schedule.from && (
+                        <p className="text-xs text-gray-500">Spans midnight: until {schedule.to} the next day.</p>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

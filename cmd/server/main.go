@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // Schedules use IANA timezones; the runtime image has no zoneinfo
 
 	"github.com/google/uuid"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

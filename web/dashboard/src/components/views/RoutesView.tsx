@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
+import { CalendarClock, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
 import type { ClusterInfo, RouteStatus, StatsData } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
-import { formatDuration, formatRelative, splitHosts } from "@/lib/format";
+import { formatDuration, formatRelative, formatSchedule, splitHosts } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 import { useStoredState } from "@/hooks/useStoredState";
 
@@ -263,6 +263,10 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                 <div className="text-gray-500">
                     {route.always_on ? (
                         <span className="inline-flex items-center gap-1"><Pin size={12} /> Always on</span>
+                    ) : route.schedule_active && route.schedule ? (
+                        <span className="inline-flex items-center gap-1" title="Kept awake by its schedule">
+                            <CalendarClock size={12} /> Scheduled until {route.schedule.to}
+                        </span>
                     ) : !route.source ? (
                         <span>Not managed by idle timer</span>
                     ) : route.sleeps_at ? (
@@ -273,6 +277,11 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                         <span>Wakes on next request</span>
                     )}
                     <span className="text-gray-600"> · {requests} req</span>
+                    {route.schedule && !route.schedule_active && (
+                        <div className="inline-flex items-center gap-1 text-gray-500" title={`Kept awake ${formatSchedule(route.schedule)}${route.schedule.timezone ? ` (${route.schedule.timezone})` : ""}`}>
+                            <CalendarClock size={12} /> {formatSchedule(route.schedule)}
+                        </div>
+                    )}
                 </div>
             </div>
 

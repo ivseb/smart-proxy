@@ -51,6 +51,17 @@ func (w *Watcher) checkIdleRoutes() {
 		return
 	}
 	routes := w.store.GetAllRoutes()
+	now := time.Now()
+
+	// Scheduled hours: keep those routes (and their dependencies) awake.
+	for _, route := range routes {
+		if route.ScheduledAwake(now) && w.k8sClient.Watches(route.Namespace) {
+			w.wake(route.Namespace, route.Deployment)
+			for _, dep := range route.Dependencies {
+				w.wake(route.Namespace, dep.Name)
+			}
+		}
+	}
 
 	for _, route := range routes {
 		// SAFETY: Only scale down if the route config represents a patched resource (Ingress or Route).
@@ -59,7 +70,7 @@ func (w *Watcher) checkIdleRoutes() {
 		if _, _, _, ok := route.Resource(); !ok || !w.k8sClient.Watches(route.Namespace) {
 			continue
 		}
-		if time.Since(route.LastActivity) <= route.EffectiveIdleTimeout() {
+		if time.Since(route.LastActivity) <= route.EffectiveIdleTimeout() || route.ScheduledAwake(now) {
 			continue
 		}
 
@@ -94,10 +105,24 @@ func (w *Watcher) sleep(namespace, deployment, reason string) {
 	}
 }
 
+// wake scales a sleeping deployment up for its schedule.
+func (w *Watcher) wake(namespace, deployment string) {
+	target, err := w.k8sClient.WakeDeployment(namespace, deployment)
+	if err != nil {
+		logger.Printf("Error waking %s/%s for its schedule: %v", namespace, deployment, err)
+		return
+	}
+	if target > 0 {
+		logger.Printf("Woke %s/%s with %d replica(s): scheduled hours started", namespace, deployment, target)
+		metrics.WakeStarted(namespace, deployment, "schedule")
+	}
+}
+
 // isDeploymentActive checks if a deployment is needed by any active route (either as main deployment or dependency)
 func (w *Watcher) isDeploymentActive(routes []store.RouteConfig, namespace, deploymentName string) bool {
 	for _, r := range routes {
-		if r.Namespace != namespace || time.Since(r.LastActivity) > r.EffectiveIdleTimeout() {
+		active := time.Since(r.LastActivity) <= r.EffectiveIdleTimeout() || r.ScheduledAwake(time.Now())
+		if r.Namespace != namespace || !active {
 			continue
 		}
 		if r.Deployment == deploymentName {

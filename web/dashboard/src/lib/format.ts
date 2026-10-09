@@ -32,6 +32,23 @@ export function formatRelative(iso: string, now: number): string {
     return diff > 0 ? `in ${text}` : `${text} ago`;
 }
 
+const DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const DAY_LABEL: Record<string, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+
+// formatSchedule renders a schedule compactly, e.g. "Mon–Fri 08:00–19:00".
+export function formatSchedule(s: { days?: string[]; from: string; to: string }): string {
+    const days = (s.days || []).map(d => d.toLowerCase()).sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b));
+    let label = "Every day";
+    if (days.length > 0 && days.length < 7) {
+        const idx = days.map(d => DAY_ORDER.indexOf(d));
+        const contiguous = idx.every((v, i) => i === 0 || v === idx[i - 1] + 1);
+        label = contiguous && days.length > 2
+            ? `${DAY_LABEL[days[0]]}–${DAY_LABEL[days[days.length - 1]]}`
+            : days.map(d => DAY_LABEL[d]).join(", ");
+    }
+    return `${label} ${s.from}–${s.to}`;
+}
+
 export function splitHosts(host: string): string[] {
     return host.split(",").map(h => h.trim()).filter(Boolean);
 }

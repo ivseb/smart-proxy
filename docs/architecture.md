@@ -73,6 +73,10 @@ flowchart LR
 4.  **Wake-up size** — before sleeping, the replica count is saved in the Deployment's `smart-proxy/replicas-before-sleep` annotation, and waking restores it. If a HorizontalPodAutoscaler manages the Deployment, it wakes at the HPA's `minReplicas` instead, and the HPA takes over from there. Kubernetes pauses an HPA while its target is at zero replicas, so the two don't conflict. Deployments managed by **KEDA** are never put to sleep: KEDA would scale them straight back up. Use KEDA's own scale-to-zero for those.
 5.  **Dependencies** — dependent services are started together with the application by default. With *Start in order*, they start one at a time in the listed order, each once the previous one has a ready replica, and the application last (e.g. database, then API, then frontend). Using one service keeps the entire chain alive, and dependencies can optionally be stopped together when idle.
 
+## Schedules
+
+A route can be kept awake during given hours, regardless of traffic: for example Monday to Friday, 08:00–19:00 in `Europe/Rome`. When the window opens, the deployment and its dependencies are woken up (no cold start for the first visitor of the day) and they are never put to sleep while it lasts. Outside the window the idle timeout applies as usual. Windows may span midnight (`22:00`–`06:00`).
+
 ## High availability
 
 Patched applications receive their traffic through Smart Proxy, so the chart runs two replicas by default (with a PodDisruptionBudget and spreading across nodes). The replicas work as one:
