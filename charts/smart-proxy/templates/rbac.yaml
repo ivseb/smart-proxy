@@ -59,4 +59,35 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 {{- end }}
 {{- end }}
+---
+# In Smart Proxy's own namespace: lets the uninstall Job stop Smart Proxy before restoring.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $fullname }}-self
+  labels:
+    {{- include "smart-proxy.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: [{{ $fullname | quote }}]
+    verbs: ["get", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $fullname }}-self
+  labels:
+    {{- include "smart-proxy.labels" . | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "smart-proxy.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  kind: Role
+  name: {{ $fullname }}-self
+  apiGroup: rbac.authorization.k8s.io
 {{- end }}

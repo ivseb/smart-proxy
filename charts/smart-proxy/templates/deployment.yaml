@@ -41,22 +41,11 @@ spec:
               containerPort: {{ .Values.config.adminPort }}
             {{- end }}
           env:
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: WATCH_NAMESPACE
-              value: {{ ternary "*" (join "," (include "smart-proxy.watchedNamespaces" . | fromJsonArray)) (include "smart-proxy.clusterWide" . | eq "true") | quote }}
-            {{- with .Values.config.namespaceSelector }}
-            - name: WATCH_NAMESPACE_SELECTOR
-              value: {{ . | quote }}
-            {{- end }}
+            {{- include "smart-proxy.scopeEnv" . | nindent 12 }}
             - name: SMART_PROXY_PORT
               value: {{ .Values.config.proxyPort | quote }}
             - name: CONFIG_PATH
               value: /data/routes.json
-            - name: SMART_PROXY_SERVICE_NAME
-              value: {{ include "smart-proxy.fullname" . | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.config.logLevel | quote }}
             - name: ADMIN_ADDR

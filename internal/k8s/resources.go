@@ -290,3 +290,26 @@ func sortByNamespaceName[T any](items []T, meta func(T) metav1.Object) {
 		return a.GetName() < b.GetName()
 	})
 }
+
+// SleepingDeployments returns the Deployments Smart Proxy put to sleep (they carry the
+// replicas-before-sleep annotation and are at zero replicas), in every watched namespace.
+func (c *Client) SleepingDeployments() ([]*appsv1.Deployment, error) {
+	var result []*appsv1.Deployment
+	for _, ns := range c.WatchedNamespaces() {
+		lister, err := c.deployments(ns)
+		if err != nil {
+			return nil, err
+		}
+		list, err := lister.List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range list {
+			if _, ok := d.Annotations[AnnotationReplicasBeforeSleep]; ok && d.Spec.Replicas != nil && *d.Spec.Replicas == 0 {
+				result = append(result, d.DeepCopy())
+			}
+		}
+	}
+	sortByNamespaceName(result, func(d *appsv1.Deployment) metav1.Object { return d })
+	return result, nil
+}

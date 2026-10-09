@@ -62,6 +62,29 @@ Common overrides:
 
 See the [Configuration Reference](configuration.md) for the full list of environment variables and annotations.
 
+## Uninstalling
+
+```bash
+helm uninstall smart-proxy --namespace smart-proxy
+```
+
+Before anything is deleted, a Helm hook Job stops Smart Proxy, points every patched Ingress/Route back at its original Service and wakes every Deployment it put to sleep (with the replica count it had). Your applications keep working without Smart Proxy. Disable this with `restoreOnUninstall: false`.
+
+### Restoring by hand
+
+If you uninstall with `--no-hooks`, deployed Smart Proxy without Helm, or want to undo its changes for any other reason, stop it and run the `restore` command with the same namespace settings and service account:
+
+```bash
+kubectl -n smart-proxy scale deployment/smart-proxy --replicas=0
+kubectl -n smart-proxy run smart-proxy-restore --rm -i --restart=Never \
+  --image=isebben/smart-proxy:latest \
+  --overrides='{"spec":{"serviceAccountName":"smart-proxy-sa"}}' \
+  --env=WATCH_NAMESPACE=smart-proxy \
+  -- restore
+```
+
+Use the `WATCH_NAMESPACE` / `WATCH_NAMESPACE_SELECTOR` values of your installation so every managed namespace is covered.
+
 ## Local Development (Docker Desktop)
 
 For a full local environment with Smart Proxy and a demo application, use the setup script:

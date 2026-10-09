@@ -15,11 +15,17 @@ import (
 	"smart-proxy/internal/auth"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/proxy"
+	"smart-proxy/internal/restore"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/watcher"
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "restore" {
+		runRestore()
+		return
+	}
+
 	log.Println("Starting OpenShift Smart Proxy...")
 
 	// Stop on SIGTERM (Kubernetes) or Ctrl-C.
@@ -27,12 +33,7 @@ func main() {
 	defer stop()
 
 	// 1. Initialize K8s Client for the watched namespaces
-	ownNamespace := k8s.OwnNamespace()
-	scope, err := k8s.ParseScope(os.Getenv("WATCH_NAMESPACE"), os.Getenv("WATCH_NAMESPACE_SELECTOR"), ownNamespace)
-	if err != nil {
-		log.Fatalf("Invalid namespace configuration: %v", err)
-	}
-	k8sClient, err := k8s.NewClient(scope, ownNamespace)
+	k8sClient, err := newK8sClient()
 	if err != nil {
 		log.Printf("Warning: Failed to initialize Kubernetes client: %v", err)
 		log.Println("Running in offline/demo mode (K8s features disabled)")
@@ -132,6 +133,41 @@ func main() {
 		log.Printf("Admin Server shutdown: %v", err)
 	}
 	log.Println("Stopped")
+}
+
+// newK8sClient connects to the cluster for the namespaces in WATCH_NAMESPACE(_SELECTOR).
+func newK8sClient() (*k8s.Client, error) {
+	ownNamespace := k8s.OwnNamespace()
+	scope, err := k8s.ParseScope(os.Getenv("WATCH_NAMESPACE"), os.Getenv("WATCH_NAMESPACE_SELECTOR"), ownNamespace)
+	if err != nil {
+		log.Fatalf("Invalid namespace configuration: %v", err)
+	}
+	return k8s.NewClient(scope, ownNamespace)
+}
+
+// runRestore implements "smart-proxy restore": undo every patch and wake every sleeping
+// Deployment in the watched namespaces. The Helm chart runs it before uninstalling.
+func runRestore() {
+	log.Println("Restoring patched Ingresses/Routes and sleeping Deployments...")
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+
+	client, err := newK8sClient()
+	if err != nil {
+		log.Fatalf("Failed to connect to Kubernetes: %v", err)
+	}
+	if err := client.Start(ctx, 2*time.Minute); err != nil {
+		log.Fatalf("Failed to start Kubernetes caches: %v", err)
+	}
+	// Stop the running Smart Proxy first, or its self-healing could re-patch what we restore.
+	if name := os.Getenv("SMART_PROXY_DEPLOYMENT"); name != "" {
+		if err := restore.StopProxy(ctx, client, k8s.OwnNamespace(), name); err != nil {
+			log.Fatalf("Failed to stop Smart Proxy before restoring: %v", err)
+		}
+	}
+	if err := restore.Run(client).Err(); err != nil {
+		log.Fatalf("Restore finished with errors:\n%v", err)
+	}
 }
 
 func getEnv(key, fallback string) string {

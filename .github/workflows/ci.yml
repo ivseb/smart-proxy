@@ -75,5 +75,6 @@ jobs:
           render --set 'config.watchNamespaces={team-a,team-b}'
           render --set config.allNamespaces=true
           render --set config.namespaceSelector=smart-proxy=enabled
+          render --set restoreOnUninstall=false
           # Invalid settings must fail the install.
           if render --set auth.mode=oidc 2>/dev/null; then echo "incomplete oidc config was accepted"; exit 1; fi

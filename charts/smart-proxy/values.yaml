@@ -145,6 +145,12 @@ route:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
 
+# On "helm uninstall", run a Job that points every patched Ingress/Route back to its
+# original Service and wakes every sleeping Deployment, so applications keep working
+# without Smart Proxy. Skipped with "helm uninstall --no-hooks" (then run
+# "smart-proxy restore" yourself, see the docs).
+restoreOnUninstall: true
+
 # Container resource requests/limits.
 resources:
   limits:

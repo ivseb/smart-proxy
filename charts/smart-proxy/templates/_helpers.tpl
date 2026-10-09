@@ -121,3 +121,19 @@ http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
   verbs: ["get", "list", "watch", "update", "patch"]
 {{- end }}
 {{- end }}
+
+{{/* Environment selecting the managed namespaces (shared by the Deployment and the restore Job). */}}
+{{- define "smart-proxy.scopeEnv" -}}
+- name: POD_NAMESPACE
+  valueFrom:
+    fieldRef:
+      fieldPath: metadata.namespace
+- name: WATCH_NAMESPACE
+  value: {{ ternary "*" (join "," (include "smart-proxy.watchedNamespaces" . | fromJsonArray)) (include "smart-proxy.clusterWide" . | eq "true") | quote }}
+{{- with .Values.config.namespaceSelector }}
+- name: WATCH_NAMESPACE_SELECTOR
+  value: {{ . | quote }}
+{{- end }}
+- name: SMART_PROXY_SERVICE_NAME
+  value: {{ include "smart-proxy.fullname" . | quote }}
+{{- end -}}

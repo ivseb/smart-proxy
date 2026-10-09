@@ -45,3 +45,5 @@ Common values (see [`values.yaml`](values.yaml) for the full, commented list and
 ```bash
 helm uninstall smart-proxy --namespace smart-proxy
 ```
+
+Uninstalling restores every patched Ingress/Route to its original Service and wakes sleeping Deployments first (`restoreOnUninstall`, on by default), so applications keep working.

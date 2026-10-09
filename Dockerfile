@@ -41,4 +41,4 @@ RUN chgrp -R 0 /app && \
 
 USER 1001
 
-CMD ["./smart-proxy"]
+ENTRYPOINT ["./smart-proxy"]
