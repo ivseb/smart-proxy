@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
 import type { LogEntry, RouteConfig, RouteStatus, StatsData } from "@/types/api";
 import { TrafficSources } from "@/components/views/TrafficSources";
+import { RequestsChart } from "@/components/views/RequestsChart";
 import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 
@@ -178,6 +179,16 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                     </CardContent>
                 </Card>
             </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Traffic</CardTitle>
+                    <p className="text-gray-400 text-sm">Requests per second to this route</p>
+                </CardHeader>
+                <CardContent>
+                    <RequestsChart routeId={route.id} height={180} />
+                </CardContent>
+            </Card>
 
             <TrafficSources route={route} onSave={onSave} />
 

@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"smart-proxy/internal/auth"
+	"smart-proxy/internal/history"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/metrics"
@@ -34,6 +35,8 @@ type Server struct {
 	GlobalRules traffic.Rules
 	// Traffic, when set, returns who sends requests to a route (across replicas).
 	Traffic func(routeID string) []traffic.SourceStats
+	// History, when set, holds recent request rates for the charts.
+	History *history.Recorder
 }
 
 // NewServer creates a new instance of the admin Server.
@@ -58,6 +61,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/routes", s.handleRoutes)
 	mux.HandleFunc("/api/routes/traffic", s.handleRouteTraffic)
 	mux.HandleFunc("/api/stats", s.handleStats)
+	mux.HandleFunc("/api/stats/history", s.handleStatsHistory)
 	mux.HandleFunc("/api/logs", s.handleLogs)
 
 	mux.HandleFunc("/api/k8s/namespaces", s.requireK8s(s.handleNamespaces))
@@ -161,6 +165,19 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// handleStatsHistory returns the requests received in each recent interval, oldest first.
+func (s *Server) handleStatsHistory(w http.ResponseWriter, r *http.Request) {
+	if s.History == nil {
+		writeJSON(w, map[string]any{"interval": 0, "points": []history.Point{}})
+		return
+	}
+	points := s.History.Points()
+	if points == nil {
+		points = []history.Point{}
+	}
+	writeJSON(w, map[string]any{"interval": s.History.Interval.Seconds(), "retention": s.History.Retention.Seconds(), "points": points})
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {

@@ -1,15 +1,14 @@
 import { useState } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Activity, Moon, Server, Zap } from "lucide-react";
 import type { ClusterInfo, RouteStatus, StatsData } from "@/types/api";
 import { StatusDot } from "@/components/ui/StatusBadge";
+import { RequestsChart } from "@/components/views/RequestsChart";
 
 
 
-interface ChartPoint {
+interface Sample {
     at: number; // ms since epoch
-    time: string;
     requests: number;
 }
 
@@ -21,28 +20,21 @@ interface StatsViewProps {
 }
 
 export function StatsView({ stats, fetchedAt, routes, info }: StatsViewProps) {
-    const [history, setHistory] = useState<ChartPoint[]>([]);
+    const [history, setHistory] = useState<Sample[]>([]);
     const [recordedAt, setRecordedAt] = useState(0);
 
-    // Accumulate one chart point per poll (state derived during render, not in an effect).
+    // Keep the last two polls for the live rate (state derived during render, not in an effect).
     if (stats && fetchedAt !== recordedAt) {
         setRecordedAt(fetchedAt);
-        const time = new Date(fetchedAt).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        setHistory(prev => [...prev, { at: fetchedAt, time, requests: stats.TotalRequests }].slice(-20));
+        setHistory(prev => [...prev, { at: fetchedAt, requests: stats.TotalRequests }].slice(-2));
     }
 
     // Requests per second between the last two polls
     const last = history[history.length - 1];
     const prev = history[history.length - 2];
     const rps = last && prev && last.at > prev.at
-        ? (last.requests - prev.requests) / ((last.at - prev.at) / 1000)
+        ? Math.max(0, (last.requests - prev.requests) / ((last.at - prev.at) / 1000))
         : 0;
-
-    // Requests per second for each polling interval, for the chart.
-    const rates = history.slice(1).map((p, i) => ({
-        time: p.time,
-        rps: p.at > history[i].at ? Math.max(0, (p.requests - history[i].requests) / ((p.at - history[i].at) / 1000)) : 0,
-    }));
 
     const managed = routes.filter(r => r.source && !r.always_on);
     const asleep = managed.filter(r => r.status === "Sleep").length;
@@ -75,27 +67,7 @@ export function StatsView({ stats, fetchedAt, routes, info }: StatsViewProps) {
                         <p className="text-gray-400 text-sm">Requests per second through Smart Proxy</p>
                     </CardHeader>
                     <CardContent>
-                        <div className="h-[260px] w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={rates}>
-                                    <defs>
-                                        <linearGradient id="colorReq" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                                    <XAxis dataKey="time" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-                                    <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} width={32} />
-                                    <Tooltip
-                                        contentStyle={{ backgroundColor: "#1f2937", borderColor: "#374151", color: "#fff" }}
-                                        itemStyle={{ color: "#60a5fa" }}
-                                        formatter={(v) => [`${Number(v).toFixed(1)} req/s`, "Traffic"]}
-                                    />
-                                    <Area type="monotone" dataKey="rps" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorReq)" />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
+                        <RequestsChart />
                     </CardContent>
                 </Card>
 

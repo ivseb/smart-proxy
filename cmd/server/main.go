@@ -20,6 +20,7 @@ import (
 	"smart-proxy/internal/admin"
 	"smart-proxy/internal/auth"
 	"smart-proxy/internal/ha"
+	"smart-proxy/internal/history"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/proxy"
@@ -96,6 +97,20 @@ func main() {
 	adminServer.Traffic = func(routeID string) []traffic.SourceStats {
 		return traffic.Merge(proxyHandler.Traffic.Snapshot()[routeID])
 	}
+	// Recent request rates for the dashboard's charts, kept in memory.
+	retention, err := time.ParseDuration(getEnv("STATS_RETENTION", "30m"))
+	if err != nil || retention <= 0 {
+		log.Fatalf("Invalid STATS_RETENTION %q", os.Getenv("STATS_RETENTION"))
+	}
+	requestHistory := &history.Recorder{
+		Interval:  10 * time.Second,
+		Retention: retention,
+		Sample: func() map[string]history.Counts {
+			total, routes := proxyHandler.Metrics.Snapshot()
+			return map[string]history.Counts{podName: {Total: total, Routes: routes}}
+		},
+	}
+	adminServer.History = requestHistory
 	// Cancelled at shutdown so long-lived requests (the log stream) end instead of
 	// holding the server open until the deadline.
 	adminCtx, cancelAdmin := context.WithCancel(context.Background())
@@ -155,6 +170,13 @@ func main() {
 			c := replica.ClusterRequests()
 			return c.Total, c.Routes
 		}
+		requestHistory.Sample = func() map[string]history.Counts {
+			all := map[string]history.Counts{}
+			for pod, c := range replica.RequestsByReplica() {
+				all[pod] = history.Counts{Total: c.Total, Routes: c.Routes}
+			}
+			return all
+		}
 		adminServer.SyncRoutesFromCluster()
 		proxyHandler.SetReady()
 
@@ -176,6 +198,8 @@ func main() {
 	} else {
 		proxyHandler.SetReady()
 	}
+
+	go requestHistory.Run(ctx)
 
 	select {
 	case err := <-errs:

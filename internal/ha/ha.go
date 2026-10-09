@@ -149,22 +149,27 @@ func (r *Replica) localRequests() RequestCounts {
 
 // ClusterRequests adds this pod's request counts to the latest published by the others.
 func (r *Replica) ClusterRequests() RequestCounts {
-	total := r.localRequests()
-	sum := RequestCounts{Total: total.Total, Routes: map[string]int64{}}
-	for id, n := range total.Routes {
-		sum.Routes[id] = n
-	}
-	for _, cm := range r.otherActivityConfigMaps() {
-		var counts RequestCounts
-		if json.Unmarshal([]byte(cm.Data[requestsKey]), &counts) != nil {
-			continue
-		}
+	sum := RequestCounts{Routes: map[string]int64{}}
+	for _, counts := range r.RequestsByReplica() {
 		sum.Total += counts.Total
 		for id, n := range counts.Routes {
 			sum.Routes[id] += n
 		}
 	}
 	return sum
+}
+
+// RequestsByReplica returns the request counts of this pod and the latest published by the
+// others, keyed by pod.
+func (r *Replica) RequestsByReplica() map[string]RequestCounts {
+	all := map[string]RequestCounts{r.PodName: r.localRequests()}
+	for _, cm := range r.otherActivityConfigMaps() {
+		var counts RequestCounts
+		if json.Unmarshal([]byte(cm.Data[requestsKey]), &counts) == nil {
+			all[cm.Name] = counts
+		}
+	}
+	return all
 }
 
 func (r *Replica) publish(ctx context.Context, activity map[string]time.Time, requests RequestCounts, sources string) error {

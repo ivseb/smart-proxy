@@ -123,6 +123,12 @@ export interface LogEntry {
     message: string;
 }
 
+export interface StatsHistory {
+    interval: number; // seconds per point
+    retention?: number; // seconds
+    points: { at: string; requests: number; routes?: Record<string, number> }[];
+}
+
 export interface StatsData {
     TotalRequests: number;
     RouteStats: Record<string, number>;

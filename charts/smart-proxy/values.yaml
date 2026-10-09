@@ -62,6 +62,8 @@ config:
   adminPort: 8081
   # Log verbosity: debug | info | error.
   logLevel: info
+  # How long the dashboard's traffic charts go back (kept in memory by each replica).
+  statsRetention: 30m
 
 service:
   type: ClusterIP
