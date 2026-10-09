@@ -203,7 +203,7 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                         <div>
                             <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-deployment">Workload</label>
                             <select id="rm-deployment" className={inputClass} value={formData.deployment} onChange={e => selectDeployment(e.target.value)} required>
-                                <option value="">Select a Deployment or StatefulSet…</option>
+                                <option value="">Select a workload…</option>
                                 {formData.deployment && !deployments.includes(formData.deployment) && <option value={formData.deployment}>{workloadLabel(formData.deployment)}</option>}
                                 {deployments.map(d => <option key={d} value={d}>{workloadLabel(d)}</option>)}
                             </select>

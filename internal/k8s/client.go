@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 
+	appsclientset "github.com/openshift/client-go/apps/clientset/versioned"
 	routeclientset "github.com/openshift/client-go/route/clientset/versioned"
 )
 
@@ -85,6 +86,7 @@ func (s Scope) String() string {
 type Client struct {
 	Clientset      kubernetes.Interface
 	RouteClientSet routeclientset.Interface
+	AppsClientSet  appsclientset.Interface // OpenShift DeploymentConfigs
 
 	scope        Scope
 	ownNamespace string
@@ -108,18 +110,23 @@ func NewClient(scope Scope, ownNamespace string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating OpenShift Route client: %w", err)
 	}
-	return newClient(clientset, routeClient, scope, ownNamespace), nil
+	appsClient, err := appsclientset.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("creating OpenShift apps client: %w", err)
+	}
+	return newClient(clientset, routeClient, appsClient, scope, ownNamespace), nil
 }
 
 // NewWithClients builds a Client on existing clientsets (e.g. fakes in tests).
-func NewWithClients(clientset kubernetes.Interface, routeClient routeclientset.Interface, scope Scope, ownNamespace string) *Client {
-	return newClient(clientset, routeClient, scope, ownNamespace)
+func NewWithClients(clientset kubernetes.Interface, routeClient routeclientset.Interface, appsClient appsclientset.Interface, scope Scope, ownNamespace string) *Client {
+	return newClient(clientset, routeClient, appsClient, scope, ownNamespace)
 }
 
-func newClient(clientset kubernetes.Interface, routeClient routeclientset.Interface, scope Scope, ownNamespace string) *Client {
+func newClient(clientset kubernetes.Interface, routeClient routeclientset.Interface, appsClient appsclientset.Interface, scope Scope, ownNamespace string) *Client {
 	return &Client{
 		Clientset:      clientset,
 		RouteClientSet: routeClient,
+		AppsClientSet:  appsClient,
 		scope:          scope,
 		ownNamespace:   ownNamespace,
 	}

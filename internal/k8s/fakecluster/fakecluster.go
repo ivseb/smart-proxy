@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	appsv1openshift "github.com/openshift/api/apps/v1"
 	routev1 "github.com/openshift/api/route/v1"
+	appsfake "github.com/openshift/client-go/apps/clientset/versioned/fake"
 	routefake "github.com/openshift/client-go/route/clientset/versioned/fake"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -22,7 +24,7 @@ import (
 
 // Options tune the fake cluster.
 type Options struct {
-	// NoRoutesAPI makes the cluster vanilla Kubernetes (no route.openshift.io).
+	// NoRoutesAPI makes the cluster vanilla Kubernetes (no route.openshift.io, no apps.openshift.io).
 	NoRoutesAPI bool
 	// Deny lists "group/resource" pairs RBAC refuses to list, e.g. "autoscaling/horizontalpodautoscalers".
 	Deny []string
@@ -33,22 +35,27 @@ type Cluster struct {
 	*k8s.Client
 	Kube   *fake.Clientset
 	Routes *routefake.Clientset
+	Apps   *appsfake.Clientset
 }
 
 // New starts a client for scope over the given objects (Kubernetes objects and *routev1.Route).
 func New(t *testing.T, scope k8s.Scope, opts Options, objects ...runtime.Object) *Cluster {
 	t.Helper()
-	var kubeObjs, routeObjs []runtime.Object
+	var kubeObjs, routeObjs, appsObjs []runtime.Object
 	for _, o := range objects {
-		if _, ok := o.(*routev1.Route); ok {
+		switch o.(type) {
+		case *routev1.Route:
 			routeObjs = append(routeObjs, o)
-		} else {
+		case *appsv1openshift.DeploymentConfig:
+			appsObjs = append(appsObjs, o)
+		default:
 			kubeObjs = append(kubeObjs, o)
 		}
 	}
 
 	kube := fake.NewClientset(kubeObjs...)
 	routes := routefake.NewClientset(routeObjs...)
+	apps := appsfake.NewClientset(appsObjs...)
 
 	denied := map[string]bool{}
 	for _, d := range opts.Deny {
@@ -64,6 +71,9 @@ func New(t *testing.T, scope k8s.Scope, opts Options, objects ...runtime.Object)
 		kube.Discovery().(*fakediscovery.FakeDiscovery).Resources = []*metav1.APIResourceList{{
 			GroupVersion: "route.openshift.io/v1",
 			APIResources: []metav1.APIResource{{Name: "routes", Namespaced: true, Kind: "Route"}},
+		}, {
+			GroupVersion: "apps.openshift.io/v1",
+			APIResources: []metav1.APIResource{{Name: "deploymentconfigs", Namespaced: true, Kind: "DeploymentConfig"}},
 		}}
 	}
 
@@ -71,13 +81,13 @@ func New(t *testing.T, scope k8s.Scope, opts Options, objects ...runtime.Object)
 	if len(scope.Namespaces) > 0 {
 		own = scope.Namespaces[0]
 	}
-	client := k8s.NewWithClients(kube, routes, scope, own)
+	client := k8s.NewWithClients(kube, routes, apps, scope, own)
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	if err := client.Start(ctx, 10*time.Second); err != nil {
 		t.Fatal(err)
 	}
-	return &Cluster{Client: client, Kube: kube, Routes: routes}
+	return &Cluster{Client: client, Kube: kube, Routes: routes, Apps: apps}
 }
 
 // Eventually retries cond until it holds or a second passes: writes reach the informer

@@ -39,8 +39,8 @@ rbac:
   # Create the Role + RoleBinding that let Smart Proxy read and patch
   # Deployments, Services, Pods and Ingresses in the release namespace.
   create: true
-  # Also grant permissions on OpenShift Routes (route.openshift.io).
-  # Set to false on vanilla Kubernetes clusters.
+  # Also grant permissions on OpenShift Routes and DeploymentConfigs
+  # (route.openshift.io, apps.openshift.io). Set to false on vanilla Kubernetes clusters.
   openshiftRoutes: true
 
 # Application configuration (mapped to the container environment variables).

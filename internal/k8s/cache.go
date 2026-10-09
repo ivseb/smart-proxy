@@ -18,6 +18,8 @@ import (
 	networkinglisters "k8s.io/client-go/listers/networking/v1"
 	toolscache "k8s.io/client-go/tools/cache"
 
+	appsinformers "github.com/openshift/client-go/apps/informers/externalversions"
+	appslisters "github.com/openshift/client-go/apps/listers/apps/v1"
 	routeinformers "github.com/openshift/client-go/route/informers/externalversions"
 	routelisters "github.com/openshift/client-go/route/listers/route/v1"
 
@@ -29,10 +31,12 @@ import (
 type informerCache struct {
 	factories      map[string]informers.SharedInformerFactory
 	routeFactories map[string]routeinformers.SharedInformerFactory
+	appsFactories  map[string]appsinformers.SharedInformerFactory
 	namespaces     corelisters.NamespaceLister // set when watching all namespaces
 
 	hpaEnabled    bool
 	routesEnabled bool
+	dcEnabled     bool // OpenShift DeploymentConfigs
 }
 
 // Start builds the informer caches and waits until they are filled. Reads must not happen before.
@@ -45,7 +49,9 @@ func (c *Client) Start(ctx context.Context, timeout time.Duration) error {
 	ic := &informerCache{
 		factories:      map[string]informers.SharedInformerFactory{},
 		routeFactories: map[string]routeinformers.SharedInformerFactory{},
+		appsFactories:  map[string]appsinformers.SharedInformerFactory{},
 		routesEnabled:  c.routesServed(),
+		dcEnabled:      c.AppsClientSet != nil && c.served("apps.openshift.io/v1"),
 		hpaEnabled:     true,
 	}
 	if !ic.routesEnabled {
@@ -63,6 +69,10 @@ func (c *Client) Start(ctx context.Context, timeout time.Duration) error {
 		if ic.routesEnabled && !c.canList(ctx, "route.openshift.io", "routes", ns) {
 			ic.routesEnabled = false
 			logger.Printf("Warning: no permission to list OpenShift Routes in %s; managing Ingresses only", nsLabel(ns))
+		}
+		if ic.dcEnabled && !c.canList(ctx, "apps.openshift.io", "deploymentconfigs", ns) {
+			ic.dcEnabled = false
+			logger.Printf("Warning: no permission to list DeploymentConfigs in %s; they won't be managed", nsLabel(ns))
 		}
 	}
 
@@ -83,6 +93,11 @@ func (c *Client) Start(ctx context.Context, timeout time.Duration) error {
 			ic.routeFactories[ns] = rf
 			synced = append(synced, register(rf.Route().V1().Routes().Informer()))
 		}
+		if ic.dcEnabled {
+			af := appsinformers.NewSharedInformerFactoryWithOptions(c.AppsClientSet, 0, appsinformers.WithNamespace(ns))
+			ic.appsFactories[ns] = af
+			synced = append(synced, register(af.Apps().V1().DeploymentConfigs().Informer()))
+		}
 	}
 	if c.scope.All {
 		nsInformer := ic.factories[metav1.NamespaceAll].Core().V1().Namespaces()
@@ -95,6 +110,9 @@ func (c *Client) Start(ctx context.Context, timeout time.Duration) error {
 	}
 	for ns := range ic.routeFactories {
 		ic.routeFactories[ns].Start(ctx.Done())
+	}
+	for ns := range ic.appsFactories {
+		ic.appsFactories[ns].Start(ctx.Done())
 	}
 
 	syncCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -119,10 +137,12 @@ func register(informer toolscache.SharedIndexInformer) toolscache.InformerSynced
 }
 
 func (c *Client) routesServed() bool {
-	if c.RouteClientSet == nil {
-		return false
-	}
-	_, err := c.Clientset.Discovery().ServerResourcesForGroupVersion("route.openshift.io/v1")
+	return c.RouteClientSet != nil && c.served("route.openshift.io/v1")
+}
+
+// served reports whether the API server offers a group/version.
+func (c *Client) served(groupVersion string) bool {
+	_, err := c.Clientset.Discovery().ServerResourcesForGroupVersion(groupVersion)
 	return err == nil
 }
 
@@ -267,4 +287,23 @@ func (c *Client) routes(namespace string) (routelisters.RouteNamespaceLister, er
 // notFound builds the error a lister returns, for lookups that end up empty.
 func notFound(resource, name string) error {
 	return apierrors.NewNotFound(schema.GroupResource{Resource: resource}, name)
+}
+
+// DeploymentConfigsEnabled reports whether OpenShift DeploymentConfigs are available and watched.
+func (c *Client) DeploymentConfigsEnabled() bool {
+	return c.cache != nil && c.cache.dcEnabled
+}
+
+func (c *Client) deploymentConfigs(namespace string) (appslisters.DeploymentConfigNamespaceLister, error) {
+	if !c.DeploymentConfigsEnabled() {
+		return nil, errors.New("OpenShift DeploymentConfigs are not available")
+	}
+	if !c.Watches(namespace) {
+		return nil, fmt.Errorf("%w: %q", errNotWatched, namespace)
+	}
+	key := namespace
+	if c.scope.All {
+		key = metav1.NamespaceAll
+	}
+	return c.cache.appsFactories[key].Apps().V1().DeploymentConfigs().Lister().DeploymentConfigs(namespace), nil
 }

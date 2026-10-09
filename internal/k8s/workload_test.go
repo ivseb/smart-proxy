@@ -9,6 +9,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	appsv1openshift "github.com/openshift/api/apps/v1"
+
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/k8s/fakecluster"
 )
@@ -80,5 +82,53 @@ func TestStatefulSetSleepWakeAndDiscovery(t *testing.T) {
 	// The Deployment named like the StatefulSet's ref must not be touched.
 	if d, _ := c.Kube.AppsV1().Deployments(ns).Get(context.TODO(), "web", metav1.GetOptions{}); *d.Spec.Replicas != 1 {
 		t.Fatal("deployment changed")
+	}
+}
+
+func TestDeploymentConfigSleepWakeAndDiscovery(t *testing.T) {
+	legacy := &appsv1openshift.DeploymentConfig{
+		ObjectMeta: metav1.ObjectMeta{Name: "legacy", Namespace: ns},
+		Spec: appsv1openshift.DeploymentConfigSpec{
+			Replicas: 2,
+			Selector: map[string]string{"app": "legacy"},
+			Template: &corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "legacy"}}},
+		},
+		Status: appsv1openshift.DeploymentConfigStatus{ReadyReplicas: 2},
+	}
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "legacy-http", Namespace: ns},
+		Spec:       corev1.ServiceSpec{Selector: map[string]string{"app": "legacy"}, Ports: []corev1.ServicePort{{Port: 8080}}},
+	}
+	c := cluster(t, fakecluster.Options{}, legacy, svc, deployment(ns, "web", 1))
+
+	if refs, _ := c.ListDeployments(ns); !reflect.DeepEqual(refs, []string{"web", "deploymentconfig/legacy"}) {
+		t.Fatalf("ListDeployments = %v", refs)
+	}
+	if ref, _ := c.ResolveDeploymentForService(ns, "legacy-http"); ref != "deploymentconfig/legacy" {
+		t.Fatalf("ResolveDeploymentForService = %q", ref)
+	}
+	if replicas, ready, err := c.GetDeploymentStatus(ns, "dc/legacy"); replicas != 2 || ready != 2 || err != nil {
+		t.Fatalf("status = %d/%d %v", ready, replicas, err)
+	}
+
+	if slept, err := c.SleepDeployment(ns, "deploymentconfig/legacy"); !slept || err != nil {
+		t.Fatalf("sleep: %v %v", slept, err)
+	}
+	got, _ := c.Apps.AppsV1().DeploymentConfigs(ns).Get(context.TODO(), "legacy", metav1.GetOptions{})
+	if got.Spec.Replicas != 0 || got.Annotations[k8s.AnnotationReplicasBeforeSleep] != "2" {
+		t.Fatalf("after sleep: %d %v", got.Spec.Replicas, got.Annotations)
+	}
+	if target, err := c.WakeDeployment(ns, "deploymentconfig/legacy"); target != 2 || err != nil {
+		t.Fatalf("wake: %d %v", target, err)
+	}
+}
+
+func TestNoDeploymentConfigsOnVanillaKubernetes(t *testing.T) {
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{ns}}, fakecluster.Options{NoRoutesAPI: true}, deployment(ns, "web", 1))
+	if c.DeploymentConfigsEnabled() {
+		t.Fatal("DeploymentConfigs enabled without the API")
+	}
+	if refs, err := c.ListDeployments(ns); err != nil || !reflect.DeepEqual(refs, []string{"web"}) {
+		t.Fatalf("ListDeployments = %v %v", refs, err)
 	}
 }

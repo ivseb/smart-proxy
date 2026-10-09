@@ -56,5 +56,8 @@ export function splitHosts(host: string): string[] {
 // workloadLabel shows a workload reference ("web" or "statefulset/db") readably.
 export function workloadLabel(ref: string): string {
     const [prefix, name] = ref.includes("/") ? ref.split("/", 2) : ["", ref];
-    return prefix.toLowerCase().startsWith("statefulset") || prefix.toLowerCase() === "sts" ? `${name} · StatefulSet` : name;
+    const kind = prefix.toLowerCase();
+    if (kind.startsWith("statefulset") || kind === "sts") return `${name} · StatefulSet`;
+    if (kind.startsWith("deploymentconfig") || kind === "dc") return `${name} · DeploymentConfig`;
+    return name;
 }

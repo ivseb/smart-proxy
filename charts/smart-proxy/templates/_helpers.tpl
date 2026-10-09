@@ -119,6 +119,9 @@ http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
 - apiGroups: ["route.openshift.io"]
   resources: ["routes"]
   verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: ["apps.openshift.io"]
+  resources: ["deploymentconfigs", "deploymentconfigs/scale"]
+  verbs: ["get", "list", "watch", "update", "patch"]
 {{- end }}
 {{- end }}
 

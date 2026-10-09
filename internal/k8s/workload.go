@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -11,17 +12,21 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+
+	appsv1openshift "github.com/openshift/api/apps/v1"
 )
 
 // Workload kinds Smart Proxy can scale.
 const (
-	KindDeployment  = "Deployment"
-	KindStatefulSet = "StatefulSet"
+	KindDeployment       = "Deployment"
+	KindStatefulSet      = "StatefulSet"
+	KindDeploymentConfig = "DeploymentConfig" // OpenShift apps.openshift.io/v1
 )
 
 // ParseWorkload splits a workload reference: "web" or "deployment/web" is a Deployment,
-// "statefulset/db" a StatefulSet (the kubectl syntax). Plain names stay Deployments, so
-// existing configurations keep working.
+// "statefulset/db" a StatefulSet and "deploymentconfig/legacy" (or "dc/legacy") an OpenShift
+// DeploymentConfig (the kubectl syntax). Plain names stay Deployments, so existing
+// configurations keep working.
 func ParseWorkload(ref string) (kind, name string) {
 	prefix, rest, found := strings.Cut(ref, "/")
 	if !found {
@@ -30,6 +35,8 @@ func ParseWorkload(ref string) (kind, name string) {
 	switch strings.ToLower(prefix) {
 	case "statefulset", "statefulsets", "sts":
 		return KindStatefulSet, rest
+	case "deploymentconfig", "deploymentconfigs", "dc":
+		return KindDeploymentConfig, rest
 	default:
 		return KindDeployment, rest
 	}
@@ -38,10 +45,14 @@ func ParseWorkload(ref string) (kind, name string) {
 // WorkloadRef is the reference for a workload: its name for a Deployment, "statefulset/<name>"
 // for a StatefulSet.
 func WorkloadRef(kind, name string) string {
-	if kind == KindStatefulSet {
+	switch kind {
+	case KindStatefulSet:
 		return "statefulset/" + name
+	case KindDeploymentConfig:
+		return "deploymentconfig/" + name
+	default:
+		return name
 	}
-	return name
 }
 
 // workload is what Smart Proxy needs from a Deployment or StatefulSet.
@@ -82,9 +93,33 @@ func fromStatefulSet(s *appsv1.StatefulSet) *workload {
 	}
 }
 
+func fromDeploymentConfig(dc *appsv1openshift.DeploymentConfig) *workload {
+	replicas := dc.Spec.Replicas
+	w := &workload{
+		Kind: KindDeploymentConfig, Namespace: dc.Namespace, Name: dc.Name,
+		Replicas: &replicas, Ready: dc.Status.ReadyReplicas, Annotations: dc.Annotations,
+		ResourceVersion: dc.ResourceVersion,
+	}
+	if dc.Spec.Template != nil {
+		w.TemplateLabels, w.Containers = dc.Spec.Template.Labels, dc.Spec.Template.Spec.Containers
+	}
+	return w
+}
+
 // getWorkload reads a workload from the cache.
 func (c *Client) getWorkload(namespace, ref string) (*workload, error) {
 	kind, name := ParseWorkload(ref)
+	if kind == KindDeploymentConfig {
+		lister, err := c.deploymentConfigs(namespace)
+		if err != nil {
+			return nil, err
+		}
+		dc, err := lister.Get(name)
+		if err != nil {
+			return nil, err
+		}
+		return fromDeploymentConfig(dc), nil
+	}
 	f, err := c.factory(namespace)
 	if err != nil {
 		return nil, err
@@ -106,6 +141,16 @@ func (c *Client) getWorkload(namespace, ref string) (*workload, error) {
 // fetchWorkload reads a workload from the API (fresh, with its current resourceVersion).
 func (c *Client) fetchWorkload(namespace, ref string) (*workload, error) {
 	kind, name := ParseWorkload(ref)
+	if kind == KindDeploymentConfig {
+		if c.AppsClientSet == nil {
+			return nil, fmt.Errorf("OpenShift DeploymentConfigs are not available")
+		}
+		dc, err := c.AppsClientSet.AppsV1().DeploymentConfigs(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return fromDeploymentConfig(dc), nil
+	}
 	if kind == KindStatefulSet {
 		s, err := c.Clientset.AppsV1().StatefulSets(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 		if err != nil {
@@ -127,16 +172,22 @@ func (c *Client) patchWorkload(namespace, ref string, patch map[string]any) erro
 		return err
 	}
 	kind, name := ParseWorkload(ref)
-	if kind == KindStatefulSet {
+	switch kind {
+	case KindStatefulSet:
 		_, err = c.Clientset.AppsV1().StatefulSets(namespace).Patch(context.TODO(), name, types.MergePatchType, data, metav1.PatchOptions{})
-	} else {
+	case KindDeploymentConfig:
+		if c.AppsClientSet == nil {
+			return fmt.Errorf("OpenShift DeploymentConfigs are not available")
+		}
+		_, err = c.AppsClientSet.AppsV1().DeploymentConfigs(namespace).Patch(context.TODO(), name, types.MergePatchType, data, metav1.PatchOptions{})
+	default:
 		_, err = c.Clientset.AppsV1().Deployments(namespace).Patch(context.TODO(), name, types.MergePatchType, data, metav1.PatchOptions{})
 	}
 	return err
 }
 
-// listWorkloads returns the Deployments and StatefulSets of a namespace from the cache,
-// Deployments first, each sorted by name.
+// listWorkloads returns the Deployments, StatefulSets and DeploymentConfigs of a namespace from
+// the cache, in that order, each sorted by name.
 func (c *Client) listWorkloads(namespace string) ([]*workload, error) {
 	f, err := c.factory(namespace)
 	if err != nil {
@@ -158,6 +209,20 @@ func (c *Client) listWorkloads(namespace string) ([]*workload, error) {
 	}
 	for _, s := range sets {
 		result = append(result, fromStatefulSet(s))
+	}
+	if c.DeploymentConfigsEnabled() {
+		lister, err := c.deploymentConfigs(namespace)
+		if err != nil {
+			return nil, err
+		}
+		dcs, err := lister.List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+		sort.Slice(dcs, func(i, j int) bool { return dcs[i].Name < dcs[j].Name })
+		for _, dc := range dcs {
+			result = append(result, fromDeploymentConfig(dc))
+		}
 	}
 	return result, nil
 }

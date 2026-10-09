@@ -87,9 +87,9 @@ To find out what keeps an application awake, open the route in the dashboard: **
 
 Client IPs are read from `X-Forwarded-For` only when the request comes through a trusted proxy (by default private networks, where in-cluster ingress controllers and routers connect from).
 
-## Deployments and StatefulSets
+## Deployments, StatefulSets and DeploymentConfigs
 
-Routes and their dependencies can point at Deployments or StatefulSets (often the database at the end of a chain). In the API and route configurations a plain name means a Deployment and `statefulset/<name>` a StatefulSet, as in `kubectl`. Both are scaled the same way, remember their replica count, and respect HorizontalPodAutoscalers.
+Routes and their dependencies can point at Deployments, StatefulSets (often the database at the end of a chain) or OpenShift DeploymentConfigs. In the API and route configurations a plain name means a Deployment, `statefulset/<name>` a StatefulSet and `deploymentconfig/<name>` (or `dc/<name>`) a DeploymentConfig, as in `kubectl`. All are scaled the same way, remember their replica count, and respect HorizontalPodAutoscalers. DeploymentConfigs are used when the cluster serves `apps.openshift.io` and Smart Proxy may list them.
 
 ## Schedules
 

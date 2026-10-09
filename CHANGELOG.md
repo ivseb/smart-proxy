@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Added
+- **OpenShift DeploymentConfigs** as targets and dependencies (`deploymentconfig/<name>` or `dc/<name>`), when the cluster serves `apps.openshift.io`. Previously routes in front of them showed an error and never slept.
 - **Uptime monitors and health checks** no longer keep applications awake or wake them: they are recognized by User-Agent (built-in list of common monitors), path, client IP/CIDR or method, globally (`ignore.*`) or per route (dashboard, `smart-proxy/ignore-*` annotations). While an application sleeps they get `200` from Smart Proxy (or `503`, or the app is woken: `when_asleep`).
 - **Who keeps it awake**: the route detail lists the clients that sent requests in the last 24 hours, how often, and whether they count, with one-click ignore. New metrics `smart_proxy_ignored_requests_total` and `smart_proxy_asleep_responses_total`.
 
