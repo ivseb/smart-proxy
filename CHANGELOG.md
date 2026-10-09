@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2.0 — chart 0.4.0
 
 A robustness release: two rounds of review plus an end-to-end suite on a real cluster (`test/e2e`, run in CI through ingress-nginx) found and fixed the issues below. Upgrading from 2.1: see [the upgrade notes](docs/upgrading.md#from-21-to-22).
 

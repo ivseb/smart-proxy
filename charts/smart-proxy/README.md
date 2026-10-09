@@ -44,7 +44,7 @@ Common values (see [`values.yaml`](values.yaml) for the full, commented list and
 
 ## Upgrading
 
-See the [upgrade guide](https://ivseb.github.io/smart-proxy/upgrading/). From 0.2.x to 0.3.0: uptime monitors no longer keep applications awake (`ignore.defaultUserAgents: false` restores the old behaviour).
+See the [upgrade guide](https://ivseb.github.io/smart-proxy/upgrading/). From 0.3.x to 0.4.0: patched resources outside Smart Proxy's namespace now reach it through a stand-in Service created there (the chart grants the new permissions; on OpenShift installing needs cluster-admin for `endpoints/restricted`). From 0.2.x to 0.3.0: uptime monitors no longer keep applications awake (`ignore.defaultUserAgents: false` restores the old behaviour).
 
 ### From 0.1.x
 
