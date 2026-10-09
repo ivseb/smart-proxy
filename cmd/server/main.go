@@ -165,9 +165,7 @@ func main() {
 			log.Fatalf("Failed to start Kubernetes caches: %v", err)
 		}
 		// Patched resources outside Smart Proxy's namespace reach it through stand-in Services.
-		if err := k8sClient.EnableStandIns(ctx, serviceName, serviceName); err != nil {
-			log.Fatalf("Failed to watch Smart Proxy's own endpoints: %v", err)
-		}
+		k8sClient.EnableStandIns(ctx, serviceName)
 		replica := &ha.Replica{
 			Client:       k8sClient.Clientset,
 			Namespace:    k8s.OwnNamespace(),
@@ -204,6 +202,8 @@ func main() {
 		go replica.RunLeaderElection(ctx, func(leadCtx context.Context) {
 			metrics.SetLeader(true)
 			defer metrics.SetLeader(false)
+			k8sClient.SetLeading(true)
+			defer k8sClient.SetLeading(false)
 			w.Start(leadCtx)
 		})
 		metrics.RegisterSleeping(func() (map[string]int, map[string]int) {

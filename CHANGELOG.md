@@ -24,6 +24,8 @@ A robustness release: two rounds of review plus an end-to-end suite on a real cl
 - Saving a route happens before patching its resource; patch errors are reported.
 - Restore wakes workloads before unpatching; manual scale-ups of sleeping workloads are no longer woken by restore later; scheduled wakes respect start-in-order.
 - The badge leaves `HEAD`, `204`, `206` and `304` responses alone; backend weights are capped at 256; error logs are rate-limited.
+- Paths follow the routers: OpenShift Routes match whole segments like Ingresses, Ingress `Exact` paths serve only themselves, plain-prefix controllers (Traefik, `ImplementationSpecific`) still reach the longest prefix; wildcard Routes (`wildcardPolicy: Subdomain`) serve their whole domain.
+- Passthrough and re-encrypt Routes are refused (Smart Proxy serves plain HTTP) instead of breaking when patched.
 
 ### Added
 - Traffic charts keep the last 30 minutes (`STATS_RETENTION`), on the overview and per route.

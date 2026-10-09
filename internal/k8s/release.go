@@ -8,6 +8,8 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"smart-proxy/internal/logger"
 )
 
 // ReleaseNamespace undoes what Smart Proxy did for a route in a namespace it no longer watches
@@ -21,7 +23,7 @@ import (
 func (c *Client) ReleaseNamespace(namespace, proxyService string, owns func(config RouteOwner) bool, workloads []string) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	released := 0
+	released, stillPatched := 0, 0
 	var errs []error
 
 	ings, err := c.Clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{})
@@ -33,6 +35,9 @@ func (c *Client) ReleaseNamespace(namespace, proxyService string, owns func(conf
 		for i := range ings.Items {
 			ing := &ings.Items[i]
 			if !owns(ownerOf("Ingress", ing.Name, ing.Annotations)) || PatchedByOther(ing, proxyService) {
+				if IsIngressPatched(ing, proxyService) {
+					stillPatched++ // Another route's: released on its own turn
+				}
 				continue
 			}
 			if err := UnpatchIngress(ing); err == nil {
@@ -55,6 +60,9 @@ func (c *Client) ReleaseNamespace(namespace, proxyService string, owns func(conf
 			for i := range routes.Items {
 				rt := &routes.Items[i]
 				if !owns(ownerOf("Route", rt.Name, rt.Annotations)) || RoutePatchedByOther(rt, proxyService) {
+					if IsRoutePatched(rt, proxyService) {
+						stillPatched++
+					}
 					continue
 				}
 				if err := UnpatchRoute(rt); err == nil {
@@ -86,8 +94,11 @@ func (c *Client) ReleaseNamespace(namespace, proxyService string, owns func(conf
 			released++
 		}
 	}
-	if err := c.deleteStandIn(namespace, proxyService); err != nil {
-		errs = append(errs, err)
+	if stillPatched == 0 && len(errs) == 0 {
+		if err := c.deleteStandIn(namespace, proxyService); err != nil {
+			// Harmless if left (e.g. no permission anymore): it only points at Smart Proxy.
+			logger.Every("stand-in "+namespace, 10*time.Minute, "Warning: removing the stand-in Service in %s: %v", namespace, err)
+		}
 	}
 	return released, errors.Join(errs...)
 }

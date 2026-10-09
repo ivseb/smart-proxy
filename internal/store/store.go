@@ -67,6 +67,8 @@ func NewStoreWithBackend(backend Backend) *Store {
 // Adopt replaces the routes with a version written elsewhere (e.g. by another replica), unless
 // the backend knows that version predates a write made here.
 func (s *Store) Adopt(version string, routes []*RouteConfig) {
+	s.writeMu.Lock() // Not between a write here and the adoption of its result
+	defer s.writeMu.Unlock()
 	if v, ok := s.backend.(interface{ Stale(string) bool }); ok && v.Stale(version) {
 		return
 	}

@@ -131,3 +131,45 @@ func TestUnpatchRefusesUnpatchedResources(t *testing.T) {
 		t.Error("UnpatchRoute on an unpatched Route")
 	}
 }
+
+func TestPatchedByOtherInstallation(t *testing.T) {
+	// An application whose own Service port is called "proxy" (e.g. an oauth-proxy sidecar).
+	app := ingress(ns, "web", "web.example.com", "web-svc", 0)
+	app.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Port = networkingv1.ServiceBackendPort{Name: "proxy"}
+	if k8s.PatchedByOther(app, "sp") {
+		t.Error("an unpatched application counts as another installation's")
+	}
+	other := ingress(ns, "web", "web.example.com", "web-svc", 80)
+	original, _ := k8s.IngressBackend(other)
+	k8s.PatchIngress(other, "other-sp", original, "{}")
+	if !k8s.PatchedByOther(other, "sp") || k8s.PatchedByOther(other, "other-sp") {
+		t.Error("another installation's patch not recognized")
+	}
+
+	rt := route(ns, "api", "api.example.com", "api-svc")
+	rt.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromString("proxy")} // oauth-proxy
+	if k8s.RoutePatchedByOther(rt, "sp") {
+		t.Error("an unpatched Route counts as another installation's")
+	}
+	rt.Spec.Port = nil
+	k8s.PatchRoute(rt, "smart-proxy", k8s.Backend{Service: "api-svc", Port: 80}, "{}")
+	if !k8s.RoutePatchedByOther(rt, "x-smart-proxy") {
+		t.Error("a Route patched by an installation named smart-proxy counts as x-smart-proxy's")
+	}
+}
+
+func TestRouteHostAndTLS(t *testing.T) {
+	rt := route(ns, "pr", "www.preview.example.com", "web")
+	rt.Spec.WildcardPolicy = routev1.WildcardPolicySubdomain
+	if got := k8s.RouteHost(rt); got != "*.preview.example.com" {
+		t.Errorf("RouteHost = %q", got)
+	}
+	for termination, ok := range map[routev1.TLSTerminationType]bool{
+		routev1.TLSTerminationEdge: true, routev1.TLSTerminationPassthrough: false, routev1.TLSTerminationReencrypt: false,
+	} {
+		rt.Spec.TLS = &routev1.TLSConfig{Termination: termination}
+		if err := k8s.RoutePatchable(rt); (err == nil) != ok {
+			t.Errorf("%s: RoutePatchable = %v", termination, err)
+		}
+	}
+}

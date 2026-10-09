@@ -132,10 +132,14 @@ http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
 - apiGroups: ["apps.openshift.io"]
   resources: ["deploymentconfigs", "deploymentconfigs/scale"]
   verbs: ["get", "list", "watch", "update", "patch"]
-# OpenShift refuses Endpoints listing pod IPs (as stand-ins do) without this.
+{{- end }}
+{{- if or .Values.rbac.openshiftRoutes (.Capabilities.APIVersions.Has "route.openshift.io/v1") }}
+# OpenShift refuses Endpoints listing pod IPs (as stand-ins do) without this, on create and
+# update alike. Installing it requires holding it (cluster-admin does).
 - apiGroups: [""]
   resources: ["endpoints/restricted"]
-  verbs: ["create", "update"]
+  resourceNames: [{{ include "smart-proxy.fullname" . | quote }}]
+  verbs: ["create"]
 {{- end }}
 {{- end }}
 

@@ -95,7 +95,7 @@ func Run(c *k8s.Client, proxyService string) Result {
 		res.Routes++
 	}
 
-	if n, err := c.RemoveStandIns(proxyService, proxyService); err != nil {
+	if n, err := c.RemoveStandIns(proxyService); err != nil {
 		fail("removing stand-in Services: %w", err)
 	} else if n > 0 {
 		logger.Printf("Restore: removed %d stand-in Service(s)", n)

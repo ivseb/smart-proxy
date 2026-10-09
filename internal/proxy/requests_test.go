@@ -85,7 +85,8 @@ func TestPathsMatchWholeSegmentsAndHostsTrailingDots(t *testing.T) {
 		{ID: "route-ns/legacy", Host: "web.example.com", Path: "/old", Namespace: ns, Deployment: "legacy"}})
 	cases := map[string]string{
 		"/api": "ing-api", "/api/x": "ing-api", "/apidocs": "ing-web", "/": "ing-web",
-		"/oldies": "route-ns/legacy", // OpenShift Routes match plain prefixes, like the router
+		"/oldies": "ing-web", // OpenShift Routes match whole segments too, like the router
+		"/old/x":  "route-ns/legacy",
 	}
 	for path, want := range cases {
 		if got, _ := h.matchRoute("web.example.com", path); got.ID != want {
@@ -187,5 +188,20 @@ func TestBadgeLeavesPartialContentAlone(t *testing.T) {
 	injectBadge(resp)
 	if body, _ := io.ReadAll(resp.Body); string(body) != "<body>hi</" {
 		t.Fatalf("partial content changed: %q", body)
+	}
+}
+
+// Controllers matching plain prefixes (Traefik, ImplementationSpecific paths) send "/apidocs" for
+// an Ingress path "/api": with nothing better on the host, it belongs to that route.
+func TestPlainPrefixFallbackAndExactPaths(t *testing.T) {
+	h, _, _ := webHandler(t, []*store.RouteConfig{
+		webRoute("ing-api", "/api", "api"),
+		{ID: "ing-exact", Host: "web.example.com", Path: "/status", PathExact: true, Namespace: ns, Deployment: "status"},
+	})
+	for path, want := range map[string]string{"/apidocs": "ing-api", "/status": "ing-exact", "/status/x": ""} {
+		got, _ := h.matchRoute("web.example.com", path)
+		if got.ID != want {
+			t.Errorf("%s -> %q, want %q", path, got.ID, want)
+		}
 	}
 }

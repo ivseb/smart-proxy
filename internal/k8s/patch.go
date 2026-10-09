@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 
 	routev1 "github.com/openshift/api/route/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -109,15 +110,37 @@ func OriginalIngressBackend(ing *networkingv1.Ingress) (Backend, bool) {
 	return IngressBackend(ing)
 }
 
-// PatchedByOther reports whether an Ingress was patched by another Smart Proxy installation (its
-// Service has another name): this one must leave it alone.
+// PatchedByOther reports whether an Ingress was patched by another Smart Proxy installation
+// (marked patched, pointing at the "proxy" port of a Service that isn't this one's nor the
+// recorded application's): this one must leave it alone. An application's own port named
+// "proxy" (e.g. an oauth-proxy sidecar) is not a patch.
 func PatchedByOther(ing *networkingv1.Ingress, proxyService string) bool {
-	return ingressPointsAtProxy(ing) && !IsProxyService(managedIngressPath(ing).Backend.Service.Name, proxyService)
+	path := managedIngressPath(ing)
+	if ing.Annotations[AnnotationPatched] != "true" || path == nil || path.Backend.Service == nil {
+		return false
+	}
+	b := path.Backend.Service
+	if b.Port.Name != ProxyPortName || b.Name == proxyService || b.Name == ing.Annotations[AnnotationOriginalService] {
+		return false
+	}
+	return true
 }
 
 // RoutePatchedByOther is PatchedByOther for a Route.
 func RoutePatchedByOther(rt *routev1.Route, proxyService string) bool {
-	return routePointsAtProxy(rt) && !IsProxyService(rt.Spec.To.Name, proxyService)
+	if rt.Annotations[AnnotationPatched] != "true" || !routePointsAtProxy(rt) {
+		return false
+	}
+	name := rt.Spec.To.Name
+	if name == proxyService || name == rt.Annotations[AnnotationOriginalService] {
+		return false
+	}
+	// Patched by 1.x/2.0, whose Service was always called smart-proxy and which didn't record
+	// the original port: this installation's (it adopts them).
+	if name == LegacyServiceName && !strings.Contains(rt.Annotations[AnnotationOriginalBackends], `"portRecorded":true`) {
+		return false
+	}
+	return true
 }
 
 // ingressPointsAtProxy reports whether the Ingress sends traffic to a Service's "proxy" port,
@@ -355,4 +378,35 @@ func clearAnnotations(annotations map[string]string) {
 	for _, key := range []string{AnnotationPatched, AnnotationOriginalService, AnnotationOriginalPort, AnnotationOriginalBackends, AnnotationConfig, AnnotationDeclarative} {
 		delete(annotations, key)
 	}
+}
+
+// RouteHost is the host a Route serves: its host, or for a wildcard Route
+// (wildcardPolicy: Subdomain) every host of its parent domain ("*.example.com"), as the router
+// does.
+func RouteHost(rt *routev1.Route) string {
+	if rt.Spec.WildcardPolicy == routev1.WildcardPolicySubdomain {
+		if _, parent, ok := strings.Cut(rt.Spec.Host, "."); ok {
+			return "*." + parent
+		}
+	}
+	return rt.Spec.Host
+}
+
+// ErrRouteTLS explains why a Route can't be put behind Smart Proxy.
+var ErrRouteTLS = errors.New("passthrough and re-encrypt Routes send TLS to their backend, and Smart Proxy serves plain HTTP: use edge termination to put this Route behind Smart Proxy")
+
+// RoutePatchable reports whether a Route can point at Smart Proxy: the router must hand it
+// plain HTTP (no TLS, or edge termination).
+func RoutePatchable(rt *routev1.Route) error {
+	if tls := rt.Spec.TLS; tls != nil && (tls.Termination == routev1.TLSTerminationPassthrough || tls.Termination == routev1.TLSTerminationReencrypt) {
+		return ErrRouteTLS
+	}
+	return nil
+}
+
+// IngressPathExact reports whether the Ingress's managed path matches only itself (pathType
+// Exact).
+func IngressPathExact(ing *networkingv1.Ingress) bool {
+	p := managedIngressPath(ing)
+	return p != nil && p.PathType != nil && *p.PathType == networkingv1.PathTypeExact
 }

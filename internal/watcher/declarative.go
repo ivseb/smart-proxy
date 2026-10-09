@@ -70,6 +70,14 @@ func (w *Watcher) declared(kind, namespace, name, host, path string, backend k8s
 	return desired, true
 }
 
+// reportInvalid logs why a resource's annotations can't be applied, once per reason.
+func (w *Watcher) reportInvalid(key string, err error) {
+	if w.invalid[key] != err.Error() {
+		w.invalid[key] = err.Error()
+		logger.Printf("Ignoring smart-proxy annotations on %s: %v", key, err)
+	}
+}
+
 func (w *Watcher) routeFor(kind, namespace, name string) *store.RouteConfig {
 	for _, r := range w.store.GetAllRoutes() {
 		if k, ns, n, ok := r.Resource(); ok && k == kind && ns == namespace && n == name {
@@ -122,6 +130,7 @@ func (w *Watcher) reconcileIngress(ing *networkingv1.Ingress) {
 	if !ok {
 		return
 	}
+	desired.PathExact = k8s.IngressPathExact(ing)
 	w.save(desired)
 
 	config := desired.AnnotationJSON()
@@ -162,6 +171,10 @@ func (w *Watcher) reconcileRoute(rt *routev1.Route) {
 	if k8s.IsProxyService(service, w.serviceName) {
 		return
 	}
+	if err := k8s.RoutePatchable(rt); err != nil && !k8s.IsRoutePatched(rt, w.serviceName) {
+		w.reportInvalid("Route "+rt.Namespace+"/"+rt.Name, err)
+		return
+	}
 	backend := k8s.Backend{Service: service, Port: 80}
 	if !k8s.IsRoutePatched(rt, w.serviceName) {
 		if port, err := w.k8sClient.ResolveServicePort(rt.Namespace, service, rt.Spec.Port); err == nil {
@@ -170,7 +183,7 @@ func (w *Watcher) reconcileRoute(rt *routev1.Route) {
 	} else if existing := w.routeFor(store.KindRoute, rt.Namespace, rt.Name); existing != nil {
 		backend.Port = existing.TargetPort
 	}
-	desired, ok := w.declared(store.KindRoute, rt.Namespace, rt.Name, rt.Spec.Host, k8s.RoutePath(rt), backend, rt.Annotations)
+	desired, ok := w.declared(store.KindRoute, rt.Namespace, rt.Name, k8s.RouteHost(rt), k8s.RoutePath(rt), backend, rt.Annotations)
 	if !ok {
 		return
 	}

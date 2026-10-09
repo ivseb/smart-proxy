@@ -245,14 +245,14 @@ func (w *Watcher) healUnpatchedRoutes() {
 			for _, rt := range osRoutes {
 				// The route's own Route, and others serving one of its hosts on the same path. A
 				// Route for another path of the host is a different application.
-				if rt.Namespace != ns || (rt.Name != name && !(containsFold(hosts, rt.Spec.Host) && samePath(k8s.RoutePath(rt), config.Path))) {
+				if rt.Namespace != ns || (rt.Name != name && !(containsFold(hosts, k8s.RouteHost(rt)) && samePath(k8s.RoutePath(rt), config.Path))) {
 					continue
 				}
 				if k8s.IsRoutePatched(rt, w.serviceName) || k8s.RoutePatchedByOther(rt, w.serviceName) || !w.stillExists(config.ID) {
 					continue
 				}
-				if !w.mayHeal("Route " + rt.Namespace + "/" + rt.Name) {
-					continue
+				if k8s.RoutePatchable(rt) != nil || !w.mayHeal("Route "+rt.Namespace+"/"+rt.Name) {
+					continue // Switched to passthrough/re-encrypt since: Smart Proxy can't serve it
 				}
 				logger.Printf("Self-Healing: Route %s/%s has been unpatched (likely by Helm). Re-applying patch...", rt.Namespace, rt.Name)
 				original := k8s.Backend{Service: config.TargetService, Port: config.TargetPort}
@@ -278,7 +278,11 @@ func (w *Watcher) healUnpatchedRoutes() {
 					}
 				}
 				k8s.PatchRoute(rt, w.serviceName, original, config.AnnotationJSON())
-				w.report(fmt.Sprintf("Route %s/%s", rt.Namespace, rt.Name), w.k8sClient.UpdateRoute(rt))
+				err := w.k8sClient.UpdateRoute(rt)
+				if err == nil {
+					w.healed("Route " + rt.Namespace + "/" + rt.Name)
+				}
+				w.report(fmt.Sprintf("Route %s/%s", rt.Namespace, rt.Name), err)
 			}
 
 		case store.KindIngress:
@@ -310,7 +314,11 @@ func (w *Watcher) healUnpatchedRoutes() {
 			if err := k8s.PatchIngress(ing, w.serviceName, original, config.AnnotationJSON()); err != nil {
 				continue
 			}
-			w.report(fmt.Sprintf("Ingress %s/%s", ns, name), w.k8sClient.UpdateIngress(ing))
+			err = w.k8sClient.UpdateIngress(ing)
+			if err == nil {
+				w.healed("Ingress " + ns + "/" + name)
+			}
+			w.report(fmt.Sprintf("Ingress %s/%s", ns, name), err)
 		}
 	}
 }

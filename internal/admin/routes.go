@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/store"
 )
@@ -204,7 +205,7 @@ func (s *Server) resourceIDForHosts(namespace, hostList string) string {
 	hosts := splitHosts(hostList)
 	if routes, err := s.k8sClient.ListRoutes(); err == nil {
 		for _, rt := range routes {
-			if rt.Namespace == namespace && containsFold(hosts, rt.Spec.Host) {
+			if rt.Namespace == namespace && containsFold(hosts, k8s.RouteHost(rt)) {
 				return store.RouteID(rt.Namespace, rt.Name)
 			}
 		}

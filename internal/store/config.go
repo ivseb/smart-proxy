@@ -20,9 +20,11 @@ type DependencyConfig struct {
 
 // RouteConfig represents the configuration for a single proxied route.
 type RouteConfig struct {
-	ID            string             `json:"id"`
-	Host          string             `json:"host"` // Domain to match (e.g. app.local)
-	Path          string             `json:"path"` // URL Path to match
+	ID   string `json:"id"`
+	Host string `json:"host"` // Domain to match (e.g. app.local)
+	Path string `json:"path"` // URL Path to match
+	// PathExact matches the path only, not what is under it (Ingress pathType Exact).
+	PathExact     bool               `json:"path_exact,omitempty"`
 	TargetService string             `json:"target_service"`
 	TargetPort    int                `json:"target_port"`
 	Namespace     string             `json:"namespace"`

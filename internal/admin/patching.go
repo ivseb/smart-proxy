@@ -93,7 +93,7 @@ func (s *Server) handleOpenshiftRoutes(w http.ResponseWriter, r *http.Request) {
 		} else if rt.Spec.Port != nil {
 			backend.PortName = rt.Spec.Port.TargetPort.String()
 		}
-		res = append(res, s.patchable(store.KindRoute, rt.Namespace, rt.Name, rt.Spec.Host, k8s.RoutePath(rt),
+		res = append(res, s.patchable(store.KindRoute, rt.Namespace, rt.Name, k8s.RouteHost(rt), k8s.RoutePath(rt),
 			backend, rt.Annotations[k8s.AnnotationPatched] == "true"))
 	}
 	writeJSON(w, res)
@@ -182,6 +182,7 @@ func (s *Server) handlePatchIngress(w http.ResponseWriter, r *http.Request) {
 	deployment, _ := s.k8sClient.ResolveDeploymentForService(ns, original.Service)
 	config := newRouteConfig(store.IngressID(ns, name), ns, k8s.IngressHost(ing), k8s.IngressPath(ing),
 		original.Service, s.ingressPort(ns, original), deployment)
+	config.PathExact = k8s.IngressPathExact(ing)
 
 	if err := k8s.PatchIngress(ing, s.ServiceName, original, configJSON(config)); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -246,10 +247,14 @@ func (s *Server) handlePatchRoute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Already patched", http.StatusBadRequest)
 		return
 	}
+	if err := k8s.RoutePatchable(rt); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	original := s.routeOriginalBackend(rt)
 	deployment, _ := s.k8sClient.ResolveDeploymentForService(ns, original.Service)
-	config := newRouteConfig(store.RouteID(ns, name), ns, rt.Spec.Host, k8s.RoutePath(rt),
+	config := newRouteConfig(store.RouteID(ns, name), ns, k8s.RouteHost(rt), k8s.RoutePath(rt),
 		original.Service, original.Port, deployment)
 	// Balanced across several Services: manage those running now, leave the others alone.
 	config.Backends = s.k8sClient.RouteBackends(rt, nil)
@@ -299,7 +304,7 @@ func (s *Server) handleUnpatchRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	owner := ownerID(store.KindRoute, ns, name, rt.Annotations)
-	res := patchedResource{ResourceRef{Kind: store.KindRoute, Namespace: ns, Name: name}, rt.Spec.Host}
+	res := patchedResource{ResourceRef{Kind: store.KindRoute, Namespace: ns, Name: name}, k8s.RouteHost(rt)}
 	if err := k8s.UnpatchRoute(rt); err != nil {
 		http.Error(w, "Not patched", http.StatusBadRequest)
 		return
@@ -325,7 +330,7 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 		for _, rt := range routes {
 			bound := boundKind == store.KindRoute && boundNs == rt.Namespace && boundName == rt.Name
 			if rt.Namespace != config.Namespace || k8s.RoutePatchedByOther(rt, s.ServiceName) ||
-				!(bound || (containsFold(hosts, rt.Spec.Host) && samePath(k8s.RoutePath(rt), config.Path))) {
+				!(bound || (containsFold(hosts, k8s.RouteHost(rt)) && samePath(k8s.RoutePath(rt), config.Path))) {
 				continue
 			}
 			if rt.Annotations[k8s.AnnotationPatched] == "true" {
@@ -334,7 +339,11 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 				}
 				rt.Annotations[k8s.AnnotationConfig] = annotation
 			} else {
-				logger.Printf("Auto-patching Route %s/%s for host %s", rt.Namespace, rt.Name, rt.Spec.Host)
+				if err := k8s.RoutePatchable(rt); err != nil {
+					logger.Printf("Not patching Route %s/%s for host %s: %v", rt.Namespace, rt.Name, k8s.RouteHost(rt), err)
+					continue
+				}
+				logger.Printf("Auto-patching Route %s/%s for host %s", rt.Namespace, rt.Name, k8s.RouteHost(rt))
 				k8s.PatchRoute(rt, s.ServiceName, s.routeOriginalBackend(rt), annotation)
 			}
 			if err := s.k8sClient.UpdateRoute(rt); err != nil {

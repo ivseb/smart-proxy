@@ -52,6 +52,10 @@ func TestStopsHealingAResourceSomethingKeepsReverting(t *testing.T) {
 		if !w.mayHeal("Ingress a/web") {
 			t.Fatalf("refused heal %d", i+1)
 		}
+		w.healed("Ingress a/web")
+		if !w.mayHeal("Ingress a/failing") { // Failed re-patches don't count
+			t.Fatal("refused a heal after failures")
+		}
 	}
 	if w.mayHeal("Ingress a/web") || !w.mayHeal("Ingress a/other") {
 		t.Fatal("kept healing a resource reverted every time, or stopped healing another one")

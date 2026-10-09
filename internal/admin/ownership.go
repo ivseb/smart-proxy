@@ -73,7 +73,7 @@ func (s *Server) patchedByRoute() map[string][]patchedResource {
 	}
 	if routes, err := s.k8sClient.ListRoutes(); err == nil {
 		for _, rt := range routes {
-			add(store.KindRoute, rt.Namespace, rt.Name, rt.Spec.Host, rt.Annotations)
+			add(store.KindRoute, rt.Namespace, rt.Name, k8s.RouteHost(rt), rt.Annotations)
 		}
 	}
 	return result

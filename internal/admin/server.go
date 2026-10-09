@@ -276,7 +276,7 @@ func (s *Server) handleServiceRoutes(w http.ResponseWriter, r *http.Request) {
 					if total > 0 {
 						share = float64(t.Weight) * 100 / float64(total)
 					}
-					matching = append(matching, RouteInfo{Name: rt.Name, Host: rt.Spec.Host, Type: store.KindRoute, Share: share, Alternate: i > 0})
+					matching = append(matching, RouteInfo{Name: rt.Name, Host: k8s.RouteHost(rt), Type: store.KindRoute, Share: share, Alternate: i > 0})
 				}
 			}
 		}

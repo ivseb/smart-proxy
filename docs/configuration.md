@@ -47,7 +47,12 @@ kubectl label namespace pr-1234 smart-proxy=enabled
 
 Smart Proxy keeps a local cache of the managed namespaces (Deployments, Services, Ingresses, Routes and HPAs), so proxied requests never wait on the Kubernetes API. Patching, waking and sleeping happen only inside managed namespaces; the API refuses anything else.
 
-An Ingress or Route can only send traffic to a Service of its own namespace. Where Smart Proxy patches one outside its own namespace, it creates a *stand-in*: a Service with Smart Proxy's name and no selector, whose endpoints are Smart Proxy's ready pods, kept up to date as they come and go, and removed when nothing there is patched anymore (or on uninstall). NetworkPolicies must let your ingress controller reach Smart Proxy's pods. On OpenShift, Endpoints listing pod IPs need the `endpoints/restricted` permission, which the chart grants with `rbac.openshiftRoutes`.
+An Ingress or Route can only send traffic to a Service of its own namespace. Where Smart Proxy patches one outside its own namespace, it creates a *stand-in*: a Service with Smart Proxy's name and no selector, whose endpoints are Smart Proxy's ready pods, kept up to date as they come and go, and removed when nothing there is patched anymore (or on uninstall). On OpenShift, Endpoints listing pod IPs need the `endpoints/restricted` permission: the chart grants it (installing the chart then needs cluster-admin, as granting a permission requires holding it).
+
+**NetworkPolicies.** Two paths must be open:
+
+- **Ingress controller → Smart Proxy.** The controller sends traffic straight to Smart Proxy's pods, so Smart Proxy's namespace must accept it: on OpenShift, from namespaces labelled `policy-group.network.openshift.io/ingress: ""` (and `policy-group.network.openshift.io/host-network: ""` when the router uses host networking); elsewhere, from your ingress controller's namespace.
+- **Smart Proxy → applications.** Requests reach the applications from Smart Proxy's pods. Namespaces whose policies only allow their own namespace and the router (a common OpenShift baseline) must also allow Smart Proxy's namespace, or patched applications time out.
 
 When a namespace stops being managed (removed from `watchNamespaces`, or its label removed), Smart Proxy restores it: its patched Ingresses/Routes point at the applications again and the workloads it put to sleep are woken. Its routes stay in the dashboard as *Unwatched* and are patched again if the namespace comes back. This needs Smart Proxy's permissions in that namespace, which `namespaceSelector` and `allNamespaces` keep; with `watchNamespaces`, the chart removes the Role together with the namespace, so delete its routes first.
 

@@ -101,7 +101,8 @@ type Client struct {
 	// Recent failures (e.g. refused by an admission webhook), returned without asking again.
 	wakeFailed map[string]wakeFailure
 
-	standIns *standIns // See EnableStandIns
+	standIns    *standIns // See EnableStandIns
+	standInsErr error     // Why stand-ins can't be kept, if so
 }
 
 type wakeFailure struct {

@@ -3,6 +3,7 @@ package k8s_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,9 +29,8 @@ func TestPatchedResourcesElsewhereGetAStandIn(t *testing.T) {
 		ingress(ns, "web", "web.example.com", "web-svc", 80), proxyEndpoints("10.0.0.1", "10.0.0.2"))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := c.EnableStandIns(ctx, "sp", "sp"); err != nil {
-		t.Fatal(err)
-	}
+	c.EnableStandIns(ctx, "sp")
+	c.SetLeading(true)
 
 	ing, _ := c.GetIngress(ns, "web")
 	original, _ := k8s.IngressBackend(ing)
@@ -38,10 +38,10 @@ func TestPatchedResourcesElsewhereGetAStandIn(t *testing.T) {
 	if err := c.UpdateIngress(ing); err != nil {
 		t.Fatal(err)
 	}
-	ep, err := c.Kube.CoreV1().Endpoints(ns).Get(ctx, "sp", metav1.GetOptions{})
-	if err != nil || len(ep.Subsets) != 1 || len(ep.Subsets[0].Addresses) != 2 || ep.Subsets[0].Ports[0].Port != 8080 || ep.Subsets[0].Ports[0].Name != "proxy" {
-		t.Fatalf("stand-in endpoints = %+v, %v", ep, err)
-	}
+	fakecluster.Eventually(t, func() bool {
+		ep, err := c.Kube.CoreV1().Endpoints(ns).Get(ctx, "sp", metav1.GetOptions{})
+		return err == nil && len(ep.Subsets) == 1 && len(ep.Subsets[0].Addresses) == 2 && ep.Subsets[0].Ports[0].Port == 8080 && ep.Subsets[0].Ports[0].Name == "proxy"
+	}, "stand-in endpoints not mirrored")
 	if svc, err := c.Kube.CoreV1().Services(ns).Get(ctx, "sp", metav1.GetOptions{}); err != nil || svc.Spec.Selector != nil || svc.Spec.Ports[0].Name != "proxy" {
 		t.Fatalf("stand-in Service = %+v, %v", svc, err)
 	}
@@ -55,7 +55,7 @@ func TestPatchedResourcesElsewhereGetAStandIn(t *testing.T) {
 
 	// Restored: the stand-in goes.
 	fakecluster.Eventually(t, func() bool { _, err := c.GetIngress(ns, "web"); return err == nil }, "cache")
-	if n, err := c.RemoveStandIns("sp", "sp"); n != 1 || err != nil {
+	if n, err := c.RemoveStandIns("sp"); n != 1 || err != nil {
 		t.Fatalf("RemoveStandIns = %d, %v", n, err)
 	}
 	if _, err := c.Kube.CoreV1().Services(ns).Get(ctx, "sp", metav1.GetOptions{}); err == nil {
@@ -69,11 +69,36 @@ func TestStandInNeverReplacesSomeoneElsesService(t *testing.T) {
 		ingress(ns, "web", "web.example.com", "web-svc", 80), proxyEndpoints("10.0.0.1"), theirs)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	c.EnableStandIns(ctx, "sp", "sp")
+	c.EnableStandIns(ctx, "sp")
 	ing, _ := c.GetIngress(ns, "web")
 	original, _ := k8s.IngressBackend(ing)
 	k8s.PatchIngress(ing, "sp", original, "{}")
 	if err := c.UpdateIngress(ing); err == nil {
 		t.Fatal("patched an Ingress towards a Service that isn't Smart Proxy's")
+	}
+}
+
+// Upgraded without the new RBAC: Smart Proxy still starts, and refuses to patch where it
+// couldn't be reached instead of breaking the application.
+func TestWithoutEndpointsPermissionPatchingElsewhereIsRefused(t *testing.T) {
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"smart-proxy", ns}}, fakecluster.Options{Deny: []string{"/endpoints"}},
+		ingress(ns, "web", "web.example.com", "web-svc", 80), ingress("smart-proxy", "own", "own.example.com", "own-svc", 80))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	c.EnableStandIns(ctx, "sp")
+	if ctx.Err() != nil {
+		t.Fatal("startup waited for endpoints it may not read")
+	}
+	ing, _ := c.GetIngress(ns, "web")
+	original, _ := k8s.IngressBackend(ing)
+	k8s.PatchIngress(ing, "sp", original, "{}")
+	if err := c.UpdateIngress(ing); err == nil {
+		t.Fatal("patched an Ingress that couldn't reach Smart Proxy")
+	}
+	own, _ := c.GetIngress("smart-proxy", "own")
+	original, _ = k8s.IngressBackend(own)
+	k8s.PatchIngress(own, "sp", original, "{}")
+	if err := c.UpdateIngress(own); err != nil {
+		t.Fatalf("patching in Smart Proxy's own namespace: %v", err)
 	}
 }

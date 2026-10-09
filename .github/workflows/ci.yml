@@ -76,6 +76,7 @@ jobs:
           render --set config.allNamespaces=true
           render --set config.namespaceSelector=smart-proxy=enabled
           render --set restoreOnUninstall=false
+          render --api-versions route.openshift.io/v1 --set rbac.openshiftRoutes=false
           # Invalid settings must fail the install.
           if render --set auth.mode=oidc 2>/dev/null; then echo "incomplete oidc config was accepted"; exit 1; fi
 

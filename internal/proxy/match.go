@@ -19,16 +19,16 @@ func requestHost(r *http.Request) string {
 	return strings.TrimSuffix(host, ".")
 }
 
-// matchPath reports whether a request path falls under a route's path. Ingress paths match
-// whole segments ("/api" and "/api/" serve "/api" and "/api/x", not "/apidocs"); OpenShift
-// Routes match plain prefixes, as the OpenShift router does.
+// matchPath reports whether a request path falls under a route's path, on whole segments as
+// Ingress Prefix paths and the OpenShift router do: "/api" and "/api/" serve "/api" and
+// "/api/x", not "/apidocs". An Exact Ingress path serves only itself.
 func matchPath(route store.RouteConfig, path string) bool {
 	prefix := route.Path
+	if route.PathExact {
+		return path == prefix
+	}
 	if prefix == "" || prefix == "/" {
 		return true
-	}
-	if strings.HasPrefix(route.ID, "route-") {
-		return strings.HasPrefix(path, prefix)
 	}
 	prefix = strings.TrimSuffix(prefix, "/")
 	return path == prefix || strings.HasPrefix(path, prefix+"/")
@@ -111,6 +111,13 @@ func (h *Handler) matchRoute(host, path string) (store.RouteConfig, bool) {
 	for _, list := range candidates {
 		for _, route := range list {
 			if matchPath(route, path) {
+				return route, true
+			}
+		}
+		// Some controllers match plain prefixes (Traefik by default, ImplementationSpecific
+		// paths): whatever they sent for this host belongs to its longest prefix.
+		for _, route := range list {
+			if !route.PathExact && strings.HasPrefix(path, route.Path) {
 				return route, true
 			}
 		}

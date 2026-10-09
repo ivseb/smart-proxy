@@ -18,8 +18,9 @@ const (
 )
 
 // sleepSettle is how long after a sleep a workload found running isn't held against anyone:
-// the caches may not show the sleep yet.
-var sleepSettle = time.Minute
+// the caches may not show the sleep yet. Much shorter than the 30-second pass, so a tool
+// scaling it back up right away is noticed on the next pass.
+var sleepSettle = 10 * time.Second
 
 type sleepRecord struct {
 	at        time.Time   // Our latest successful sleep
@@ -36,7 +37,8 @@ func (w *Watcher) isPaused(key string) bool {
 	return ok
 }
 
-// mayHeal records a re-patch of a resource; it refuses when the resource keeps being reverted.
+// mayHeal reports whether a reverted resource may be patched again: not when it keeps being
+// reverted after successful re-patches (see healed).
 func (w *Watcher) mayHeal(resource string) bool {
 	if w.isPaused(resource) {
 		return false
@@ -48,6 +50,7 @@ func (w *Watcher) mayHeal(resource string) bool {
 			recent = append(recent, t)
 		}
 	}
+	w.heals[resource] = recent
 	if len(recent) >= fightRounds {
 		delete(w.heals, resource)
 		w.paused[resource] = now.Add(fightPause)
@@ -55,8 +58,12 @@ func (w *Watcher) mayHeal(resource string) bool {
 			resource, len(recent), fightWindow, fightPause, gitOpsAdvice)
 		return false
 	}
-	w.heals[resource] = append(recent, now)
 	return true
+}
+
+// healed records a successful re-patch (failed ones say nothing about a fight).
+func (w *Watcher) healed(resource string) {
+	w.heals[resource] = append(w.heals[resource], time.Now())
 }
 
 // maySleep refuses to put a workload to sleep when something else keeps scaling it back up.
