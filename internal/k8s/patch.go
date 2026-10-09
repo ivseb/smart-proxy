@@ -98,11 +98,28 @@ func IngressBackend(ing *networkingv1.Ingress) (Backend, bool) {
 
 // OriginalIngressBackend returns the application backend: from the annotations when patched,
 // otherwise the current one.
+//
+// When the spec no longer points at Smart Proxy's port (e.g. a Helm upgrade re-applied the
+// application's Ingress, keeping the annotations), the spec is the truth: the recorded backend
+// may be outdated.
 func OriginalIngressBackend(ing *networkingv1.Ingress) (Backend, bool) {
-	if ing.Annotations[AnnotationPatched] == "true" && ing.Annotations[AnnotationOriginalService] != "" {
+	if ing.Annotations[AnnotationPatched] == "true" && ing.Annotations[AnnotationOriginalService] != "" && ingressPointsAtProxy(ing) {
 		return backendFromAnnotation(ing.Annotations[AnnotationOriginalService], ing.Annotations[AnnotationOriginalPort]), true
 	}
 	return IngressBackend(ing)
+}
+
+// ingressPointsAtProxy reports whether the Ingress sends traffic to a Service's "proxy" port,
+// as patched Ingresses do.
+func ingressPointsAtProxy(ing *networkingv1.Ingress) bool {
+	path := managedIngressPath(ing)
+	return path != nil && path.Backend.Service != nil && path.Backend.Service.Port.Name == ProxyPortName
+}
+
+// routePointsAtProxy reports whether the Route targets a Service's "proxy" port, as patched
+// Routes do.
+func routePointsAtProxy(rt *routev1.Route) bool {
+	return rt.Spec.Port != nil && rt.Spec.Port.TargetPort.StrVal == ProxyPortName
 }
 
 // IsIngressPatched reports whether the Ingress points at Smart Proxy's named port.
@@ -173,7 +190,7 @@ func weightOf(w *int32) int32 {
 // Service first) and its port spec, as they were before patching.
 func OriginalRouteTargets(rt *routev1.Route) ([]RouteTarget, *routev1.RoutePort) {
 	to, toWeight, alternates, port := rt.Spec.To.Name, rt.Spec.To.Weight, rt.Spec.AlternateBackends, rt.Spec.Port
-	if rt.Annotations[AnnotationPatched] == "true" {
+	if rt.Annotations[AnnotationPatched] == "true" && routePointsAtProxy(rt) {
 		var orig originalRouteBackends
 		_ = json.Unmarshal([]byte(rt.Annotations[AnnotationOriginalBackends]), &orig)
 		to, toWeight, alternates = OriginalRouteService(rt), orig.ToWeight, orig.AlternateBackends
@@ -200,9 +217,9 @@ func RoutePath(rt *routev1.Route) string {
 }
 
 // OriginalRouteService returns the application Service: from the annotations when patched,
-// otherwise the current target.
+// otherwise (or when the spec was re-applied since, see OriginalIngressBackend) the current target.
 func OriginalRouteService(rt *routev1.Route) string {
-	if rt.Annotations[AnnotationPatched] == "true" && rt.Annotations[AnnotationOriginalService] != "" {
+	if rt.Annotations[AnnotationPatched] == "true" && rt.Annotations[AnnotationOriginalService] != "" && routePointsAtProxy(rt) {
 		return rt.Annotations[AnnotationOriginalService]
 	}
 	return rt.Spec.To.Name

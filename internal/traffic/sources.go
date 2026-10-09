@@ -45,6 +45,7 @@ func (s SourceStats) key() string { return s.Client + " " + s.Method + " " + s.P
 const (
 	maxSourcesPerRoute = 12
 	maxUserAgentLength = 160
+	maxPathLength      = 200
 	forgetAfter        = 24 * time.Hour
 )
 
@@ -62,7 +63,7 @@ func NewRecorder() *Recorder {
 // Record notes a request to a route.
 func (r *Recorder) Record(routeID string, req *http.Request, client net.IP, ignoredReason string) {
 	ua := req.UserAgent()
-	stats := SourceStats{Client: ClientName(ua), Method: req.Method, Path: req.URL.Path}
+	stats := SourceStats{Client: ClientName(ua), Method: truncate(req.Method, 16), Path: truncate(req.URL.Path, maxPathLength)}
 	if stats.Client == Browser {
 		stats.Method, stats.Path = "*", "*"
 	}

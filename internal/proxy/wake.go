@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/store"
@@ -30,7 +31,7 @@ func (h *Handler) ensureAwake(routes []store.RouteConfig) ([]workloadState, bool
 
 	// check returns the deployment's state, waking it when allowed.
 	check := func(namespace, name string, mayWake bool) string {
-		key := namespace + "/" + name
+		key := namespace + "/" + k8s.WorkloadRef(k8s.ParseWorkload(name))
 		if state, ok := seen[key]; ok {
 			return state
 		}

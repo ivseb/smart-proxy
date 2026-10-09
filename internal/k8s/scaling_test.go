@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
@@ -160,5 +161,19 @@ func TestWakeReplicas(t *testing.T) {
 		if got := k8s.WakeReplicas(tc.annotations, tc.hpa); got != tc.want {
 			t.Errorf("%s: got %d, want %d", tc.name, got, tc.want)
 		}
+	}
+}
+
+// A workload woken by another replica stays up until that replica's activity reaches the leader.
+func TestRecentlyWokenWorkloadsAreNotSleptAgain(t *testing.T) {
+	c := cluster(t, fakecluster.Options{}, deployment(ns, "web", 0))
+	if _, err := c.WakeDeployment(ns, "web"); err != nil {
+		t.Fatal(err)
+	}
+	if slept, err := c.SleepIdleDeployment(ns, "web", time.Minute); slept || err != nil {
+		t.Fatalf("slept a workload woken just now: %v %v", slept, err)
+	}
+	if slept, err := c.SleepDeployment(ns, "web"); !slept || err != nil {
+		t.Fatalf("an explicit sleep must still work: %v %v", slept, err)
 	}
 }

@@ -160,10 +160,27 @@ func (s *Server) afterUnpatch(owner string, res patchedResource) {
 		return
 	}
 
+	// Its host leaves the route, unless another of its resources still serves it. A route bound
+	// to resources never ends up without hosts: that would make it catch every host.
+	stillServed := func(host string) bool {
+		for _, other := range remaining {
+			if strings.EqualFold(other.Host, host) {
+				return true
+			}
+		}
+		return false
+	}
 	var hosts []string
 	for _, h := range splitHosts(route.Host) {
-		if !strings.EqualFold(h, res.Host) {
+		if !strings.EqualFold(h, res.Host) || stillServed(h) {
 			hosts = append(hosts, h)
+		}
+	}
+	if len(hosts) == 0 {
+		for _, other := range remaining {
+			if other.Host != "" && !containsFold(hosts, other.Host) {
+				hosts = append(hosts, other.Host)
+			}
 		}
 	}
 	updated := *route

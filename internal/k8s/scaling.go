@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"smart-proxy/internal/logger"
 
@@ -16,6 +17,11 @@ import (
 // put it to sleep, so waking it restores the same size.
 const AnnotationReplicasBeforeSleep = "smart-proxy/replicas-before-sleep"
 
+// AnnotationWokenAt records when Smart Proxy last woke a workload (RFC 3339). A replica that
+// isn't the leader wakes workloads too, and the leader learns about that request's activity only
+// some seconds later: until then the workload must not be put back to sleep.
+const AnnotationWokenAt = "smart-proxy/woken-at"
+
 // ErrManagedByKEDA is returned when a Deployment's replicas are owned by a KEDA ScaledObject.
 // KEDA scales it back to its minReplicaCount, so Smart Proxy must not put it to sleep.
 var ErrManagedByKEDA = errors.New("replicas are managed by a KEDA ScaledObject")
@@ -26,6 +32,12 @@ var ErrManagedByKEDA = errors.New("replicas are managed by a KEDA ScaledObject")
 // A HorizontalPodAutoscaler is fine: Kubernetes disables an HPA whose target is at zero
 // replicas until something scales it up again.
 func (c *Client) SleepDeployment(namespace, name string) (bool, error) {
+	return c.SleepIdleDeployment(namespace, name, 0)
+}
+
+// SleepIdleDeployment is SleepDeployment, except for a workload Smart Proxy woke less than
+// minAwake ago: it is left running.
+func (c *Client) SleepIdleDeployment(namespace, name string, minAwake time.Duration) (bool, error) {
 	ns := c.ns(namespace)
 	if !c.Watches(ns) {
 		return false, fmt.Errorf("%w: %q", errNotWatched, ns)
@@ -41,6 +53,9 @@ func (c *Client) SleepDeployment(namespace, name string) (bool, error) {
 	}
 	replicas := w.replicas()
 	if replicas == 0 {
+		return false, nil
+	}
+	if woken, err := time.Parse(time.RFC3339, w.Annotations[AnnotationWokenAt]); err == nil && time.Since(woken) < minAwake {
 		return false, nil
 	}
 
@@ -81,7 +96,10 @@ func (c *Client) WakeDeployment(namespace, name string) (int32, error) {
 		err = c.patchWorkload(ns, name, map[string]any{
 			"metadata": map[string]any{
 				"resourceVersion": w.ResourceVersion,
-				"annotations":     map[string]any{AnnotationReplicasBeforeSleep: nil},
+				"annotations": map[string]any{
+					AnnotationReplicasBeforeSleep: nil,
+					AnnotationWokenAt:             time.Now().UTC().Format(time.RFC3339),
+				},
 			},
 			"spec": map[string]any{"replicas": target},
 		})

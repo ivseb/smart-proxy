@@ -187,12 +187,17 @@ func (s *Server) handlePatchIngress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.k8sClient.UpdateIngress(ing); err != nil {
-		http.Error(w, "Failed to update ingress: "+err.Error(), httpStatusFor(err))
+	// The route first: an Ingress pointing at Smart Proxy without one would answer 404.
+	if err := s.store.AddRoute(config); err != nil {
+		http.Error(w, "Failed to save the route: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.store.AddRoute(config); err != nil {
-		logger.Printf("Warning: Failed to add route to store: %v", err)
+	if err := s.k8sClient.UpdateIngress(ing); err != nil {
+		if !apierrors.IsConflict(err) { // On a conflict, self-healing completes the patch
+			s.store.RemoveRoute(config.ID)
+		}
+		http.Error(w, "Failed to update ingress: "+err.Error(), httpStatusFor(err))
+		return
 	}
 	logger.Printf("Patched Ingress %s/%s (deployment %s)", ns, name, deployment)
 	w.WriteHeader(http.StatusOK)
@@ -254,12 +259,17 @@ func (s *Server) handlePatchRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	k8s.PatchRoute(rt, s.ServiceName, original, configJSON(config))
-	if err := s.k8sClient.UpdateRoute(rt); err != nil {
-		http.Error(w, "Failed to update route: "+err.Error(), httpStatusFor(err))
+	// The route first: a Route pointing at Smart Proxy without one would answer 404.
+	if err := s.store.AddRoute(config); err != nil {
+		http.Error(w, "Failed to save the route: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := s.store.AddRoute(config); err != nil {
-		logger.Printf("Warning: Failed to add route to store: %v", err)
+	if err := s.k8sClient.UpdateRoute(rt); err != nil {
+		if !apierrors.IsConflict(err) { // On a conflict, self-healing completes the patch
+			s.store.RemoveRoute(config.ID)
+		}
+		http.Error(w, "Failed to update route: "+err.Error(), httpStatusFor(err))
+		return
 	}
 	logger.Printf("Patched Route %s/%s (deployment %s)", ns, name, deployment)
 	w.WriteHeader(http.StatusOK)
@@ -314,7 +324,7 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 	if routes, err := s.k8sClient.ListRoutes(); err == nil {
 		for _, rt := range routes {
 			bound := boundKind == store.KindRoute && boundNs == rt.Namespace && boundName == rt.Name
-			if rt.Namespace != config.Namespace || !(bound || containsFold(hosts, rt.Spec.Host)) {
+			if rt.Namespace != config.Namespace || !(bound || (containsFold(hosts, rt.Spec.Host) && samePath(k8s.RoutePath(rt), config.Path))) {
 				continue
 			}
 			if rt.Annotations[k8s.AnnotationPatched] == "true" {
@@ -335,7 +345,7 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 	if ings, err := s.k8sClient.ListIngresses(); err == nil {
 		for _, ing := range ings {
 			bound := boundKind == store.KindIngress && boundNs == ing.Namespace && boundName == ing.Name
-			if ing.Namespace != config.Namespace || !(bound || containsFold(hosts, k8s.IngressHost(ing))) {
+			if ing.Namespace != config.Namespace || !(bound || (containsFold(hosts, k8s.IngressHost(ing)) && samePath(k8s.IngressPath(ing), config.Path))) {
 				continue
 			}
 			if ing.Annotations[k8s.AnnotationPatched] == "true" {
@@ -405,4 +415,16 @@ func (s *Server) SyncRoutesFromCluster() {
 		}
 	}
 	logger.Printf("Loaded %d route configuration(s) from Ingress/Route annotations", count)
+}
+
+// samePath compares Ingress/Route paths, "" being "/". Resources serving a route's host on
+// another path belong to another application.
+func samePath(a, b string) bool {
+	norm := func(p string) string {
+		if p == "" {
+			return "/"
+		}
+		return p
+	}
+	return norm(a) == norm(b)
 }

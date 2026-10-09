@@ -14,6 +14,7 @@
 | `IGNORE_DEFAULT_USER_AGENTS` | Ignore the built-in list of uptime monitors and health checkers (matched in the User-Agent). | `true` |
 | `IGNORE_USER_AGENTS`, `IGNORE_PATHS`, `IGNORE_SOURCES`, `IGNORE_METHODS` | Extra requests that never count as activity, for every route: User-Agent substrings, paths (`/status/*` for prefixes), client IPs/CIDRs, methods. Comma-separated. | — |
 | `TRUSTED_PROXIES` | Proxies whose `X-Forwarded-For` names the client (`none` to trust none). | private networks |
+| `WAKE_TIMEOUT` | How long requests other than browser page loads (API calls, form posts, WebSockets) wait for a sleeping application before getting `503`. Page loads get the "waking up" page instead. | `2m` |
 | `STATS_RETENTION` | How far back the dashboard's traffic charts go. Kept in memory by each replica (a 10-second resolution), so a restart starts over; use the Prometheus metrics for long-term history. | `30m` |
 | `METRICS_ADDR` | Listen address of the Prometheus metrics endpoint. | `:9090` |
 | `SHUTDOWN_DELAY` | On SIGTERM, how long to fail the readiness probe before closing listeners, so in-flight traffic moves away cleanly. | `5s` |

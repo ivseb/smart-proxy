@@ -115,8 +115,14 @@ func (s *Store) Replace(routes []*RouteConfig) {
 		if c.ID == "" {
 			c.ID = uuid.New().String() // Assign ID to legacy routes
 		}
-		if existing, ok := s.routes[c.ID]; ok && existing.LastActivity.After(c.LastActivity) {
-			c.LastActivity = existing.LastActivity
+		if existing, ok := s.routes[c.ID]; ok {
+			if existing.LastActivity.After(c.LastActivity) {
+				c.LastActivity = existing.LastActivity
+			}
+		} else if now := time.Now(); c.LastActivity.Before(now) {
+			// New here, e.g. just created through another replica, which saves no activity:
+			// its idle timeout starts now, not when this replica started.
+			c.LastActivity = now
 		}
 		s.clampActivity(&c)
 		next[c.ID] = &c

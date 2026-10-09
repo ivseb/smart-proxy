@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -34,6 +35,9 @@ const (
 
 	// Traffic sources change with every request; share them less often than activity.
 	trafficEvery = 4
+	// maxTraffic keeps the activity ConfigMap well under Kubernetes' 1 MiB limit: activity
+	// must always get through, traffic sources are only informative.
+	maxTraffic = 512 << 10
 )
 
 // RequestCounts are proxied request totals, overall and per route.
@@ -116,6 +120,7 @@ func (r *Replica) exchangeActivity(ctx context.Context) {
 	var published map[string]time.Time
 	var publishedRequests RequestCounts
 	var sources string
+	tooLarge := false
 	for tick := 0; ; tick++ {
 		select {
 		case <-ctx.Done():
@@ -125,8 +130,14 @@ func (r *Replica) exchangeActivity(ctx context.Context) {
 		local := r.Store.LocalActivity()
 		requests := r.localRequests()
 		if tick%trafficEvery == 0 && r.LocalTraffic != nil {
-			if data, err := json.Marshal(r.LocalTraffic()); err == nil {
+			if data, err := json.Marshal(r.LocalTraffic()); err == nil && len(data) <= maxTraffic {
 				sources = string(data)
+			} else if err == nil {
+				sources = ""
+				if !tooLarge {
+					logger.Printf("Warning: traffic sources too large to share (%d KiB); other replicas won't show them", len(data)>>10)
+				}
+				tooLarge = true
 			}
 		}
 		if len(local) > 0 && (!reflect.DeepEqual(local, published) || !reflect.DeepEqual(requests, publishedRequests)) {
@@ -261,6 +272,10 @@ func (r *Replica) RunLeaderElection(ctx context.Context, lead func(ctx context.C
 		Client:     r.Client.CoordinationV1(),
 		LockConfig: resourcelock.ResourceLockConfig{Identity: r.PodName},
 	}
+	// client-go runs OnStartedLeading in a goroutine and doesn't wait for it when leadership is
+	// lost: a term starting right after (the lease is still ours) must wait for the previous
+	// one to stop, or two watcher loops would run at once.
+	var term sync.Mutex
 	for ctx.Err() == nil {
 		leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
 			Lock:            lock,
@@ -271,6 +286,11 @@ func (r *Replica) RunLeaderElection(ctx context.Context, lead func(ctx context.C
 			Name:            r.Instance,
 			Callbacks: leaderelection.LeaderCallbacks{
 				OnStartedLeading: func(leadCtx context.Context) {
+					term.Lock()
+					defer term.Unlock()
+					if leadCtx.Err() != nil {
+						return // Already lost
+					}
 					logger.Printf("This replica (%s) is now the leader: it handles sleeping and self-healing", r.PodName)
 					lead(leadCtx)
 				},

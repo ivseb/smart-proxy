@@ -89,6 +89,10 @@ func main() {
 	globalRules, trusted := trafficConfig()
 	proxyHandler.GlobalRules, proxyHandler.TrustedProxies = globalRules, trusted
 	proxyHandler.Traffic = traffic.NewRecorder()
+	// How long API calls and other non-page requests wait for a sleeping app.
+	if proxyHandler.WakeTimeout, err = time.ParseDuration(getEnv("WAKE_TIMEOUT", "2m")); err != nil {
+		log.Fatalf("Invalid WAKE_TIMEOUT: %v", err)
+	}
 
 	// 4. Admin Server
 	adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics, serviceName, authn)
