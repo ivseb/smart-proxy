@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +20,7 @@ import (
 	routev1 "github.com/openshift/api/route/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -30,26 +30,18 @@ type Server struct {
 	k8sClient *k8s.Client
 	store     *store.Store
 	Metrics   *proxy.Metrics
-	ProxyPort int
+	// ServiceName is the Service fronting Smart Proxy; patched Ingresses/Routes point at it.
+	ServiceName string
 }
 
 // NewServer creates a new instance of the admin Server.
 // It initializes the server with the provided Kubernetes client, configuration store, and metrics collector.
-// It also reads the SMART_PROXY_PORT environment variable to configure the proxy port (default: 80).
-func NewServer(k8sClient *k8s.Client, store *store.Store, metrics *proxy.Metrics) *Server {
-	portStr := os.Getenv("SMART_PROXY_PORT")
-	port := 80
-	if portStr != "" {
-		if p, err := strconv.Atoi(portStr); err == nil {
-			port = p
-		}
-	}
-
+func NewServer(k8sClient *k8s.Client, store *store.Store, metrics *proxy.Metrics, serviceName string) *Server {
 	return &Server{
-		k8sClient: k8sClient,
-		store:     store,
-		Metrics:   metrics,
-		ProxyPort: port,
+		k8sClient:   k8sClient,
+		store:       store,
+		Metrics:     metrics,
+		ServiceName: serviceName,
 	}
 }
 
@@ -542,8 +534,8 @@ func (s *Server) handlePatchIngress(w http.ResponseWriter, r *http.Request) {
 	ing.Annotations["smart-proxy/original-port"] = strconv.Itoa(originalPort)
 
 	// Update Ingress to point to Us
-	path.Backend.Service.Name = "smart-proxy"
-	path.Backend.Service.Port.Number = int32(s.ProxyPort)
+	path.Backend.Service.Name = s.ServiceName
+	path.Backend.Service.Port = networkingv1.ServiceBackendPort{Name: k8s.ProxyPortName}
 	ing.Spec.Rules[0].HTTP.Paths[0] = path
 
 	routeConfig := &store.RouteConfig{
@@ -597,15 +589,21 @@ func (s *Server) handleUnpatchIngress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	originalSvc := ing.Annotations["smart-proxy/original-service"]
+	originalPort, err := strconv.Atoi(ing.Annotations["smart-proxy/original-port"])
+	if err != nil {
+		originalPort = 80 // Legacy patches without a recorded port
+	}
 
 	// Restore
 	if len(ing.Spec.Rules) > 0 && len(ing.Spec.Rules[0].HTTP.Paths) > 0 {
 		ing.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name = originalSvc
-		ing.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Port.Number = 80 // Hardcoded for demo
+		ing.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Port = networkingv1.ServiceBackendPort{Number: int32(originalPort)}
 	}
 
 	delete(ing.Annotations, "smart-proxy/patched")
 	delete(ing.Annotations, "smart-proxy/original-service")
+	delete(ing.Annotations, "smart-proxy/original-port")
+	delete(ing.Annotations, "smart-proxy/config")
 
 	if err := s.k8sClient.UpdateIngress(ing); err != nil {
 		http.Error(w, "Failed to update ingress: "+err.Error(), http.StatusInternalServerError)
@@ -810,15 +808,14 @@ func (s *Server) handlePatchRoute(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update Route to point to Us
-	route.Spec.To.Name = "smart-proxy"
+	route.Spec.To.Name = s.ServiceName
 	route.Spec.To.Weight = nil
 	route.Spec.AlternateBackends = nil
 
-	// Set target port to ProxyPort (admin/proxy port)
 	if route.Spec.Port == nil {
 		route.Spec.Port = &routev1.RoutePort{}
 	}
-	route.Spec.Port.TargetPort = intstr.FromString("proxy")
+	route.Spec.Port.TargetPort = intstr.FromString(k8s.ProxyPortName)
 
 	routePath := route.Spec.Path
 	if routePath == "" {
@@ -1122,14 +1119,14 @@ func (s *Server) autoPatchRoutesForConfig(config *store.RouteConfig) {
 			}
 
 			// Update Route to point to Us
-			rt.Spec.To.Name = "smart-proxy"
+			rt.Spec.To.Name = s.ServiceName
 			rt.Spec.To.Weight = nil
 			rt.Spec.AlternateBackends = nil
 
 			if rt.Spec.Port == nil {
 				rt.Spec.Port = &routev1.RoutePort{}
 			}
-			rt.Spec.Port.TargetPort = intstr.FromString("proxy")
+			rt.Spec.Port.TargetPort = intstr.FromString(k8s.ProxyPortName)
 
 			// Persist this config to the route
 			configBytes, _ := json.Marshal(config)
@@ -1208,8 +1205,8 @@ func (s *Server) autoPatchIngressesForConfig(config *store.RouteConfig) {
 			ing.Annotations["smart-proxy/original-service"] = originalSvc
 			ing.Annotations["smart-proxy/original-port"] = strconv.Itoa(originalPort)
 
-			path.Backend.Service.Name = "smart-proxy"
-			path.Backend.Service.Port.Number = int32(s.ProxyPort)
+			path.Backend.Service.Name = s.ServiceName
+			path.Backend.Service.Port = networkingv1.ServiceBackendPort{Name: k8s.ProxyPortName}
 			ing.Spec.Rules[0].HTTP.Paths[0] = path
 
 			configBytes, _ := json.Marshal(config)

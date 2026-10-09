@@ -36,15 +36,17 @@ type RouteConfig struct {
 
 // Store provides a thread-safe implementation for managing RouteConfigs.
 type Store struct {
-	mu       sync.RWMutex
-	routes   map[string]*RouteConfig // Key is ID
-	filePath string
+	mu        sync.RWMutex
+	routes    map[string]*RouteConfig // Key is ID
+	filePath  string
+	startedAt time.Time
 }
 
 func NewStore(filePath string) *Store {
 	s := &Store{
-		routes:   make(map[string]*RouteConfig),
-		filePath: filePath,
+		routes:    make(map[string]*RouteConfig),
+		filePath:  filePath,
+		startedAt: time.Now(),
 	}
 	s.LoadFromFile()
 	return s
@@ -61,6 +63,12 @@ func (s *Store) AddRoute(config *RouteConfig) error {
 
 	// Validate uniqueness? For now, we allow overrides or duplicates on different IDs.
 	// In V2, we might want to check if Host+Path combo exists, but let's keep it simple.
+
+	// Don't let a re-added route (e.g. synced from a stale annotation) lose recorded activity.
+	if existing, ok := s.routes[config.ID]; ok && existing.LastActivity.After(config.LastActivity) {
+		config.LastActivity = existing.LastActivity
+	}
+	s.clampActivity(config)
 
 	s.routes[config.ID] = config
 	return s.saveToFile()
@@ -129,9 +137,19 @@ func (s *Store) LoadFromFile() error {
 		if r.ID == "" {
 			r.ID = uuid.New().String() // Assign ID to legacy routes
 		}
+		s.clampActivity(r)
 		s.routes[r.ID] = r
 	}
 	return nil
+}
+
+// clampActivity ensures a route never appears idle since before this process started.
+// Activity is only tracked in memory, so persisted or annotated timestamps are stale after a
+// restart; without this, every route would be scaled down on the first watcher tick.
+func (s *Store) clampActivity(r *RouteConfig) {
+	if r.LastActivity.Before(s.startedAt) {
+		r.LastActivity = s.startedAt
+	}
 }
 
 func (s *Store) saveToFile() error {

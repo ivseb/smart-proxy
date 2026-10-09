@@ -24,6 +24,10 @@ import (
 	routev1client "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
 )
 
+// ProxyPortName is the name of the Smart Proxy Service port that receives proxied traffic.
+// Patched Ingresses and Routes reference it by name, so they don't depend on the port number.
+const ProxyPortName = "proxy"
+
 // Client wraps the Kubernetes and OpenShift clientsets.
 type Client struct {
 	Clientset      *kubernetes.Clientset

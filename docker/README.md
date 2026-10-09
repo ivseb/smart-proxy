@@ -35,7 +35,8 @@ helm install smart-proxy smart-proxy/smart-proxy --namespace smart-proxy --creat
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `SMART_PROXY_PORT` | HTTP port the proxy listens on. | `80` |
+| `SMART_PROXY_PORT` | HTTP port the proxy listens on. | `8080` |
+| `SMART_PROXY_SERVICE_NAME` | Name of the Service fronting Smart Proxy (patched Ingresses/Routes point at its `proxy` port). | `smart-proxy` |
 | `WATCH_NAMESPACE` | Namespace to watch for resources. | current namespace |
 | `LOG_LEVEL` | `debug`, `info` or `error`. | `info` |
 

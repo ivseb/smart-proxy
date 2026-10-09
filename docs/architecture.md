@@ -67,7 +67,7 @@ flowchart LR
 
 ## Under the hood
 
-1.  **Patching** — patching a route via the Admin UI rewrites the Ingress/Route to point at the `smart-proxy` service. The original service/port is stored in the `smart-proxy/original-service` and `smart-proxy/original-port` annotations, and `smart-proxy/patched` is set to `true`. Advanced settings (dependencies, timeouts) live in `smart-proxy/config`.
+1.  **Patching** — patching a route via the Admin UI rewrites the Ingress/Route to point at the Smart Proxy service (its `proxy` port, by name). The original service/port is stored in the `smart-proxy/original-service` and `smart-proxy/original-port` annotations, and `smart-proxy/patched` is set to `true`. Advanced settings (dependencies, timeouts) live in `smart-proxy/config`.
 2.  **Request handling** — traffic hits Smart Proxy, which uses the `Host` header to find the matching configuration.
 3.  **Idle detection** — if the target is scaled to zero, the request is held while the deployment scales up and a "waking up" page is shown. An inactivity timer scales it back to zero once traffic stops.
 4.  **Dependencies** — dependent services are started before traffic is forwarded; using one service keeps the entire chain alive, and dependencies can optionally be stopped together when idle.

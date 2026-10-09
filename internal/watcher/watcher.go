@@ -11,18 +11,21 @@ import (
 	"smart-proxy/internal/store"
 
 	routev1 "github.com/openshift/api/route/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 type Watcher struct {
-	k8sClient *k8s.Client
-	store     *store.Store
+	k8sClient   *k8s.Client
+	store       *store.Store
+	serviceName string // Service fronting Smart Proxy; patched Ingresses/Routes point at it
 }
 
-func NewWatcher(k8sClient *k8s.Client, store *store.Store) *Watcher {
+func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *Watcher {
 	return &Watcher{
-		k8sClient: k8sClient,
-		store:     store,
+		k8sClient:   k8sClient,
+		store:       store,
+		serviceName: serviceName,
 	}
 }
 
@@ -142,6 +145,16 @@ func (w *Watcher) isDeploymentActive(routes []store.RouteConfig, namespace, depl
 	return false
 }
 
+// legacyServiceName is the Service name older versions always patched resources to,
+// regardless of the actual Service name.
+const legacyServiceName = "smart-proxy"
+
+// isProxyService reports whether a backend Service name points at Smart Proxy itself,
+// including resources patched by older versions under the legacy name.
+func (w *Watcher) isProxyService(name string) bool {
+	return name == w.serviceName || name == legacyServiceName
+}
+
 func (w *Watcher) healUnpatchedRoutes() {
 	if w.k8sClient == nil {
 		return
@@ -174,18 +187,17 @@ func (w *Watcher) healUnpatchedRoutes() {
 
 				if isPrimary || hostMatch {
 					// Check if it is patched (spec targets smart-proxy and annotation is present)
-					isPatched := rt.Annotations["smart-proxy/patched"] == "true" && rt.Spec.To.Name == "smart-proxy"
+					isPatched := rt.Annotations["smart-proxy/patched"] == "true" && rt.Spec.To.Name == w.serviceName
 					if !isPatched {
 						logger.Printf("Self-Healing: Route %s has been unpatched (likely by Helm). Re-applying patch...", rt.Name)
 
 						originalSvc := rt.Spec.To.Name
-						if originalSvc == "smart-proxy" {
+						targetPort := route.TargetPort
+						if w.isProxyService(originalSvc) {
+							// Still pointing at us, so the spec no longer holds the original target.
 							originalSvc = route.TargetService
-						}
-
-						targetPort, err := w.k8sClient.ResolveServicePort(originalSvc, rt.Spec.Port)
-						if err != nil {
-							targetPort = route.TargetPort
+						} else if p, err := w.k8sClient.ResolveServicePort(originalSvc, rt.Spec.Port); err == nil {
+							targetPort = p
 						}
 
 						if rt.Annotations == nil {
@@ -208,14 +220,14 @@ func (w *Watcher) healUnpatchedRoutes() {
 							rt.Annotations["smart-proxy/original-backends"] = string(origBackendsBytes)
 						}
 
-						rt.Spec.To.Name = "smart-proxy"
+						rt.Spec.To.Name = w.serviceName
 						rt.Spec.To.Weight = nil
 						rt.Spec.AlternateBackends = nil
 
 						if rt.Spec.Port == nil {
 							rt.Spec.Port = &routev1.RoutePort{}
 						}
-						rt.Spec.Port.TargetPort = intstr.FromString("proxy")
+						rt.Spec.Port.TargetPort = intstr.FromString(k8s.ProxyPortName)
 
 						configBytes, _ := json.Marshal(route)
 						rt.Annotations["smart-proxy/config"] = string(configBytes)
@@ -240,16 +252,19 @@ func (w *Watcher) healUnpatchedRoutes() {
 			}
 			path := ing.Spec.Rules[0].HTTP.Paths[0]
 
-			isPatched := ing.Annotations["smart-proxy/patched"] == "true" && path.Backend.Service.Name == "smart-proxy"
+			// Also require the named port: older versions pointed at a port number that could
+			// mismatch the Service, and re-patching migrates those Ingresses.
+			isPatched := ing.Annotations["smart-proxy/patched"] == "true" &&
+				path.Backend.Service.Name == w.serviceName &&
+				path.Backend.Service.Port.Name == k8s.ProxyPortName
 			if !isPatched {
 				logger.Printf("Self-Healing: Ingress %s has been unpatched. Re-applying patch...", ingressName)
 
 				originalSvc := path.Backend.Service.Name
-				if originalSvc == "smart-proxy" {
-					originalSvc = route.TargetService
-				}
 				originalPort := int(path.Backend.Service.Port.Number)
-				if originalPort == int(route.TargetPort) {
+				if w.isProxyService(originalSvc) {
+					// Still pointing at us, so the backend no longer holds the original target.
+					originalSvc = route.TargetService
 					originalPort = route.TargetPort
 				}
 
@@ -260,8 +275,8 @@ func (w *Watcher) healUnpatchedRoutes() {
 				ing.Annotations["smart-proxy/original-service"] = originalSvc
 				ing.Annotations["smart-proxy/original-port"] = strconv.Itoa(originalPort)
 
-				path.Backend.Service.Name = "smart-proxy"
-				path.Backend.Service.Port.Number = int32(8080)
+				path.Backend.Service.Name = w.serviceName
+				path.Backend.Service.Port = networkingv1.ServiceBackendPort{Name: k8s.ProxyPortName}
 				ing.Spec.Rules[0].HTTP.Paths[0] = path
 
 				configBytes, _ := json.Marshal(route)

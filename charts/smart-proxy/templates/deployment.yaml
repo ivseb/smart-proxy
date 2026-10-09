@@ -43,6 +43,8 @@ spec:
             {{- end }}
             - name: SMART_PROXY_PORT
               value: {{ .Values.config.proxyPort | quote }}
+            - name: SMART_PROXY_SERVICE_NAME
+              value: {{ include "smart-proxy.fullname" . | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.config.logLevel | quote }}
           resources:

@@ -10,7 +10,6 @@ import (
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/watcher"
-	// "smart-proxy/internal/watcher"
 )
 
 func main() {
@@ -26,32 +25,40 @@ func main() {
 
 	// 2. Initialize Config Store
 	// Use environment variable for config path or default
-	configPath := os.Getenv("CONFIG_PATH")
-	if configPath == "" {
-		configPath = "routes.json"
-	}
+	configPath := getEnv("CONFIG_PATH", "routes.json")
 	configStore := store.NewStore(configPath)
+
+	// Name of the Service fronting Smart Proxy: patched Ingresses/Routes are pointed at it.
+	// Helm sets this to the release fullname, which is not always "smart-proxy".
+	serviceName := getEnv("SMART_PROXY_SERVICE_NAME", "smart-proxy")
+	proxyAddr := ":" + getEnv("SMART_PROXY_PORT", "8080")
 
 	// 3. Initialize Proxy Handler
 	proxyHandler := proxy.NewHandler(k8sClient, configStore)
 
 	// 4. Initialize Watcher (Auto-scaler)
-	watcherService := watcher.NewWatcher(k8sClient, configStore)
+	watcherService := watcher.NewWatcher(k8sClient, configStore, serviceName)
 	go watcherService.Start()
 
 	// 5. Start Admin Server (Port 8081)
-	// 5. Start Admin Server (Port 8081)
 	go func() {
 		log.Println("Admin Server listening on :8081")
-		adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics)
+		adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics, serviceName)
 		if err := adminServer.ListenAndServe(":8081"); err != nil {
 			log.Printf("Admin Server failed: %v", err)
 		}
 	}()
 
-	// 6. Start Proxy Server (Port 8080)
-	log.Println("Proxy Server listening on :8080")
-	if err := http.ListenAndServe(":8080", proxyHandler); err != nil {
+	// 6. Start Proxy Server
+	log.Printf("Proxy Server listening on %s", proxyAddr)
+	if err := http.ListenAndServe(proxyAddr, proxyHandler); err != nil {
 		log.Fatalf("Proxy Server failed: %v", err)
 	}
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }

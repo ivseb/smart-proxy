@@ -4,7 +4,8 @@
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `SMART_PROXY_PORT` | The HTTP port the proxy listens on. | `80` |
+| `SMART_PROXY_PORT` | The HTTP port the proxy listens on. | `8080` |
+| `SMART_PROXY_SERVICE_NAME` | Name of the Service fronting Smart Proxy. Patched Ingresses/Routes are pointed at it (on its `proxy` port). Set automatically by the Helm chart. | `smart-proxy` |
 | `WATCH_NAMESPACE` | The namespace to watch for resources. | `default` (or current NS) |
 | `LOG_LEVEL` | Logging verbosity (debug, info, error). | `info` |
 
