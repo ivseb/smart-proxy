@@ -2,7 +2,9 @@ package admin
 
 import (
 	"encoding/json"
+
 	"fmt"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"strings"
 
 	"smart-proxy/internal/k8s"
@@ -117,8 +119,13 @@ func (s *Server) deleteRoute(id string) ([]patchedResource, error) {
 		for _, d := range route.Dependencies {
 			workloads = append(workloads, d.Name)
 		}
-		if _, err := s.k8sClient.ReleaseNamespace(ns, owns, workloads); err != nil {
-			return nil, fmt.Errorf("restoring route %s in unwatched namespace %s: %w", id, ns, err)
+		if _, err := s.k8sClient.ReleaseNamespace(ns, s.ServiceName, owns, workloads); err != nil {
+			if !apierrors.IsForbidden(err) && !apierrors.IsNotFound(err) {
+				return nil, fmt.Errorf("restoring route %s in unwatched namespace %s: %w", id, ns, err)
+			}
+			// No permission there anymore (or no namespace): the route goes anyway, or it could
+			// never be deleted. Whatever is left needs restoring by hand.
+			logger.Printf("Warning: route %s deleted without restoring namespace %s (%v); restore its patched Ingresses/Routes and sleeping workloads by hand if any", id, ns, err)
 		}
 	} else if s.k8sClient != nil {
 		for _, res := range s.patchedByRoute()[id] {

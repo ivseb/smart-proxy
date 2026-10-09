@@ -142,3 +142,18 @@ func TestHealRebuildsARouteThatLostItsAnnotations(t *testing.T) {
 		t.Fatalf("restored to %s port %+v", got.Spec.To.Name, got.Spec.Port)
 	}
 }
+
+// While its Ingress points straight at the application (reverted, healing paused), a route sees
+// no traffic: it must not put the application to sleep.
+func TestRouteNotRoutedThroughSmartProxyDoesNotSleep(t *testing.T) {
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{}, ing("team-a", "web", "web-svc"), dep("team-a", "web", 2))
+	st := store.NewStore(filepath.Join(t.TempDir(), "routes.json"))
+	route := &store.RouteConfig{ID: store.IngressID("team-a", "web"), Namespace: "team-a", Deployment: "web", IdleTimeout: time.Minute}
+	st.AddRoute(route)
+	st.SetActivityForTest(route.ID, time.Now().Add(-time.Hour))
+	fakecluster.Eventually(t, func() bool { _, err := c.GetIngress("team-a", "web"); return err == nil }, "cache")
+	NewWatcher(c.Client, st, proxyService).checkIdleRoutes()
+	if replicas(t, c, "team-a", "web") == 0 {
+		t.Fatal("put to sleep while its traffic doesn't go through Smart Proxy")
+	}
+}

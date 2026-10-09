@@ -18,7 +18,7 @@ import (
 // It uses the API directly (the caches only cover watched namespaces), so it works as long as
 // the RBAC still allows it. owns tells whether a patched resource belongs to the route, from
 // its smart-proxy/config annotation.
-func (c *Client) ReleaseNamespace(namespace string, owns func(config RouteOwner) bool, workloads []string) (int, error) {
+func (c *Client) ReleaseNamespace(namespace, proxyService string, owns func(config RouteOwner) bool, workloads []string) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	released := 0
@@ -32,7 +32,7 @@ func (c *Client) ReleaseNamespace(namespace string, owns func(config RouteOwner)
 	default:
 		for i := range ings.Items {
 			ing := &ings.Items[i]
-			if !owns(ownerOf("Ingress", ing.Name, ing.Annotations)) {
+			if !owns(ownerOf("Ingress", ing.Name, ing.Annotations)) || PatchedByOther(ing, proxyService) {
 				continue
 			}
 			if err := UnpatchIngress(ing); err == nil {
@@ -54,7 +54,7 @@ func (c *Client) ReleaseNamespace(namespace string, owns func(config RouteOwner)
 		default:
 			for i := range routes.Items {
 				rt := &routes.Items[i]
-				if !owns(ownerOf("Route", rt.Name, rt.Annotations)) {
+				if !owns(ownerOf("Route", rt.Name, rt.Annotations)) || RoutePatchedByOther(rt, proxyService) {
 					continue
 				}
 				if err := UnpatchRoute(rt); err == nil {
@@ -85,6 +85,9 @@ func (c *Client) ReleaseNamespace(namespace string, owns func(config RouteOwner)
 		} else {
 			released++
 		}
+	}
+	if err := c.deleteStandIn(namespace, proxyService); err != nil {
+		errs = append(errs, err)
 	}
 	return released, errors.Join(errs...)
 }

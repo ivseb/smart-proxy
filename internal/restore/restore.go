@@ -28,7 +28,10 @@ type Result struct {
 
 // Run wakes every workload Smart Proxy put to sleep and unpatches every Ingress and Route in
 // the watched namespaces. It keeps going after a failure and reports all of them.
-func Run(c *k8s.Client) Result {
+//
+// proxyService is this installation's Service: resources patched by another installation are
+// left alone, and this one's stand-in Services are removed.
+func Run(c *k8s.Client, proxyService string) Result {
 	var res Result
 	fail := func(format string, args ...any) {
 		err := fmt.Errorf(format, args...)
@@ -57,7 +60,7 @@ func Run(c *k8s.Client) Result {
 		fail("listing ingresses: %w", err)
 	}
 	for _, ing := range ings {
-		if ing.Annotations[k8s.AnnotationPatched] != "true" {
+		if ing.Annotations[k8s.AnnotationPatched] != "true" || k8s.PatchedByOther(ing, proxyService) {
 			continue
 		}
 		if err := k8s.UnpatchIngress(ing); err != nil {
@@ -77,7 +80,7 @@ func Run(c *k8s.Client) Result {
 		fail("listing routes: %w", err)
 	}
 	for _, rt := range routes {
-		if rt.Annotations[k8s.AnnotationPatched] != "true" {
+		if rt.Annotations[k8s.AnnotationPatched] != "true" || k8s.RoutePatchedByOther(rt, proxyService) {
 			continue
 		}
 		if err := k8s.UnpatchRoute(rt); err != nil {
@@ -90,6 +93,12 @@ func Run(c *k8s.Client) Result {
 		}
 		logger.Printf("Restore: Route %s/%s points at its original backend again", rt.Namespace, rt.Name)
 		res.Routes++
+	}
+
+	if n, err := c.RemoveStandIns(proxyService, proxyService); err != nil {
+		fail("removing stand-in Services: %w", err)
+	} else if n > 0 {
+		logger.Printf("Restore: removed %d stand-in Service(s)", n)
 	}
 
 	logger.Printf("Restore: %d Ingress(es) and %d Route(s) unpatched, %d Deployment(s) woken, %d error(s)",

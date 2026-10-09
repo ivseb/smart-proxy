@@ -90,6 +90,9 @@ func (w *Watcher) save(desired *store.RouteConfig) {
 }
 
 func (w *Watcher) reconcileIngress(ing *networkingv1.Ingress) {
+	if k8s.PatchedByOther(ing, w.serviceName) {
+		return // Another Smart Proxy installation's
+	}
 	label := fmt.Sprintf("Ingress %s/%s", ing.Namespace, ing.Name)
 	managed := ing.Annotations[k8s.AnnotationDeclarative] == "true"
 
@@ -139,6 +142,9 @@ func (w *Watcher) reconcileIngress(ing *networkingv1.Ingress) {
 }
 
 func (w *Watcher) reconcileRoute(rt *routev1.Route) {
+	if k8s.RoutePatchedByOther(rt, w.serviceName) {
+		return // Another Smart Proxy installation's
+	}
 	label := fmt.Sprintf("Route %s/%s", rt.Namespace, rt.Name)
 	managed := rt.Annotations[k8s.AnnotationDeclarative] == "true"
 

@@ -3,8 +3,8 @@ package store
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -38,9 +38,8 @@ type ConfigMapBackend struct {
 	// with them rather than with only the route being saved.
 	seed func() []*RouteConfig
 
-	mu        sync.Mutex
-	written   string // resourceVersion of our latest write, until the watch delivers it
-	writtenAt time.Time
+	mu     sync.Mutex
+	newest uint64 // Highest resourceVersion written or adopted
 }
 
 // maxRoutesSize keeps the routes under Kubernetes' 1 MiB ConfigMap limit, with room to spare.
@@ -49,20 +48,29 @@ const maxRoutesSize = 900 << 10
 // SetSeed sets where routes come from when the ConfigMap has to be re-created.
 func (b *ConfigMapBackend) SetSeed(seed func() []*RouteConfig) { b.seed = seed }
 
-// Stale reports whether a version of the ConfigMap delivered by a watch predates our latest
-// write: watches deliver changes in order, so until our own write arrives, anything else is
-// older. Adopting it would briefly bring back routes just removed (or drop ones just added).
+// Stale reports whether a version of the ConfigMap delivered by a watch is older than one
+// already written or adopted here: adopting it would briefly bring back routes just removed (or
+// drop ones just added). Versions that aren't numbers (never seen in practice) are adopted.
 func (b *ConfigMapBackend) Stale(resourceVersion string) bool {
+	n, err := strconv.ParseUint(resourceVersion, 10, 64)
+	if err != nil {
+		return false
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.written == "" {
-		return false
+	if n < b.newest {
+		return true
 	}
-	if resourceVersion == b.written || time.Since(b.writtenAt) > 10*time.Second {
-		b.written = "" // Caught up (or the watch restarted and skipped it)
-		return false
+	b.newest = n
+	return false
+}
+
+func (b *ConfigMapBackend) seen(resourceVersion string) {
+	if n, err := strconv.ParseUint(resourceVersion, 10, 64); err == nil {
+		b.mu.Lock()
+		b.newest = max(b.newest, n)
+		b.mu.Unlock()
 	}
-	return true
 }
 
 func NewConfigMapBackend(client kubernetes.Interface, namespace, name, instance string, owner *metav1.OwnerReference) *ConfigMapBackend {
@@ -125,7 +133,7 @@ func (b *ConfigMapBackend) Update(mutate func(map[string]*RouteConfig)) ([]*Rout
 		if err != nil {
 			return err
 		}
-		if len(data) > maxRoutesSize {
+		if len(data) > maxRoutesSize && len(data) > len(cm.Data[ConfigMapKey]) { // Shrinking is always allowed
 			return fmt.Errorf("too many routes for ConfigMap %s (%d KiB)", b.name, len(data)>>10)
 		}
 		if cm.Data == nil {
@@ -144,9 +152,7 @@ func (b *ConfigMapBackend) Update(mutate func(map[string]*RouteConfig)) ([]*Rout
 		}
 		if err == nil {
 			result = toList(m)
-			b.mu.Lock()
-			b.written, b.writtenAt = saved.ResourceVersion, time.Now()
-			b.mu.Unlock()
+			b.seen(saved.ResourceVersion)
 		}
 		return err
 	})

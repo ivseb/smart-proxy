@@ -125,5 +125,6 @@ Each replica streams only its own logs to the dashboard.
 - **Long connections.** WebSockets, server-sent events and long downloads keep their route active for as long as they are open.
 - **gRPC.** Requests arriving over HTTP/2 without TLS (h2c, as ingress controllers send gRPC) reach the application the same way, trailers included.
 - **API server trouble.** Calls made while serving requests time out after 10 seconds; requests are served from the caches meanwhile.
+- **Other namespaces.** Patched resources outside Smart Proxy's namespace reach it through a stand-in Service there (see [Multiple namespaces](configuration.md#multiple-namespaces)), updated by every replica as Smart Proxy's pods change.
 - **Lost state.** If the routes ConfigMap is deleted, the replicas keep serving from memory and re-create it with every route on the next change.
 

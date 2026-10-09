@@ -164,6 +164,10 @@ func main() {
 		if err := k8sClient.Start(ctx, 2*time.Minute); err != nil {
 			log.Fatalf("Failed to start Kubernetes caches: %v", err)
 		}
+		// Patched resources outside Smart Proxy's namespace reach it through stand-in Services.
+		if err := k8sClient.EnableStandIns(ctx, serviceName, serviceName); err != nil {
+			log.Fatalf("Failed to watch Smart Proxy's own endpoints: %v", err)
+		}
 		replica := &ha.Replica{
 			Client:       k8sClient.Clientset,
 			Namespace:    k8s.OwnNamespace(),
@@ -351,7 +355,7 @@ func runRestore() {
 			log.Printf("Warning: could not delete Lease %s: %v", lease, err)
 		}
 	}
-	if err := restore.Run(client).Err(); err != nil {
+	if err := restore.Run(client, getEnv("SMART_PROXY_SERVICE_NAME", "smart-proxy")).Err(); err != nil {
 		log.Fatalf("Restore finished with errors:\n%v", err)
 	}
 }

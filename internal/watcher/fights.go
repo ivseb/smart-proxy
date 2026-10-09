@@ -17,9 +17,14 @@ const (
 	gitOpsAdvice = "if a GitOps tool manages it, enable Smart Proxy declaratively (smart-proxy/enabled annotation in Git) or have the tool ignore the fields Smart Proxy changes"
 )
 
+// sleepSettle is how long after a sleep a workload found running isn't held against anyone:
+// the caches may not show the sleep yet.
+var sleepSettle = time.Minute
+
 type sleepRecord struct {
-	at       time.Time
-	external int // Times it was found running again without Smart Proxy waking it
+	at        time.Time   // Our latest successful sleep
+	counted   bool        // Found running again since, without Smart Proxy waking it (counted once)
+	externals []time.Time // Such scale-ups, within the fight window
 }
 
 func (w *Watcher) isPaused(key string) bool {
@@ -63,17 +68,29 @@ func (w *Watcher) maySleep(namespace, workload, key string) bool {
 	if replicas, _, err := w.k8sClient.GetDeploymentStatus(namespace, workload); !ok || err != nil || replicas == 0 {
 		return true // Never slept here, or still asleep: nothing to tell
 	}
-	if woken, ok := w.k8sClient.WokenAt(namespace, workload); ok && woken.After(last.at) {
-		last.external = 0 // Woken by Smart Proxy: the normal cycle
-	} else {
-		last.external++
+	// Slept moments ago (the cache may not show it yet, e.g. a workload shared by several
+	// routes), already counted for this sleep, or woken by Smart Proxy since: the normal cycle.
+	if time.Since(last.at) < sleepSettle || last.counted {
+		return true
 	}
+	if woken, ok := w.k8sClient.WokenAt(namespace, workload); ok && !woken.Before(last.at.Truncate(time.Second)) {
+		return true
+	}
+	now := time.Now()
+	last.counted = true
+	recent := last.externals[:0]
+	for _, t := range last.externals {
+		if now.Sub(t) < fightWindow {
+			recent = append(recent, t)
+		}
+	}
+	last.externals = append(recent, now)
 	w.sleeps[key] = last
-	if last.external >= fightRounds {
+	if len(last.externals) >= fightRounds {
 		delete(w.sleeps, key)
-		w.paused[key] = time.Now().Add(fightPause)
-		logger.Printf("Not putting %s to sleep for %s: it was scaled back up %d times without a request waking it; %s.",
-			key, fightPause, last.external, gitOpsAdvice)
+		w.paused[key] = now.Add(fightPause)
+		logger.Printf("Not putting %s to sleep for %s: it was scaled back up %d times in %s without a request waking it; %s.",
+			key, fightPause, len(last.externals), fightWindow, gitOpsAdvice)
 		return false
 	}
 	return true

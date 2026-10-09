@@ -41,7 +41,10 @@ kind: Ingress
 metadata:
   name: echo
   namespace: e2e
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 50m
 spec:
+  ingressClassName: nginx
   rules:
     - host: echo.e2e.test
       http:

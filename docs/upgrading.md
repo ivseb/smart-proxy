@@ -1,5 +1,13 @@
 # Upgrading
 
+## From 2.1 to 2.2
+
+A drop-in upgrade with the chart. Things to know:
+
+- **Stand-in Services.** In every namespace (other than its own) where Smart Proxy has patched an Ingress or Route, it now creates a Service with its own name and no selector, whose endpoints are its pods. Before, patched resources outside Smart Proxy's namespace pointed at a Service that didn't exist there. The chart grants the new permissions (create Services and Endpoints; change or delete only those with Smart Proxy's name). **Without the chart**, add them to your Roles: see `deploy/kubernetes/rbac.yaml`. If a namespace already has a Service with Smart Proxy's name that isn't Smart Proxy's, patching there fails with a clear error instead of breaking the application.
+- **API calls to sleeping applications wait** for them (up to `WAKE_TIMEOUT`, 2 minutes) instead of getting the HTML waking page; browsers still get the page.
+- **Self-healing backs off** when something keeps reverting a patch (see [GitOps](gitops.md#argo-cd)).
+
 ## From 2.0 to 2.1
 
 A drop-in upgrade (`helm upgrade … --version 0.3.0 -f my-values.yaml`). Things to know:

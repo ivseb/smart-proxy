@@ -15,6 +15,8 @@ import (
 
 // A GitOps tool scaling the workload back up every time: after a few rounds, stop fighting.
 func TestStopsSleepingAWorkloadSomethingKeepsScalingUp(t *testing.T) {
+	defer func(d time.Duration) { sleepSettle = d }(sleepSettle)
+	sleepSettle = 0
 	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{}, dep("team-a", "web", 2))
 	st := store.NewStore(filepath.Join(t.TempDir(), "routes.json"))
 	w := NewWatcher(c.Client, st, proxyService)
@@ -53,5 +55,24 @@ func TestStopsHealingAResourceSomethingKeepsReverting(t *testing.T) {
 	}
 	if w.mayHeal("Ingress a/web") || !w.mayHeal("Ingress a/other") {
 		t.Fatal("kept healing a resource reverted every time, or stopped healing another one")
+	}
+}
+
+// Several routes sharing one workload: one sleep, seen by the others in the same pass while the
+// cache still shows it running, is not a fight.
+func TestSharedWorkloadIsNotAFight(t *testing.T) {
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{}, dep("team-a", "web", 2))
+	st := store.NewStore(filepath.Join(t.TempDir(), "routes.json"))
+	w := NewWatcher(c.Client, st, proxyService)
+	for _, name := range []string{"a", "b", "c", "d", "e"} {
+		r := &store.RouteConfig{ID: store.IngressID("team-a", name), Namespace: "team-a", Deployment: "web", IdleTimeout: time.Minute}
+		st.AddRoute(r)
+		st.SetActivityForTest(r.ID, time.Now().Add(-time.Hour))
+	}
+	for i := 0; i < 3; i++ {
+		w.checkIdleRoutes()
+	}
+	if len(w.paused) != 0 {
+		t.Fatalf("paused %v after an ordinary sleep", w.paused)
 	}
 }

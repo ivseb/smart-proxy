@@ -103,6 +103,11 @@ func (w *Watcher) checkIdleRoutes() {
 		if _, _, _, ok := route.Resource(); !ok || !w.k8sClient.Watches(route.Namespace) {
 			continue
 		}
+		// Its traffic must flow through Smart Proxy to be seen: while its resource points
+		// straight at the application (reverted, healing paused), it can't look idle.
+		if !w.routedThroughUs(route) {
+			continue
+		}
 		if time.Since(route.LastActivity) <= route.EffectiveIdleTimeout() || route.ScheduledAwake(now) {
 			continue
 		}
@@ -152,7 +157,7 @@ func (w *Watcher) sleep(namespace, deployment string, minAwake time.Duration, re
 	}
 	slept, err := w.k8sClient.SleepIdleDeployment(namespace, deployment, minAwake)
 	if slept {
-		w.sleeps[key] = sleepRecord{at: time.Now(), external: w.sleeps[key].external}
+		w.sleeps[key] = sleepRecord{at: time.Now(), externals: w.sleeps[key].externals}
 	}
 	switch {
 	case errors.Is(err, k8s.ErrManagedByKEDA):
@@ -243,7 +248,7 @@ func (w *Watcher) healUnpatchedRoutes() {
 				if rt.Namespace != ns || (rt.Name != name && !(containsFold(hosts, rt.Spec.Host) && samePath(k8s.RoutePath(rt), config.Path))) {
 					continue
 				}
-				if k8s.IsRoutePatched(rt, w.serviceName) || !w.stillExists(config.ID) {
+				if k8s.IsRoutePatched(rt, w.serviceName) || k8s.RoutePatchedByOther(rt, w.serviceName) || !w.stillExists(config.ID) {
 					continue
 				}
 				if !w.mayHeal("Route " + rt.Namespace + "/" + rt.Name) {
@@ -278,7 +283,7 @@ func (w *Watcher) healUnpatchedRoutes() {
 
 		case store.KindIngress:
 			ing, err := w.k8sClient.GetIngress(ns, name)
-			if err != nil || k8s.IsIngressPatched(ing, w.serviceName) || !w.stillExists(config.ID) {
+			if err != nil || k8s.IsIngressPatched(ing, w.serviceName) || k8s.PatchedByOther(ing, w.serviceName) || !w.stillExists(config.ID) {
 				continue
 			}
 			original, ok := k8s.IngressBackend(ing)
@@ -310,6 +315,17 @@ func (w *Watcher) healUnpatchedRoutes() {
 	}
 }
 
+// routedThroughUs reports whether a route's own Ingress/Route currently points at Smart Proxy.
+func (w *Watcher) routedThroughUs(route store.RouteConfig) bool {
+	kind, ns, name, _ := route.Resource()
+	if kind == store.KindRoute {
+		rt, err := w.k8sClient.GetRoute(ns, name)
+		return err != nil || k8s.IsRoutePatched(rt, w.serviceName) // Unknown: as before
+	}
+	ing, err := w.k8sClient.GetIngress(ns, name)
+	return err != nil || k8s.IsIngressPatched(ing, w.serviceName)
+}
+
 // stillExists reports whether a route is still configured: it may have been deleted (and its
 // resources restored) since this pass took its snapshot.
 func (w *Watcher) stillExists(id string) bool {
@@ -323,6 +339,11 @@ func (w *Watcher) retarget(config store.RouteConfig, backend k8s.Backend) {
 	if backend.Service == "" || backend.Port == 0 || (backend.Service == config.TargetService && backend.Port == config.TargetPort) {
 		return
 	}
+	fresh, ok := w.store.GetRoute(config.ID) // Not the pass's snapshot: keep edits made meanwhile
+	if !ok {
+		return
+	}
+	config = *fresh
 	if len(config.Backends) > 0 {
 		return // Balanced routes are re-read with their Route when re-patched from the dashboard
 	}

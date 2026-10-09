@@ -109,11 +109,26 @@ func OriginalIngressBackend(ing *networkingv1.Ingress) (Backend, bool) {
 	return IngressBackend(ing)
 }
 
+// PatchedByOther reports whether an Ingress was patched by another Smart Proxy installation (its
+// Service has another name): this one must leave it alone.
+func PatchedByOther(ing *networkingv1.Ingress, proxyService string) bool {
+	return ingressPointsAtProxy(ing) && !IsProxyService(managedIngressPath(ing).Backend.Service.Name, proxyService)
+}
+
+// RoutePatchedByOther is PatchedByOther for a Route.
+func RoutePatchedByOther(rt *routev1.Route, proxyService string) bool {
+	return routePointsAtProxy(rt) && !IsProxyService(rt.Spec.To.Name, proxyService)
+}
+
 // ingressPointsAtProxy reports whether the Ingress sends traffic to a Service's "proxy" port,
 // as patched Ingresses do.
 func ingressPointsAtProxy(ing *networkingv1.Ingress) bool {
 	path := managedIngressPath(ing)
-	return path != nil && path.Backend.Service != nil && path.Backend.Service.Port.Name == ProxyPortName
+	if path == nil || path.Backend.Service == nil {
+		return false
+	}
+	// 1.x patched with a port number, to a Service always called smart-proxy.
+	return path.Backend.Service.Port.Name == ProxyPortName || path.Backend.Service.Name == LegacyServiceName
 }
 
 // routePointsAtProxy reports whether the Route targets a Service's "proxy" port, as patched
@@ -145,6 +160,12 @@ func PatchIngress(ing *networkingv1.Ingress, proxyService string, original Backe
 func UnpatchIngress(ing *networkingv1.Ingress) error {
 	if ing.Annotations[AnnotationPatched] != "true" {
 		return errors.New("not patched")
+	}
+	if !ingressPointsAtProxy(ing) {
+		// Re-applied by someone else (e.g. Helm) since: the spec is the application's already,
+		// and may be newer than what was recorded. Only the annotations go.
+		clearAnnotations(ing.Annotations)
+		return nil
 	}
 	original := backendFromAnnotation(ing.Annotations[AnnotationOriginalService], ing.Annotations[AnnotationOriginalPort])
 	if original.Port == 0 && original.PortName == "" {
@@ -284,6 +305,10 @@ func SetRouteTargets(rt *routev1.Route, targets []RouteTarget, port *routev1.Rou
 func UnpatchRoute(rt *routev1.Route) error {
 	if rt.Annotations[AnnotationPatched] != "true" {
 		return errors.New("not patched")
+	}
+	if !routePointsAtProxy(rt) {
+		clearAnnotations(rt.Annotations) // Re-applied since: see UnpatchIngress
+		return nil
 	}
 	rt.Spec.To.Name = rt.Annotations[AnnotationOriginalService]
 

@@ -30,8 +30,12 @@ import (
 )
 
 const (
-	proxyURL  = "http://localhost:30080"
+	// Requests go through ingress-nginx and the patched Ingress, as users' do.
+	proxyURL = "http://localhost:30090"
+	// Smart Proxy's own Service, for what ingress-nginx can't pass as-is (h2c).
+	directURL = "http://localhost:30080"
 	adminURL  = "http://localhost:30081"
+	service   = "e2e-smart-proxy"
 	appHost   = "echo.e2e.test"
 	appNS     = "e2e"
 	proxyNS   = "smart-proxy"
@@ -57,6 +61,11 @@ func TestE2E(t *testing.T) {
 		t.Fatalf("patching the Ingress: %v %v", resp, err)
 	}
 	setIdleTimeout(t, idleLimit)
+	// The Ingress is in another namespace than Smart Proxy: it reaches it through a stand-in.
+	eventually(t, 30*time.Second, "no stand-in Service in the app's namespace", func() bool {
+		ep, err := kube.CoreV1().Endpoints(appNS).Get(context.TODO(), service, metav1.GetOptions{})
+		return err == nil && len(ep.Subsets) == 1 && len(ep.Subsets[0].Addresses) == 2
+	})
 
 	t.Run("BrowserGetsTheWakingPageThenTheApp", testBrowser)
 	t.Run("APICallWaitsForTheAppWithItsBody", testAPICall)
@@ -143,7 +152,7 @@ func testBurst(t *testing.T) {
 
 func testWebSocket(t *testing.T) {
 	sleepApp(t)
-	conn, err := net.Dial("tcp", "localhost:30080")
+	conn, err := net.Dial("tcp", strings.TrimPrefix(proxyURL, "http://"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,8 +176,9 @@ func testH2C(t *testing.T) {
 	protocols := new(http.Protocols)
 	protocols.SetUnencryptedHTTP2(true)
 	client := &http.Client{Transport: &http.Transport{Protocols: protocols}}
-	req, _ := http.NewRequest("GET", proxyURL+"/echo", nil)
+	req, _ := http.NewRequest("POST", directURL+"/echo", nil)
 	req.Host = appHost
+	req.Header.Set("Content-Type", "application/grpc") // gRPC is what goes to applications as h2c
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -262,6 +272,13 @@ func testUninstall(t *testing.T) {
 	if r := replicas(t); r != 1 {
 		t.Fatalf("app left with %d replicas", r)
 	}
+	if _, err := kube.CoreV1().Services(appNS).Get(context.TODO(), service, metav1.GetOptions{}); err == nil {
+		t.Fatal("stand-in Service left behind")
+	}
+	eventually(t, 2*time.Minute, "the app is not reachable through its Ingress after uninstall", func() bool {
+		resp, body := get(t, "/", "text/html")
+		return resp.StatusCode == 200 && strings.Contains(body, "echoapp")
+	})
 }
 
 // Helpers

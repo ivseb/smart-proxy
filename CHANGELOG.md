@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+A robustness release: two rounds of review plus an end-to-end suite on a real cluster (`test/e2e`, run in CI through ingress-nginx) found and fixed the issues below. Upgrading from 2.1: see [the upgrade notes](docs/upgrading.md#from-21-to-22).
+
+### Fixed — critical
+- **Applications in other namespaces than Smart Proxy's were unreachable once patched.** An Ingress or Route can only point at a Service of its own namespace, and Smart Proxy's Service only existed in its own. Smart Proxy now keeps a *stand-in* Service there (same name, no selector, endpoints = Smart Proxy's ready pods, updated as they change) wherever it patches something, and removes it when no longer needed or on uninstall.
+- **With two replicas, an app woken by the replica that isn't the leader could be put back to sleep at once**, before that request's activity reached the leader. Wakes are now recorded on the workload (`smart-proxy/woken-at`) and respected.
+- **Requests other than page loads got the HTML "waking up" page with `200`**: a webhook or API `POST` to a sleeping app was lost while its sender saw a success. They now wait for the app (`WAKE_TIMEOUT`, 2 minutes) and go through, body included, or get `503` with `Retry-After`. WebSockets too.
+- **A readiness probe on `/` stopped the home page from ever waking the app.**
+
+### Fixed
+- Open WebSockets, streams and long downloads keep their route active.
+- Routes are matched host first (exact, wildcard, then routes without a host), then by longest path, on whole path segments and on the cleaned path; trailing dots in hosts are accepted.
+- A burst of requests to a sleeping app makes one wake-up, not one API call each; refused wake-ups (e.g. by an admission webhook) are not proxied to and not retried on every request.
+- HTTP/2 without TLS is accepted; gRPC reaches applications as h2c.
+- Workloads shared by several routes: an Always On or manual route keeps them up; `db`, `deployment/db` and `sts/x` spellings are one workload.
+- Self-healing only touches the route's own resources (another path of the same host is another application), follows applications re-deployed with another Service, rebuilds Routes that lost their annotations, and backs off from GitOps tools that keep reverting it (3 times in 10 minutes: left alone for an hour, with a log line). A route whose resource doesn't point at Smart Proxy is never put to sleep.
+- A namespace that stops being managed is restored; its routes are patched again if it comes back. Routes of namespaces Smart Proxy can no longer reach can be deleted.
+- Several Smart Proxy installations in one cluster leave each other's patches alone (healing, restore, uninstall).
+- Shared state: a route created through another replica no longer looks idle to the leader; the routes ConfigMap survives deletion and never goes back to an older version; traffic statistics can't fill it.
+- Unpatching an Ingress/Route re-deployed since (e.g. by Helm) keeps its new spec.
+- Saving a route happens before patching its resource; patch errors are reported.
+- Restore wakes workloads before unpatching; manual scale-ups of sleeping workloads are no longer woken by restore later; scheduled wakes respect start-in-order.
+- The badge leaves `HEAD`, `204`, `206` and `304` responses alone; backend weights are capped at 256; error logs are rate-limited.
+
+### Added
+- Traffic charts keep the last 30 minutes (`STATS_RETENTION`), on the overview and per route.
+- `WAKE_TIMEOUT`, `CLUSTER_DOMAIN`.
+
 ## 2.1.0 — chart 0.3.0
 
 Upgrading from 2.0: see [the upgrade notes](docs/upgrading.md#from-20-to-21). Environments kept awake only by uptime monitors will now go to sleep.

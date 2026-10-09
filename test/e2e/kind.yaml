@@ -2,7 +2,12 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
   - role: control-plane
+    labels:
+      ingress-ready: "true" # Where ingress-nginx's kind manifest runs its controller
     extraPortMappings:
+      # ingress-nginx: what users reach. Requests go through it, as in production.
+      - containerPort: 80
+        hostPort: 30090
       # Smart Proxy's Service, as NodePorts (see run.sh): proxy and dashboard.
       - containerPort: 30080
         hostPort: 30080

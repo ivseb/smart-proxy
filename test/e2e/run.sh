@@ -30,6 +30,13 @@ docker build -q -t smart-proxy-e2e-echo:latest -f test/e2e/echoapp/Dockerfile "$
 kind load docker-image smart-proxy:e2e smart-proxy-e2e-echo:latest --name "$CLUSTER"
 
 echo "--- Installing"
+kubectl apply -f "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v${INGRESS_NGINX:-1.12.1}/deploy/static/provider/kind/deploy.yaml" >/dev/null
+kubectl -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s
+kubectl -n ingress-nginx wait --for=condition=complete job --all --timeout=120s >/dev/null
+for i in $(seq 1 30); do # ingress-nginx's admission webhook takes a moment to answer
+  kubectl apply -f test/e2e/app.yaml >/dev/null 2>&1 && break
+  sleep 2
+done
 kubectl apply -f test/e2e/app.yaml
 kubectl -n e2e rollout restart deployment/echo >/dev/null 2>&1 || true
 kubectl -n e2e rollout status deployment/echo --timeout=120s

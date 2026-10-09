@@ -105,6 +105,11 @@ func (c *Client) UpdateIngress(ing *networkingv1.Ingress) error {
 	if !c.Watches(ing.Namespace) {
 		return fmt.Errorf("%w: %q", errNotWatched, ing.Namespace)
 	}
+	if c.standIns != nil && IsIngressPatched(ing, c.standIns.service) {
+		if err := c.EnsureStandIn(ing.Namespace); err != nil {
+			return err // Patched, it would lead nowhere
+		}
+	}
 	_, err := c.Clientset.NetworkingV1().Ingresses(ing.Namespace).Update(context.TODO(), ing, metav1.UpdateOptions{})
 	return err
 }
@@ -152,6 +157,11 @@ func (c *Client) UpdateRoute(rt *routev1.Route) error {
 	}
 	if !c.Watches(rt.Namespace) {
 		return fmt.Errorf("%w: %q", errNotWatched, rt.Namespace)
+	}
+	if c.standIns != nil && IsRoutePatched(rt, c.standIns.service) {
+		if err := c.EnsureStandIn(rt.Namespace); err != nil {
+			return err // Patched, it would lead nowhere
+		}
 	}
 	_, err := c.RouteClientSet.RouteV1().Routes(rt.Namespace).Update(context.TODO(), rt, metav1.UpdateOptions{})
 	return err

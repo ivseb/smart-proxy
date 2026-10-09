@@ -37,7 +37,7 @@ func (w *Watcher) releaseUnwatched() {
 		for _, d := range route.Dependencies {
 			workloads = append(workloads, d.Name)
 		}
-		n, err := w.k8sClient.ReleaseNamespace(ns, owns, workloads)
+		n, err := w.k8sClient.ReleaseNamespace(ns, w.serviceName, owns, workloads)
 		if err != nil {
 			w.released[route.ID] = time.Now()
 			logger.Printf("Namespace %s is no longer watched, but restoring route %s failed: %v. Its patched Ingresses/Routes and sleeping workloads need Smart Proxy's permissions there; restore them by hand, or watch the namespace again and delete the route.", ns, route.ID, err)

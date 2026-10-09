@@ -41,9 +41,15 @@ func TestRestoreUndoesEverything(t *testing.T) {
 	// Scaled to zero by someone else: not Smart Proxy's to wake.
 	manual := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "batch", Namespace: "team-a"}, Spec: appsv1.DeploymentSpec{Replicas: &zero}}
 
-	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a", "team-b"}}, fakecluster.Options{}, ing, rt, asleep, manual)
+	// Patched by another installation of Smart Proxy: not this one's to restore.
+	foreign := ing.DeepCopy()
+	foreign.Name = "foreign"
+	k8s.UnpatchIngress(foreign)
+	k8s.PatchIngress(foreign, "other-sp", k8s.Backend{Service: "web-svc", Port: 8080}, `{}`)
 
-	res := Run(c.Client)
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a", "team-b"}}, fakecluster.Options{}, ing, rt, asleep, manual, foreign)
+
+	res := Run(c.Client, "sp")
 	if res.Err() != nil || res.Ingresses != 1 || res.Routes != 1 || res.Deployments != 1 {
 		t.Fatalf("result = %+v", res)
 	}
@@ -61,5 +67,10 @@ func TestRestoreUndoesEverything(t *testing.T) {
 		if *d.Spec.Replicas != want {
 			t.Errorf("%s: replicas = %d, want %d", name, *d.Spec.Replicas, want)
 		}
+	}
+
+	got, _ := c.Kube.NetworkingV1().Ingresses("team-a").Get(context.TODO(), "foreign", metav1.GetOptions{})
+	if got.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name != "other-sp" {
+		t.Error("restored an Ingress patched by another installation")
 	}
 }

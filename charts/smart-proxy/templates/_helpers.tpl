@@ -108,6 +108,16 @@ http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
 - apiGroups: [""]
   resources: ["services", "pods"]
   verbs: ["get", "list", "watch"]
+# Stand-in Services: patched resources outside Smart Proxy's namespace reach its pods through
+# a Service with its name there (created only where something is patched). Only that name can
+# be changed or deleted.
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["create"]
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  resourceNames: [{{ include "smart-proxy.fullname" . | quote }}]
+  verbs: ["get", "update", "patch", "delete"]
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
   verbs: ["get", "list", "watch", "update", "patch"]

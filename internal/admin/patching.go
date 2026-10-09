@@ -324,7 +324,8 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 	if routes, err := s.k8sClient.ListRoutes(); err == nil {
 		for _, rt := range routes {
 			bound := boundKind == store.KindRoute && boundNs == rt.Namespace && boundName == rt.Name
-			if rt.Namespace != config.Namespace || !(bound || (containsFold(hosts, rt.Spec.Host) && samePath(k8s.RoutePath(rt), config.Path))) {
+			if rt.Namespace != config.Namespace || k8s.RoutePatchedByOther(rt, s.ServiceName) ||
+				!(bound || (containsFold(hosts, rt.Spec.Host) && samePath(k8s.RoutePath(rt), config.Path))) {
 				continue
 			}
 			if rt.Annotations[k8s.AnnotationPatched] == "true" {
@@ -345,7 +346,8 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 	if ings, err := s.k8sClient.ListIngresses(); err == nil {
 		for _, ing := range ings {
 			bound := boundKind == store.KindIngress && boundNs == ing.Namespace && boundName == ing.Name
-			if ing.Namespace != config.Namespace || !(bound || (containsFold(hosts, k8s.IngressHost(ing)) && samePath(k8s.IngressPath(ing), config.Path))) {
+			if ing.Namespace != config.Namespace || k8s.PatchedByOther(ing, s.ServiceName) ||
+				!(bound || (containsFold(hosts, k8s.IngressHost(ing)) && samePath(k8s.IngressPath(ing), config.Path))) {
 				continue
 			}
 			if ing.Annotations[k8s.AnnotationPatched] == "true" {
@@ -404,14 +406,18 @@ func (s *Server) SyncRoutesFromCluster() {
 
 	if ings, err := s.k8sClient.ListIngresses(); err == nil {
 		for _, ing := range ings {
-			load(store.KindIngress, ing.Namespace, ing.Name, ing.Annotations[k8s.AnnotationConfig])
+			if !k8s.PatchedByOther(ing, s.ServiceName) {
+				load(store.KindIngress, ing.Namespace, ing.Name, ing.Annotations[k8s.AnnotationConfig])
+			}
 		}
 	} else {
 		logger.Printf("Warning: Failed to list ingresses: %v", err)
 	}
 	if routes, err := s.k8sClient.ListRoutes(); err == nil {
 		for _, rt := range routes {
-			load(store.KindRoute, rt.Namespace, rt.Name, rt.Annotations[k8s.AnnotationConfig])
+			if !k8s.RoutePatchedByOther(rt, s.ServiceName) {
+				load(store.KindRoute, rt.Namespace, rt.Name, rt.Annotations[k8s.AnnotationConfig])
+			}
 		}
 	}
 	logger.Printf("Loaded %d route configuration(s) from Ingress/Route annotations", count)

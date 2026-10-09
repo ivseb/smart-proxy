@@ -16,6 +16,18 @@ rules:
   - apiGroups: [""]
     resources: ["services", "pods"]
     verbs: ["get", "list", "watch"]
+  # Its own Service's endpoints. In other namespaces it manages (give them a Role with these
+  # rules too), patched resources reach Smart Proxy through a stand-in Service of the same name.
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["services", "endpoints"]
+    resourceNames: ["smart-proxy"]
+    verbs: ["get", "update", "patch", "delete"]
   - apiGroups: ["networking.k8s.io"]
     resources: ["ingresses"]
     verbs: ["get", "list", "watch", "update", "patch"]

@@ -100,6 +100,8 @@ type Client struct {
 	wokenAt map[string]time.Time // Recent wake-ups, so a burst of requests doesn't repeat them
 	// Recent failures (e.g. refused by an admission webhook), returned without asking again.
 	wakeFailed map[string]wakeFailure
+
+	standIns *standIns // See EnableStandIns
 }
 
 type wakeFailure struct {
@@ -167,6 +169,9 @@ func restConfig() (*rest.Config, error) {
 	// Reads come from caches, so API traffic is only writes and the initial lists.
 	config.QPS = 50
 	config.Burst = 100
+	// Stand-ins use core/v1 Endpoints (deprecated in favour of EndpointSlices, which Kubernetes
+	// mirrors from them, so older routers keep working): say so once, not on every write.
+	config.WarningHandler = rest.NewWarningWriter(os.Stderr, rest.WarningWriterOptions{Deduplicate: true})
 	return config, nil
 }
 
