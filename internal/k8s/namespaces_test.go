@@ -175,6 +175,13 @@ func TestResolveServiceAndDeployment(t *testing.T) {
 	if port != 9090 || err != nil {
 		t.Errorf("ResolveServicePort(metrics) = %d %v", port, err)
 	}
+	// A numeric targetPort is the container port: dial the Service port forwarding to it.
+	svc.Spec.Ports = []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromInt(8080)}}
+	c.Kube.CoreV1().Services(ns).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	fakecluster.Eventually(t, func() bool {
+		p, _ := c.ResolveServicePort(ns, "api", &routev1.RoutePort{TargetPort: intstr.FromInt(8080)})
+		return p == 80
+	}, "numeric targetPort not mapped to the Service port")
 	if summary, ok := c.DeploymentForBackend(ns, "api"); !ok || summary.Name != "backend" || summary.Replicas != 1 {
 		t.Errorf("DeploymentForBackend = %+v %v", summary, ok)
 	}

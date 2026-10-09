@@ -237,19 +237,37 @@ func (s *Server) handleServiceRoutes(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 		Host string `json:"host"`
 		Type string `json:"type"`
+		// Share is the percentage of the Route's weight going to this Service (100 when it is
+		// the only one); Alternate is true when it is one of its alternate backends.
+		Share     float64 `json:"share"`
+		Alternate bool    `json:"alternate"`
 	}
 	matching := []RouteInfo{}
 	if routes, err := s.k8sClient.ListRoutes(); err == nil {
 		for _, rt := range routes {
-			if rt.Namespace == ns && k8s.OriginalRouteService(rt) == svc {
-				matching = append(matching, RouteInfo{Name: rt.Name, Host: rt.Spec.Host, Type: store.KindRoute})
+			if rt.Namespace != ns {
+				continue
+			}
+			targets, _ := k8s.OriginalRouteTargets(rt)
+			var total int32
+			for _, t := range targets {
+				total += t.Weight
+			}
+			for i, t := range targets {
+				if t.Service == svc {
+					share := 100.0
+					if total > 0 {
+						share = float64(t.Weight) * 100 / float64(total)
+					}
+					matching = append(matching, RouteInfo{Name: rt.Name, Host: rt.Spec.Host, Type: store.KindRoute, Share: share, Alternate: i > 0})
+				}
 			}
 		}
 	}
 	if ings, err := s.k8sClient.ListIngresses(); err == nil {
 		for _, ing := range ings {
 			if b, ok := k8s.OriginalIngressBackend(ing); ok && ing.Namespace == ns && b.Service == svc {
-				matching = append(matching, RouteInfo{Name: ing.Name, Host: k8s.IngressHost(ing), Type: store.KindIngress})
+				matching = append(matching, RouteInfo{Name: ing.Name, Host: k8s.IngressHost(ing), Type: store.KindIngress, Share: 100})
 			}
 		}
 	}

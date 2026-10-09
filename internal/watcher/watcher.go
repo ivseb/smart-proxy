@@ -63,7 +63,9 @@ func (w *Watcher) checkIdleRoutes() {
 	// Scheduled hours: keep those routes (and their dependencies) awake.
 	for _, route := range routes {
 		if route.ScheduledAwake(now) && w.k8sClient.Watches(route.Namespace) {
-			w.wake(route.Namespace, route.Deployment)
+			for _, workload := range route.ManagedWorkloads() {
+				w.wake(route.Namespace, workload)
+			}
 			for _, dep := range route.Dependencies {
 				w.wake(route.Namespace, dep.Name)
 			}
@@ -83,8 +85,13 @@ func (w *Watcher) checkIdleRoutes() {
 
 		// Always On deployments and those still needed by another active route stay up.
 		// (Not logged: this runs every tick for every idle route and would flood the log view.)
-		if !route.AlwaysOn && !w.isDeploymentActive(routes, route.Namespace, route.Deployment) {
-			w.sleep(route.Namespace, route.Deployment, fmt.Sprintf("route %s%s idle since %s", route.Host, route.Path, route.LastActivity.Format(time.RFC3339)))
+		// Only the route's own workloads: backends it doesn't manage are left as they are.
+		if !route.AlwaysOn {
+			for _, workload := range route.ManagedWorkloads() {
+				if !w.isDeploymentActive(routes, route.Namespace, workload) {
+					w.sleep(route.Namespace, workload, fmt.Sprintf("route %s%s idle since %s", route.Host, route.Path, route.LastActivity.Format(time.RFC3339)))
+				}
+			}
 		}
 		for _, dep := range route.Dependencies {
 			if dep.StopOnIdle && !w.isDeploymentActive(routes, route.Namespace, dep.Name) {
@@ -132,8 +139,10 @@ func (w *Watcher) isDeploymentActive(routes []store.RouteConfig, namespace, depl
 		if r.Namespace != namespace || !active {
 			continue
 		}
-		if r.Deployment == deploymentName {
-			return true
+		for _, workload := range r.ManagedWorkloads() {
+			if workload == deploymentName {
+				return true
+			}
 		}
 		for _, dep := range r.Dependencies {
 			if dep.Name == deploymentName {

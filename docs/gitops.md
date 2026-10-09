@@ -34,6 +34,7 @@ spec:
 | `smart-proxy/ignore-paths` | Paths that never count as activity: exact, or prefixes ending with `*`. | none |
 | `smart-proxy/ignore-sources` | Client IPs/CIDRs that never count as activity. | none |
 | `smart-proxy/ignore-methods` | Methods that never count as activity, e.g. `HEAD`. | none |
+| `smart-proxy/managed-backends` | For a Route balancing several Services: the ones woken up and put to sleep with the app (others are left alone). | those running when first patched |
 | `smart-proxy/when-asleep` | Answer to ignored requests while asleep: `respond` (200), `unavailable` (503) or `wake`. | `respond` |
 | `smart-proxy/badge` | Show a "Powered by Smart Proxy" badge on HTML pages. | `false` |
 

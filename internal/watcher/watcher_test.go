@@ -134,3 +134,25 @@ func TestScheduledRoutesStayAwake(t *testing.T) {
 		}
 	}
 }
+
+func TestIdleBalancedRouteSleepsOnlyManagedBackends(t *testing.T) {
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{},
+		dep("team-a", "s1", 1), dep("team-a", "s2", 1))
+	st := store.NewStore(filepath.Join(t.TempDir(), "routes.json"))
+	route := &store.RouteConfig{ID: store.RouteID("team-a", "r"), Namespace: "team-a", Deployment: "s1",
+		Backends: []store.WeightedBackend{
+			{Service: "s1-svc", Weight: 50, Workload: "s1", Managed: true},
+			{Service: "s2-svc", Weight: 50, Workload: "s2"},
+		}}
+	st.AddRoute(route)
+	st.SetActivityForTest(route.ID, time.Now().Add(-time.Hour))
+
+	NewWatcher(c.Client, st, proxyService).checkIdleRoutes()
+
+	if replicas(t, c, "team-a", "s1") != 0 {
+		t.Error("managed backend s1 not put to sleep")
+	}
+	if replicas(t, c, "team-a", "s2") != 1 {
+		t.Error("pass-through backend s2 was touched")
+	}
+}

@@ -383,3 +383,50 @@ func TestDeclarativeRoutesCannotBeDeletedFromTheAPI(t *testing.T) {
 		t.Fatalf("delete declarative: %d", code)
 	}
 }
+
+// Route R balances 50/50; its main Service S2 is kept off on purpose, S1 runs.
+func TestPatchingABalancedRouteManagesOnlyRunningBackends(t *testing.T) {
+	half := int32(50)
+	r := routeObj("team-a", "r", "r.example.com", "s2-svc")
+	r.Spec.To.Weight = &half
+	r.Spec.AlternateBackends = []routev1.RouteTargetReference{{Kind: "Service", Name: "s1-svc", Weight: &half}}
+	objs := append(app("team-a", "s1", 1), app("team-a", "s2", 0)...)
+	f := newFixture(t, append(objs, r)...)
+
+	if code, body := f.call(t, "POST", "/api/patch-route?namespace=team-a&name=r", nil); code != 200 {
+		t.Fatalf("patch: %d %s", code, body)
+	}
+	route, ok := f.store.GetRoute(store.RouteID("team-a", "r"))
+	if !ok || len(route.Backends) != 2 {
+		t.Fatalf("route = %+v", route)
+	}
+	managed := map[string]bool{}
+	for _, b := range route.Backends {
+		managed[b.Service] = b.Managed
+	}
+	if !managed["s1-svc"] || managed["s2-svc"] {
+		t.Fatalf("managed = %v, want only s1-svc", managed)
+	}
+	if route.Deployment != "s1" || route.TargetService != "s1-svc" {
+		t.Fatalf("main target = %s/%s, want s1", route.Deployment, route.TargetService)
+	}
+
+	// The alternate backend's host is suggested for S1 too.
+	_, body := f.call(t, "GET", "/api/k8s/service-routes?namespace=team-a&service=s1-svc", nil)
+	if !strings.Contains(string(body), `"alternate":true`) || !strings.Contains(string(body), `"share":50`) {
+		t.Fatalf("suggestions = %s", body)
+	}
+
+	// Unpatching restores the 50/50 split.
+	fakecluster.Eventually(t, func() bool {
+		rt, err := f.cluster.GetRoute("team-a", "r")
+		return err == nil && k8s.IsRoutePatched(rt, proxyService)
+	}, "route not patched in cache")
+	if code, body := f.call(t, "POST", "/api/unpatch-route?namespace=team-a&name=r", nil); code != 200 {
+		t.Fatalf("unpatch: %d %s", code, body)
+	}
+	got := f.osRoute(t, "team-a", "r")
+	if got.Spec.To.Name != "s2-svc" || len(got.Spec.AlternateBackends) != 1 || *got.Spec.To.Weight != 50 {
+		t.Fatalf("restored = %+v", got.Spec)
+	}
+}

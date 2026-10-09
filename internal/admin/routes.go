@@ -46,6 +46,16 @@ type RouteStatus struct {
 	// Resources are the Ingresses/Routes currently patched for this route (one per host);
 	// deleting the route restores all of them.
 	Resources []patchedResource `json:"resources"`
+	// BackendStatus is the live state of each backend, when traffic is balanced across several.
+	BackendStatus []BackendState `json:"backend_status"`
+}
+
+// BackendState is a backend of a route with its live state.
+type BackendState struct {
+	store.WeightedBackend
+	Status string `json:"status"`
+	// Share is the percentage of traffic it gets now (0 while it doesn't run).
+	Share float64 `json:"share"`
 }
 
 func (s *Server) deploymentStatus(namespace, name string) (string, int32, int32) {
@@ -79,6 +89,7 @@ func (s *Server) routeStatus(r store.RouteConfig) RouteStatus {
 		rs.DependencyStatus[dep.Name], _, _ = s.deploymentStatus(r.Namespace, dep.Name)
 	}
 	rs.ScheduleActive = r.ScheduledAwake(time.Now())
+	rs.BackendStatus = s.backendStates(r)
 	if kind, ns, name, ok := r.Resource(); ok {
 		rs.Source = &ResourceRef{Kind: kind, Namespace: ns, Name: name}
 		if !r.AlwaysOn && !rs.ScheduleActive && rs.Status != StatusSleep {
@@ -135,6 +146,17 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 		// A new route for a host served by an Ingress/Route in its namespace becomes bound to it.
 		if route.ID == "" && s.k8sClient != nil {
 			route.ID = s.resourceIDForHosts(route.Namespace, route.Host)
+		}
+		// Bound to an OpenShift Route balancing several Services: record them, managing the one
+		// chosen as target and leaving the others alone.
+		if kind, ns, name, ok := route.Resource(); ok && kind == store.KindRoute && len(route.Backends) == 0 && s.k8sClient != nil {
+			if rt, err := s.k8sClient.GetRoute(ns, name); err == nil {
+				route.Backends = s.k8sClient.RouteBackends(rt, []string{route.TargetService})
+			}
+		}
+		if err := route.NormalizeBackends(); err != nil {
+			http.Error(w, "Invalid backends: "+err.Error(), http.StatusBadRequest)
+			return
 		}
 
 		if err := s.store.AddRoute(&route); err != nil {
@@ -214,4 +236,25 @@ func containsFold(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func (s *Server) backendStates(r store.RouteConfig) []BackendState {
+	states := make([]BackendState, 0, len(r.Backends))
+	var serving int32
+	for _, b := range r.Backends {
+		st := BackendState{WeightedBackend: b, Status: "Unknown"}
+		if b.Workload != "" {
+			st.Status, _, _ = s.deploymentStatus(r.Namespace, b.Workload)
+		}
+		if b.Weight > 0 && (st.Status == StatusReady || st.Status == "Unknown") {
+			serving += b.Weight
+		}
+		states = append(states, st)
+	}
+	for i := range states {
+		if serving > 0 && states[i].Weight > 0 && (states[i].Status == StatusReady || states[i].Status == "Unknown") {
+			states[i].Share = float64(states[i].Weight) * 100 / float64(serving)
+		}
+	}
+	return states
 }

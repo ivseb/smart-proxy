@@ -38,6 +38,8 @@ type Handler struct {
 	TrustedProxies traffic.TrustedProxies
 	// Traffic records who sends requests to each route (nil disables it).
 	Traffic *traffic.Recorder
+	// Transport, when set, replaces the default transport to the applications (tests).
+	Transport http.RoundTripper
 }
 
 // Probe endpoints, under the reserved /__smart_proxy/ prefix so they can't shadow an
@@ -224,16 +226,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 2. Wake whatever the matched routes need
+	// 2. Wake whatever the matched routes need. While the managed workloads wake up, a running
+	// backend Smart Proxy doesn't manage takes the traffic, as the OpenShift router would.
 	if wake {
-		if _, allReady := h.ensureAwake(matchedRoutes); !allReady {
+		if _, allReady := h.ensureAwake(matchedRoutes); !allReady && !h.hasServingPassThrough(bestRoute) {
 			h.serveLoadingPage(w)
 			return
 		}
 	}
 
 	// 4. Proxy Request
-	targetURLStr := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", bestRoute.TargetService, bestRoute.Namespace, bestRoute.TargetPort)
+	dest := h.pickTarget(w, r, bestRoute)
+	targetURLStr := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", dest.Service, bestRoute.Namespace, dest.Port)
 	targetURL, err := url.Parse(targetURLStr)
 	if err != nil {
 		logger.Printf("Invalid target URL: %v", err)
@@ -246,6 +250,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics.Request(bestRoute.Namespace, bestRoute.ID)
 
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
+	if h.Transport != nil {
+		proxy.Transport = h.Transport
+	}
 
 	if bestRoute.InjectBadge {
 		proxy.ModifyResponse = func(resp *http.Response) error {

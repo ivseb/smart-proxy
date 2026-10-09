@@ -73,6 +73,19 @@ flowchart LR
 4.  **Wake-up size** — before sleeping, the replica count is saved in the Deployment's `smart-proxy/replicas-before-sleep` annotation, and waking restores it. If a HorizontalPodAutoscaler manages the Deployment, it wakes at the HPA's `minReplicas` instead, and the HPA takes over from there. Kubernetes pauses an HPA while its target is at zero replicas, so the two don't conflict. Deployments managed by **KEDA** are never put to sleep: KEDA would scale them straight back up. Use KEDA's own scale-to-zero for those.
 5.  **Dependencies** — dependent services are started together with the application by default. With *Start in order*, they start one at a time in the listed order, each once the previous one has a ready replica, and the application last (e.g. database, then API, then frontend). Using one service keeps the entire chain alive, and dependencies can optionally be stopped together when idle.
 
+## Routes balancing several Services
+
+An OpenShift Route can split traffic across Services by weight (`alternateBackends`), for A/B tests, canaries, or a backend kept off and only turned on for special cases. The OpenShift router skips backends with no running pods.
+
+When such a Route is patched, Smart Proxy takes over the split and keeps that behaviour:
+
+- Traffic is balanced by the Route's weights across the backends that are **running**; a client keeps its backend (a cookie, like the router's).
+- Only **managed** backends are woken up and put to sleep with the application. The others are never touched: a backend kept off on purpose stays off, and gets its share again as soon as you turn it on.
+- By default the backends running when the Route is patched are managed. Change it in the route form ("Sleep & wake with the app"), or with the `smart-proxy/managed-backends` annotation.
+- If the managed backends are asleep but another backend is running, it answers right away while they wake up, so nobody waits.
+
+Unpatching restores the Route's original split and port exactly.
+
 ## Uptime monitors and health checks
 
 Uptime monitors and health checks poll applications around the clock. Counted as activity, they would keep environments awake forever, and wake them right back up after they go to sleep. Smart Proxy recognizes them and treats them differently:

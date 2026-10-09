@@ -64,11 +64,12 @@ func (h *Handler) ensureAwake(routes []store.RouteConfig) ([]workloadState, bool
 	}
 
 	for _, route := range routes {
-		chain := make([]string, 0, len(route.Dependencies)+1)
+		chain := make([]string, 0, len(route.Dependencies)+len(route.Backends)+1)
 		for _, d := range route.Dependencies {
 			chain = append(chain, d.Name)
 		}
-		chain = append(chain, route.Deployment)
+		// The route's own workloads come last; backends it doesn't manage are never woken.
+		chain = append(chain, route.ManagedWorkloads()...)
 
 		// Errors don't block the chain: the deployment may be gone, traffic decides.
 		blocked := false

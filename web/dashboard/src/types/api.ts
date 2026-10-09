@@ -35,6 +35,15 @@ export interface TrafficSource {
     counts_as_activity: boolean;
 }
 
+// One of the Services an OpenShift Route balances traffic across.
+export interface WeightedBackend {
+    service: string;
+    port: number;
+    weight: number;
+    workload?: string;
+    managed: boolean; // Sleeps and wakes with the route; others only get traffic while they run
+}
+
 export interface RouteConfig {
     id: string;
     host: string;
@@ -53,6 +62,7 @@ export interface RouteConfig {
     declarative?: boolean; // Defined by smart-proxy/* annotations on its Ingress/Route
     ignore?: TrafficRules | null; // Requests that don't count as activity (monitors…)
     when_asleep?: WhenAsleep | ""; // Answer to those requests while asleep ("" = respond)
+    backends?: WeightedBackend[] | null; // Balanced Route: the Services and their weights
 }
 
 export type DeploymentStatus = "Ready" | "Scaling" | "Sleep" | "Error" | "Unwatched" | "Offline";
@@ -73,6 +83,7 @@ export interface RouteStatus extends RouteConfig {
     effective_idle_timeout: number; // nanoseconds
     schedule_active: boolean;
     resources: (ResourceRef & { host: string })[]; // Patched for this route; restored when it is deleted
+    backend_status: (WeightedBackend & { status: DeploymentStatus | "Unknown"; share: number })[];
 }
 
 export interface DeploymentSummary {

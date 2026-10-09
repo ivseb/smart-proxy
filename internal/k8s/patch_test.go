@@ -89,12 +89,37 @@ func TestRoutePatchRoundTripKeepsTrafficSplit(t *testing.T) {
 		t.Fatalf("OriginalRouteService = %q", k8s.OriginalRouteService(rt))
 	}
 
+	targets, port := k8s.OriginalRouteTargets(rt)
+	if len(targets) != 2 || targets[0].Service != "api-v1" || targets[0].Weight != 80 || targets[1].Service != "api-v2" ||
+		port == nil || port.TargetPort.StrVal != "http" {
+		t.Fatalf("OriginalRouteTargets = %+v, %+v", targets, port)
+	}
+
 	if err := k8s.UnpatchRoute(rt); err != nil {
 		t.Fatal(err)
 	}
 	rt.Annotations = before.Annotations // both nil/empty
 	if !reflect.DeepEqual(rt.Spec, before.Spec) {
 		t.Fatalf("restored spec = %+v\nwant %+v", rt.Spec, before.Spec)
+	}
+}
+
+// The route's targetPort refers to endpoint ports (pods), not the Service port the proxy dials.
+func TestRouteUnpatchRestoresTheExactTargetPort(t *testing.T) {
+	rt := route(ns, "web", "web.example.com", "web-svc")
+	rt.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromString("http")} // Service port 80 -> container 8080 named "http"
+	k8s.PatchRoute(rt, "my-proxy", k8s.Backend{Service: "web-svc", Port: 80}, "{}")
+	k8s.UnpatchRoute(rt)
+	if rt.Spec.Port == nil || rt.Spec.Port.TargetPort.StrVal != "http" {
+		t.Fatalf("restored port = %+v, want targetPort http", rt.Spec.Port)
+	}
+
+	// Re-patching a route that already points at Smart Proxy keeps the recorded original.
+	k8s.PatchRoute(rt, "my-proxy", k8s.Backend{Service: "web-svc", Port: 80}, "{}")
+	delete(rt.Annotations, k8s.AnnotationPatched)
+	k8s.PatchRoute(rt, "my-proxy", k8s.Backend{Service: "web-svc", Port: 80}, "{}")
+	if _, port := k8s.OriginalRouteTargets(rt); port == nil || port.TargetPort.StrVal != "http" {
+		t.Fatalf("re-patch lost the original port: %+v", port)
 	}
 }
 

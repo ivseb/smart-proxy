@@ -12,6 +12,7 @@ import (
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/store"
+	"smart-proxy/internal/traffic"
 )
 
 // reconcileDeclarative applies the smart-proxy/* annotations users put on their Ingresses and
@@ -165,6 +166,26 @@ func (w *Watcher) reconcileRoute(rt *routev1.Route) {
 	}
 	desired, ok := w.declared(store.KindRoute, rt.Namespace, rt.Name, rt.Spec.Host, k8s.RoutePath(rt), backend, rt.Annotations)
 	if !ok {
+		return
+	}
+	// Balanced across Services: manage those the annotation lists, else keep the current choice,
+	// else those running now.
+	backends := traffic.SplitList(rt.Annotations[declarative.ManagedBackends])
+	if len(backends) == 0 {
+		if existing := w.routeFor(store.KindRoute, rt.Namespace, rt.Name); existing != nil {
+			for _, b := range existing.Backends {
+				if b.Managed {
+					backends = append(backends, b.Service)
+				}
+			}
+		}
+	}
+	if len(backends) == 0 {
+		backends = nil
+	}
+	desired.Backends = w.k8sClient.RouteBackends(rt, backends)
+	if err := desired.NormalizeBackends(); err != nil {
+		logger.Printf("Ignoring smart-proxy annotations on Route %s/%s: %v", rt.Namespace, rt.Name, err)
 		return
 	}
 	w.save(desired)

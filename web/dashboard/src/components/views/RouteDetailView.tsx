@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { ArrowLeft, Edit, Globe, Hand, Octagon, Power, Route as RouteIcon, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { StatusBadge } from "@/components/ui/StatusBadge";
+import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
 import type { LogEntry, RouteConfig, RouteStatus, StatsData } from "@/types/api";
 import { TrafficSources } from "@/components/views/TrafficSources";
 import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
@@ -73,6 +73,35 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                     </Button>
                 </div>
             </header>
+
+            {route.backend_status.length > 1 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-sm text-gray-400 font-medium">Backends</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                        <p className="text-xs text-gray-500">
+                            Traffic is balanced by weight across the backends that are running. Smart Proxy wakes and puts to sleep only the
+                            managed ones; the others get their share only while they run, as with the OpenShift router.
+                        </p>
+                        {route.backend_status.map(b => (
+                            <div key={b.service} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                                <span className="flex items-center gap-2 min-w-0">
+                                    <StatusDot status={b.status} />
+                                    <span className="font-mono truncate">{b.service}:{b.port}</span>
+                                    {b.workload && <span className="text-xs text-gray-500 truncate">{workloadLabel(b.workload)}</span>}
+                                </span>
+                                <span className="flex items-center gap-2 text-xs shrink-0">
+                                    <span className="text-gray-400 tabular-nums">weight {b.weight} · {Math.round(b.share)}% now</span>
+                                    {b.managed
+                                        ? <span className="px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-200">managed</span>
+                                        : <span className="px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">not managed</span>}
+                                </span>
+                            </div>
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <Card>

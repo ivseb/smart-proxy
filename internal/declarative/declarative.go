@@ -14,6 +14,7 @@
 //	smart-proxy/ignore-sources: 10.20.0.0/16
 //	smart-proxy/ignore-methods: HEAD
 //	smart-proxy/when-asleep: respond                # or unavailable, wake
+//	smart-proxy/managed-backends: web-v1            # Route balancing Services: the ones to sleep/wake
 package declarative
 
 import (
@@ -42,6 +43,7 @@ const (
 	IgnoreSources    = "smart-proxy/ignore-sources"
 	IgnoreMethods    = "smart-proxy/ignore-methods"
 	WhenAsleep       = "smart-proxy/when-asleep"
+	ManagedBackends  = "smart-proxy/managed-backends"
 )
 
 // IsEnabled reports whether the resource opts in.
@@ -61,6 +63,9 @@ type Settings struct {
 	InjectBadge  bool
 	Ignore       *traffic.Rules
 	WhenAsleep   string
+	// ManagedBackends are the Services of a balanced Route that sleep and wake with it
+	// (nil: those running when it was first patched).
+	ManagedBackends []string
 }
 
 // Parse reads the settings from a resource's annotations.
@@ -117,6 +122,7 @@ func Parse(annotations map[string]string) (Settings, error) {
 		}
 		s.Ignore = &rules
 	}
+	s.ManagedBackends = traffic.SplitList(get(ManagedBackends))
 	s.WhenAsleep = strings.ToLower(get(WhenAsleep))
 	if verr := (store.RouteConfig{WhenAsleep: s.WhenAsleep}).ValidateTraffic(); verr != nil {
 		return s, fmt.Errorf("%s: %w", WhenAsleep, verr)

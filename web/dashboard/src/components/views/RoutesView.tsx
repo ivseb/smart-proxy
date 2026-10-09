@@ -250,6 +250,18 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                     {workloadLabel(route.deployment)}
                     <span className="text-gray-500"> → {route.target_service}:{route.target_port}</span>
                 </div>
+                {route.backend_status.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
+                        {route.backend_status.map(b => (
+                            <span key={b.service} className="inline-flex items-center gap-1.5"
+                                title={`${b.service}: weight ${b.weight}${b.managed ? "" : ", not managed by Smart Proxy"} — ${b.status}`}>
+                                <StatusDot status={b.status} />
+                                {b.service} <span className="text-gray-500 tabular-nums">{Math.round(b.share)}%</span>
+                                {!b.managed && <span className="text-gray-500">· not managed</span>}
+                            </span>
+                        ))}
+                    </div>
+                )}
                 {deps.length > 0 && (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
                         {deps.map(dep => (

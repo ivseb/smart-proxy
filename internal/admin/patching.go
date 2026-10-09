@@ -246,6 +246,12 @@ func (s *Server) handlePatchRoute(w http.ResponseWriter, r *http.Request) {
 	deployment, _ := s.k8sClient.ResolveDeploymentForService(ns, original.Service)
 	config := newRouteConfig(store.RouteID(ns, name), ns, rt.Spec.Host, k8s.RoutePath(rt),
 		original.Service, original.Port, deployment)
+	// Balanced across several Services: manage those running now, leave the others alone.
+	config.Backends = s.k8sClient.RouteBackends(rt, nil)
+	if err := config.NormalizeBackends(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	k8s.PatchRoute(rt, s.ServiceName, original, configJSON(config))
 	if err := s.k8sClient.UpdateRoute(rt); err != nil {

@@ -141,10 +141,54 @@ func UnpatchIngress(ing *networkingv1.Ingress) error {
 	return nil
 }
 
-// originalRouteBackends preserves a Route's traffic split, which patching removes.
+// originalRouteBackends preserves what patching changes in a Route besides its Service: the
+// traffic split and the exact port spec.
 type originalRouteBackends struct {
 	ToWeight          *int32                         `json:"toWeight,omitempty"`
 	AlternateBackends []routev1.RouteTargetReference `json:"alternateBackends,omitempty"`
+	// Port is the original spec.port (its targetPort refers to the endpoints: a container port
+	// number or a port name, valid for every backend). PortRecorded tells a nil Port apart from
+	// annotations written by older versions, which only kept the resolved Service port.
+	Port         *routev1.RoutePort `json:"port,omitempty"`
+	PortRecorded bool               `json:"portRecorded,omitempty"`
+}
+
+// RouteTarget is one of the Services an OpenShift Route sends traffic to.
+type RouteTarget struct {
+	Service string
+	Weight  int32
+}
+
+// defaultRouteWeight is the weight OpenShift gives a backend without one.
+const defaultRouteWeight = 100
+
+func weightOf(w *int32) int32 {
+	if w == nil {
+		return defaultRouteWeight
+	}
+	return *w
+}
+
+// OriginalRouteTargets returns the Services the Route balances traffic across (its main
+// Service first) and its port spec, as they were before patching.
+func OriginalRouteTargets(rt *routev1.Route) ([]RouteTarget, *routev1.RoutePort) {
+	to, toWeight, alternates, port := rt.Spec.To.Name, rt.Spec.To.Weight, rt.Spec.AlternateBackends, rt.Spec.Port
+	if rt.Annotations[AnnotationPatched] == "true" {
+		var orig originalRouteBackends
+		_ = json.Unmarshal([]byte(rt.Annotations[AnnotationOriginalBackends]), &orig)
+		to, toWeight, alternates = OriginalRouteService(rt), orig.ToWeight, orig.AlternateBackends
+		port = orig.Port
+		if !orig.PortRecorded {
+			port = nil
+		}
+	}
+	targets := []RouteTarget{{Service: to, Weight: weightOf(toWeight)}}
+	for _, alt := range alternates {
+		if alt.Kind == "" || alt.Kind == "Service" {
+			targets = append(targets, RouteTarget{Service: alt.Name, Weight: weightOf(alt.Weight)})
+		}
+	}
+	return targets, port
 }
 
 // RoutePath is the Route's path ("/" when unset).
@@ -171,9 +215,18 @@ func IsRoutePatched(rt *routev1.Route, proxyService string) bool {
 
 // PatchRoute points the Route at Smart Proxy, recording the original backend, traffic split and config.
 func PatchRoute(rt *routev1.Route, proxyService string, original Backend, configJSON string) {
+	// Still pointing at us (re-patching after the annotations were lost or changed): the spec no
+	// longer holds the original split and port, keep what was recorded.
+	keepRecorded := IsProxyService(rt.Spec.To.Name, proxyService) && rt.Annotations[AnnotationOriginalBackends] != ""
 	setAnnotations(&rt.Annotations, original, configJSON)
-	if data, err := json.Marshal(originalRouteBackends{ToWeight: rt.Spec.To.Weight, AlternateBackends: rt.Spec.AlternateBackends}); err == nil {
-		rt.Annotations[AnnotationOriginalBackends] = string(data)
+	if !keepRecorded {
+		orig := originalRouteBackends{ToWeight: rt.Spec.To.Weight, AlternateBackends: rt.Spec.AlternateBackends, PortRecorded: true}
+		if rt.Spec.Port != nil {
+			orig.Port = rt.Spec.Port.DeepCopy()
+		}
+		if data, err := json.Marshal(orig); err == nil {
+			rt.Annotations[AnnotationOriginalBackends] = string(data)
+		}
 	}
 	rt.Spec.To.Name = proxyService
 	rt.Spec.To.Weight = nil
@@ -191,19 +244,24 @@ func UnpatchRoute(rt *routev1.Route) error {
 	}
 	rt.Spec.To.Name = rt.Annotations[AnnotationOriginalService]
 
-	port := rt.Annotations[AnnotationOriginalPort]
-	switch n, err := strconv.Atoi(port); {
-	case port == "":
-		rt.Spec.Port = nil
-	case err == nil:
-		rt.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromInt(n)}
-	default:
-		rt.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromString(port)}
-	}
-
 	var backends originalRouteBackends
 	if data := rt.Annotations[AnnotationOriginalBackends]; data != "" {
 		_ = json.Unmarshal([]byte(data), &backends)
+	}
+
+	if backends.PortRecorded {
+		rt.Spec.Port = backends.Port
+	} else {
+		// Patched by an older version: only the resolved port was kept.
+		port := rt.Annotations[AnnotationOriginalPort]
+		switch n, err := strconv.Atoi(port); {
+		case port == "":
+			rt.Spec.Port = nil
+		case err == nil:
+			rt.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromInt(n)}
+		default:
+			rt.Spec.Port = &routev1.RoutePort{TargetPort: intstr.FromString(port)}
+		}
 	}
 	rt.Spec.To.Weight = backends.ToWeight
 	rt.Spec.AlternateBackends = backends.AlternateBackends

@@ -44,8 +44,12 @@ func dependencyNames(route store.RouteConfig) []string {
 	return names
 }
 
-// serving reports whether the route's workload has a ready replica.
+// serving reports whether the route can take a request without waking anything: its workload,
+// or one of its backends, has a ready replica.
 func (h *Handler) serving(route store.RouteConfig) bool {
+	if len(route.Backends) > 0 {
+		return len(h.servingBackends(route)) > 0
+	}
 	replicas, ready, err := h.k8sClient.GetDeploymentStatus(route.Namespace, route.Deployment)
 	return err == nil && replicas > 0 && ready > 0
 }

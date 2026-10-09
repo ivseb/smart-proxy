@@ -47,6 +47,56 @@ type RouteConfig struct {
 	// WhenAsleep is the answer to ignored requests while the route sleeps: WhenAsleepRespond
 	// (default), WhenAsleepUnavailable or WhenAsleepWake.
 	WhenAsleep string `json:"when_asleep,omitempty"`
+	// Backends are the Services traffic is balanced across, by weight (from an OpenShift Route's
+	// alternate backends). Empty means the single TargetService. See WeightedBackend.Managed.
+	Backends []WeightedBackend `json:"backends,omitempty"`
+}
+
+// WeightedBackend is one of the Services a route balances traffic across.
+type WeightedBackend struct {
+	Service  string `json:"service"`
+	Port     int    `json:"port"`
+	Weight   int32  `json:"weight"`
+	Workload string `json:"workload,omitempty"` // The workload behind the Service, if known
+	// Managed backends are woken and put to sleep with the route. Others are left alone: they
+	// get their share of traffic only while they run (as with the OpenShift router), so a
+	// backend kept off on purpose stays off.
+	Managed bool `json:"managed"`
+}
+
+// ManagedWorkloads are the route's own workloads: its main workload and those of its managed
+// backends (dependencies aside).
+func (r RouteConfig) ManagedWorkloads() []string {
+	workloads := []string{r.Deployment}
+	for _, b := range r.Backends {
+		if b.Managed && b.Workload != "" && b.Workload != r.Deployment {
+			workloads = append(workloads, b.Workload)
+		}
+	}
+	return workloads
+}
+
+// NormalizeBackends makes the main target the first managed backend. It fails when backends
+// are set but none is managed (the route would have nothing to wake).
+func (r *RouteConfig) NormalizeBackends() error {
+	if len(r.Backends) == 0 {
+		return nil
+	}
+	for _, b := range r.Backends {
+		if b.Weight < 0 {
+			return fmt.Errorf("backend %s: weight must not be negative", b.Service)
+		}
+	}
+	for _, b := range r.Backends {
+		if b.Managed {
+			r.TargetService, r.TargetPort = b.Service, b.Port
+			if b.Workload != "" {
+				r.Deployment = b.Workload
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("at least one backend must be managed by Smart Proxy")
 }
 
 // Answers to ignored requests (e.g. uptime monitors) while a route sleeps.

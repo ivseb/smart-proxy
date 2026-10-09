@@ -192,8 +192,9 @@ func (c *Client) ResolveDeploymentForService(namespace, serviceName string) (str
 	return serviceName, nil
 }
 
-// ResolveServicePort finds the Service port a Route targets: the numeric target port, the
-// port with the given name, or the Service's first port.
+// ResolveServicePort finds the Service port to dial for a Route's port spec. A Route's
+// targetPort refers to the endpoints: a name is the Service port's name, a number the
+// container port, i.e. the Service port whose targetPort it is. Defaults to the first port.
 func (c *Client) ResolveServicePort(namespace, serviceName string, routePort *routev1.RoutePort) (int, error) {
 	services, err := c.services(namespace)
 	if err != nil {
@@ -210,6 +211,11 @@ func (c *Client) ResolveServicePort(namespace, serviceName string, routePort *ro
 		return int(svc.Spec.Ports[0].Port), nil
 	}
 	if routePort.TargetPort.Type == intstr.Int {
+		for _, p := range svc.Spec.Ports {
+			if p.TargetPort.IntValue() == int(routePort.TargetPort.IntVal) || (p.TargetPort.IntValue() == 0 && p.Port == routePort.TargetPort.IntVal) {
+				return int(p.Port), nil
+			}
+		}
 		return int(routePort.TargetPort.IntVal), nil
 	}
 	for _, p := range svc.Spec.Ports {
