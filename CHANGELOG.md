@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.3.0 — chart 0.5.0
+
+Three optional tools on each route's page; routes not using them work as before. Upgrading from 2.2: see [the upgrade notes](docs/upgrading.md#from-22-to-23).
 
 ### Added
 - **Requests inspector**: record a route's requests for a few minutes and see what was sent (headers with credentials masked, cookie and parameter names) and what Smart Proxy did with each. Gathered from every replica. See [Inspect, route, protect](docs/routes.md).

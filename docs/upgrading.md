@@ -1,5 +1,13 @@
 # Upgrading
 
+## From 2.2 to 2.3
+
+A drop-in upgrade with the chart (`helm upgrade … --version 0.5.0 -f my-values.yaml`). Nothing changes for existing routes. To know:
+
+- **Smart Proxy's own Secret.** On first start Smart Proxy creates `<release>-state` in its namespace (deleted with it on uninstall): the token replicas use to share recorded requests, the key signing sign-in cookies, and the hashed passwords and tokens of protected routes. The chart grants the permissions (create Secrets; read and update only that one). **Without the chart**, add them to your Role: see `deploy/kubernetes/rbac.yaml`. Without them Smart Proxy works as before, but the inspector shows the requests of one replica only and routes can't be protected (the dashboard says so).
+- **New reserved paths** on every host: `/__smart_proxy/use/…`, `/__smart_proxy/login`, `/__smart_proxy/logout` (see [Configuration](configuration.md#reserved-paths)).
+- **`X-Smart-Proxy-User`** (in any spelling) and Smart Proxy's `sp_auth_*` cookies are removed from every request before it reaches an application.
+
 ## From 2.1 to 2.2
 
 A drop-in upgrade with the chart (`helm upgrade … --version 0.4.0 -f my-values.yaml`). Things to know:

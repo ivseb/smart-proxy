@@ -3,9 +3,9 @@ name: smart-proxy
 description: Intelligent request handling for Kubernetes Ingresses and OpenShift Routes — auto-sleep, dependency chains and unified route patching.
 type: application
 # Chart version. Bump on every change to the chart itself.
-version: 0.4.0
+version: 0.5.0
 # Version of the Smart Proxy application shipped by default.
-appVersion: "2.2.0"
+appVersion: "2.3.0"
 home: https://ivseb.github.io/smart-proxy/
 icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
 sources:
@@ -27,20 +27,16 @@ annotations:
       url: https://ivseb.github.io/smart-proxy/
   artifacthub.io/images: |
     - name: smart-proxy
-      image: docker.io/isebben/smart-proxy:2.2.0
+      image: docker.io/isebben/smart-proxy:2.3.0
   artifacthub.io/maintainers: |
     - name: ivseb
       email: ivan.sebben.dati@gmail.com
   artifacthub.io/changes: |
-    - kind: fixed
-      description: Applications in other namespaces than Smart Proxy's are reachable once patched (stand-in Services; new RBAC)
-    - kind: fixed
-      description: With two replicas, an app woken by a follower is no longer put back to sleep by the leader
-    - kind: fixed
-      description: API calls, form posts and WebSockets to a sleeping app wait for it instead of getting the HTML waking page
-    - kind: fixed
-      description: Routing follows the routers (host first, whole path segments, wildcards, Exact paths)
-    - kind: changed
-      description: Self-healing backs off from GitOps tools that keep reverting it
     - kind: added
-      description: Traffic charts keep the last 30 minutes (config.statsRetention); h2c/gRPC; end-to-end tests
+      description: Requests inspector - record a route's requests and see what was sent and what Smart Proxy did with each
+    - kind: added
+      description: Backends with conditions (header, cookie, query, path, client IP), sticky across cross-site posts such as SAML responses
+    - kind: added
+      description: Built-in protection - sign-in page (shared password or people) and access tokens, X-Smart-Proxy-User for the app
+    - kind: changed
+      description: Smart Proxy keeps its own Secret (<release>-state); the chart grants access to it
