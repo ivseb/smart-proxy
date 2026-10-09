@@ -16,10 +16,26 @@ import { apiRequest, errorMessage } from "@/lib/api";
 
 type Tab = "stats" | "routes" | "patching" | "logs";
 
+// Tabs can be linked to: #overview, #routes, #patching, #logs.
+const TAB_HASH: Record<Tab, string> = { stats: "overview", routes: "routes", patching: "patching", logs: "logs" };
+
+function tabFromHash(): Tab | null {
+    const hash = window.location.hash.replace(/^#/, "");
+    const entry = Object.entries(TAB_HASH).find(([, h]) => h === hash);
+    return entry ? (entry[0] as Tab) : null;
+}
+
 const query = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 export function Dashboard() {
-    const [activeTab, setActiveTab] = useStoredState<Tab>("dashboard.tab", "routes");
+    const [storedTab, setActiveTab] = useStoredState<Tab>("dashboard.tab", "routes");
+    const [hashTab, setHashTab] = useState<Tab | null>(tabFromHash);
+    const activeTab = hashTab ?? storedTab;
+    useEffect(() => {
+        const onHashChange = () => setHashTab(tabFromHash());
+        window.addEventListener("hashchange", onHashChange);
+        return () => window.removeEventListener("hashchange", onHashChange);
+    }, []);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRoute, setEditingRoute] = useState<RouteConfig | null>(null);
     const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
@@ -119,6 +135,8 @@ export function Dashboard() {
 
     const goTo = (tab: Tab) => {
         setActiveTab(tab);
+        setHashTab(tab);
+        window.history.replaceState(null, "", `#${TAB_HASH[tab]}`);
         setSelectedRouteId(null);
     };
 

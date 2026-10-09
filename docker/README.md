@@ -2,7 +2,7 @@
 
 **Scale-to-zero and smart traffic management for Kubernetes & OpenShift — without touching your apps.**
 
-![Smart Proxy demo](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/SmartProxy.gif)
+![Smart Proxy dashboard](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/dashboard-routes.png)
 
 Smart Proxy sits in front of your services and puts **idle Deployments to sleep** (scaled to zero), then **wakes them on the first incoming request** — showing a friendly "waking up" page in the meantime. It works by patching your existing Kubernetes **Ingress** or OpenShift **Route**, so there are no sidecars and no application changes.
 

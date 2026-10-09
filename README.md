@@ -13,7 +13,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/ivseb/smart-proxy)](https://github.com/ivseb/smart-proxy/releases)
 [![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://ivseb.github.io/smart-proxy/)
 
-<img src="media/SmartProxy.gif" alt="Smart Proxy in action" width="820"/>
+<img src="media/dashboard-routes.png" alt="Smart Proxy dashboard: routes grouped by namespace, with their state and sleep timers" width="820"/>
 
 </div>
 
@@ -38,6 +38,12 @@ Idle environments burn money. Preview, dev, staging and demo namespaces sit runn
 | 🎛️ **Admin dashboard** | Routes grouped by namespace with search and filters, live status and "sleeps in" timers, one-click patching, wake and sleep. |
 | 🔐 **Secure by default** | Dashboard sign-in with basic auth, tokens, SSO via OIDC (Keycloak, Entra ID, Google…) or OpenShift login. |
 | 🪶 **Zero app changes** | Fully annotation-based and reversible — nothing to add to your images. Opt in from the dashboard or with annotations in Git. |
+
+## 🖥️ The dashboard
+
+Patch Ingresses and Routes in one click, across namespaces:
+
+<img src="media/dashboard-patching.png" alt="Patching view listing Ingresses across namespaces, with their Service and Deployment state" width="820"/>
 
 ## 🎬 How it works
 

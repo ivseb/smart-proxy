@@ -18,7 +18,7 @@ hide:
 </p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/SmartProxy.gif" alt="Smart Proxy in action" width="820"/>
+  <img src="https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/dashboard-routes.png" alt="Smart Proxy dashboard" width="820"/>
 </p>
 
 ---
