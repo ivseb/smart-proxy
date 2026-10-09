@@ -77,18 +77,18 @@ func (h *Handler) pickTarget(w http.ResponseWriter, r *http.Request, route store
 		}
 	}
 
-	var total int32
+	var total int64
 	for _, b := range serving {
-		total += b.Weight
+		total += int64(b.Weight)
 	}
 	chosen := serving[0]
-	n := rand.Int32N(total)
+	n := rand.Int64N(total)
 	for _, b := range serving {
-		if n < b.Weight {
+		if n < int64(b.Weight) {
 			chosen = b
 			break
 		}
-		n -= b.Weight
+		n -= int64(b.Weight)
 	}
 	// While a managed backend wakes up, its share goes elsewhere for now: don't stick to that.
 	for _, b := range route.Backends {

@@ -87,11 +87,15 @@ func (c *Client) WakeDeployment(namespace, name string) (int32, error) {
 	key := ns + "/" + WorkloadRef(ParseWorkload(name))
 	c.wakeMu.Lock()
 	if c.waking == nil {
-		c.waking, c.wokenAt = map[string]*wakeCall{}, map[string]time.Time{}
+		c.waking, c.wokenAt, c.wakeFailed = map[string]*wakeCall{}, map[string]time.Time{}, map[string]wakeFailure{}
 	}
 	if at, ok := c.wokenAt[key]; ok && time.Since(at) < recentWake {
 		c.wakeMu.Unlock()
 		return 0, nil
+	}
+	if failed, ok := c.wakeFailed[key]; ok && time.Since(failed.at) < recentWake {
+		c.wakeMu.Unlock()
+		return 0, failed.err // Refused moments ago: don't ask again on every request
 	}
 	if call, ok := c.waking[key]; ok {
 		c.wakeMu.Unlock()
@@ -102,21 +106,32 @@ func (c *Client) WakeDeployment(namespace, name string) (int32, error) {
 	c.waking[key] = call
 	c.wakeMu.Unlock()
 
-	target, err := c.wake(ns, name)
-
-	c.wakeMu.Lock()
-	delete(c.waking, key)
-	if err == nil {
+	var target int32
+	err := errors.New("wake-up interrupted")
+	defer func() {
+		c.wakeMu.Lock()
+		delete(c.waking, key)
+		now := time.Now()
 		for k, at := range c.wokenAt {
-			if time.Since(at) >= recentWake {
+			if now.Sub(at) >= recentWake {
 				delete(c.wokenAt, k)
 			}
 		}
-		c.wokenAt[key] = time.Now()
-	}
-	c.wakeMu.Unlock()
-	call.err = err
-	close(call.done)
+		for k, f := range c.wakeFailed {
+			if now.Sub(f.at) >= recentWake {
+				delete(c.wakeFailed, k)
+			}
+		}
+		if err == nil {
+			c.wokenAt[key] = now
+		} else {
+			c.wakeFailed[key] = wakeFailure{at: now, err: err}
+		}
+		c.wakeMu.Unlock()
+		call.err = err
+		close(call.done)
+	}()
+	target, err = c.wake(ns, name)
 	return target, err
 }
 

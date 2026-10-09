@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,13 +35,16 @@ func (h *Handler) track(routeID string) func() {
 	f.mu.Lock()
 	f.counts[routeID]++
 	f.mu.Unlock()
+	start := time.Now()
 	return func() {
 		f.mu.Lock()
 		if f.counts[routeID]--; f.counts[routeID] <= 0 {
 			delete(f.counts, routeID)
 		}
 		f.mu.Unlock()
-		h.store.UpdateActivity(routeID)
+		if time.Since(start) > time.Second {
+			h.store.UpdateActivity(routeID) // A long request: active until it ended
+		}
 	}
 }
 
@@ -112,6 +116,7 @@ var dial = (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second})
 var transport, h2cTransport = func() (*http.Transport, *http.Transport) {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) { return dial(ctx, network, addr) }
+	t.Proxy = nil // In-cluster traffic: never through an HTTP_PROXY meant for the outside
 	t.MaxIdleConns = 512
 	t.MaxIdleConnsPerHost = 64
 	h2c := t.Clone()
@@ -120,9 +125,11 @@ var transport, h2cTransport = func() (*http.Transport, *http.Transport) {
 	return t, h2c
 }()
 
-// transportFor picks the protocol to the application: the one the request came with.
+// transportFor picks the protocol to the application. gRPC needs HTTP/2, and comes as h2c from
+// ingress controllers configured for it; anything else goes as HTTP/1.1, which every
+// application speaks (a proxy in front may use HTTP/2 towards Smart Proxy on its own).
 func transportFor(r *http.Request) http.RoundTripper {
-	if r.ProtoMajor == 2 && r.TLS == nil {
+	if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
 		return h2cTransport
 	}
 	return transport
@@ -134,7 +141,7 @@ func proxyError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, context.Canceled) || r.Context().Err() != nil {
 		return
 	}
-	logger.Printf("Proxy error for %s%s: %v", r.Host, r.URL.Path, err)
+	logger.Every("proxy "+r.Host, 10*time.Second, "Proxy error for %q: %v", r.Host+r.URL.Path, err)
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusBadGateway)
 	fmt.Fprintln(w, "Smart Proxy: the application is not reachable.")

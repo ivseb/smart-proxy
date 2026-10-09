@@ -164,7 +164,7 @@ func (w *Watcher) sleep(namespace, deployment string, minAwake time.Duration, re
 		logger.Printf("Error putting %s to sleep: %v", key, err)
 	case slept:
 		logger.Printf("Scaled down %s (%s)", key, reason)
-		metrics.Slept(namespace, deployment, "idle")
+		metrics.Slept(namespace, canonical(deployment), "idle")
 	}
 }
 
@@ -177,7 +177,7 @@ func (w *Watcher) wake(namespace, deployment string) {
 	}
 	if target > 0 {
 		logger.Printf("Woke %s/%s with %d replica(s): scheduled hours started", namespace, deployment, target)
-		metrics.WakeStarted(namespace, deployment, "schedule")
+		metrics.WakeStarted(namespace, canonical(deployment), "schedule")
 	}
 }
 

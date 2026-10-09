@@ -83,8 +83,8 @@ func (r *RouteConfig) NormalizeBackends() error {
 		return nil
 	}
 	for _, b := range r.Backends {
-		if b.Weight < 0 {
-			return fmt.Errorf("backend %s: weight must not be negative", b.Service)
+		if b.Weight < 0 || b.Weight > 256 {
+			return fmt.Errorf("backend %s: weight must be between 0 and 256", b.Service)
 		}
 	}
 	for _, b := range r.Backends {

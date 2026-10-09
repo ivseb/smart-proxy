@@ -98,6 +98,13 @@ type Client struct {
 	wakeMu  sync.Mutex
 	waking  map[string]*wakeCall // Wake-ups in progress, shared by concurrent requests
 	wokenAt map[string]time.Time // Recent wake-ups, so a burst of requests doesn't repeat them
+	// Recent failures (e.g. refused by an admission webhook), returned without asking again.
+	wakeFailed map[string]wakeFailure
+}
+
+type wakeFailure struct {
+	at  time.Time
+	err error
 }
 
 type wakeCall struct {

@@ -110,3 +110,29 @@ func (l *Logger) GetHistory() []LogEntry {
 	copy(history, l.buffer)
 	return history
 }
+
+var (
+	everyMu sync.Mutex
+	lastLog = map[string]time.Time{}
+)
+
+// Every logs at most once per interval for a key (e.g. a route or a workload), so an error hit
+// by every request doesn't flood the log and push everything else out of the dashboard's view.
+func Every(key string, interval time.Duration, format string, v ...interface{}) {
+	now := time.Now()
+	everyMu.Lock()
+	if last, ok := lastLog[key]; ok && now.Sub(last) < interval {
+		everyMu.Unlock()
+		return
+	}
+	if len(lastLog) > 10000 {
+		for k, t := range lastLog {
+			if now.Sub(t) > time.Hour {
+				delete(lastLog, k)
+			}
+		}
+	}
+	lastLog[key] = now
+	everyMu.Unlock()
+	Printf(format, v...)
+}

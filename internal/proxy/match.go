@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"path"
+	"sort"
 	"strings"
 
 	"smart-proxy/internal/store"
@@ -19,20 +20,18 @@ func requestHost(r *http.Request) string {
 }
 
 // matchPath reports whether a request path falls under a route's path. Ingress paths match
-// whole segments ("/api" serves "/api" and "/api/x", not "/apidocs"); OpenShift Routes match
-// plain prefixes, as the OpenShift router does.
+// whole segments ("/api" and "/api/" serve "/api" and "/api/x", not "/apidocs"); OpenShift
+// Routes match plain prefixes, as the OpenShift router does.
 func matchPath(route store.RouteConfig, path string) bool {
 	prefix := route.Path
 	if prefix == "" || prefix == "/" {
 		return true
 	}
-	if !strings.HasPrefix(path, prefix) {
-		return false
+	if strings.HasPrefix(route.ID, "route-") {
+		return strings.HasPrefix(path, prefix)
 	}
-	if strings.HasPrefix(route.ID, "route-") || strings.HasSuffix(prefix, "/") || len(path) == len(prefix) {
-		return true
-	}
-	return path[len(prefix)] == '/'
+	prefix = strings.TrimSuffix(prefix, "/")
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }
 
 // cleanPath resolves "." and ".." segments and duplicate slashes, keeping a trailing slash.
@@ -47,34 +46,76 @@ func cleanPath(p string) string {
 	return cleaned
 }
 
-// matchRoute finds the route serving a host and path: the longest matching path, and a route
-// naming the host over a catch-all one.
-func (h *Handler) matchRoute(host, path string) (store.RouteConfig, bool) {
-	var best store.RouteConfig
-	found := false
-	for _, route := range h.store.GetAllRoutes() {
-		if !matchHost(route.Host, host) || !matchPath(route, path) {
-			continue
-		}
-		if !found || len(route.Path) > len(best.Path) ||
-			(len(route.Path) == len(best.Path) && route.Host != "" && best.Host == "") {
-			best, found = route, true
-		}
-	}
-	return best, found
+// routeIndex finds routes by host without scanning (or copying) every route per request. It is
+// rebuilt when the configurations change.
+type routeIndex struct {
+	version  uint64
+	exact    map[string][]store.RouteConfig // Lower-case host -> routes, longest path first
+	wildcard map[string][]store.RouteConfig // "*.example.com" -> routes, by "example.com"
+	catchAll []store.RouteConfig            // Routes without a host
 }
 
-// matchHost checks if the requestHost matches a comma-separated list of route hosts (case-insensitive)
-func matchHost(routeHost, requestHost string) bool {
-	if routeHost == "" {
-		return true
-	}
-	for _, part := range strings.Split(routeHost, ",") {
-		if strings.EqualFold(strings.TrimSuffix(strings.TrimSpace(part), "."), requestHost) {
-			return true
+func buildIndex(version uint64, routes []store.RouteConfig) *routeIndex {
+	idx := &routeIndex{version: version, exact: map[string][]store.RouteConfig{}, wildcard: map[string][]store.RouteConfig{}}
+	for _, route := range routes {
+		hosts := splitHosts(route.Host)
+		if len(hosts) == 0 {
+			idx.catchAll = append(idx.catchAll, route)
+		}
+		for _, h := range hosts {
+			if domain, ok := strings.CutPrefix(h, "*."); ok {
+				idx.wildcard[domain] = append(idx.wildcard[domain], route)
+			} else {
+				idx.exact[h] = append(idx.exact[h], route)
+			}
 		}
 	}
-	return false
+	byPath := func(list []store.RouteConfig) {
+		sort.SliceStable(list, func(i, j int) bool { return len(list[i].Path) > len(list[j].Path) })
+	}
+	for _, list := range idx.exact {
+		byPath(list)
+	}
+	for _, list := range idx.wildcard {
+		byPath(list)
+	}
+	byPath(idx.catchAll)
+	return idx
+}
+
+func splitHosts(value string) []string {
+	var hosts []string
+	for _, part := range strings.Split(value, ",") {
+		if h := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(part), ".")); h != "" {
+			hosts = append(hosts, h)
+		}
+	}
+	return hosts
+}
+
+// matchRoute finds the route serving a host and path. As with ingress controllers, the host
+// decides first (an exact host, then a wildcard one, then routes without a host); among the
+// routes of that host, the longest matching path wins.
+func (h *Handler) matchRoute(host, path string) (store.RouteConfig, bool) {
+	idx := h.index.Load()
+	if version := h.store.Version(); idx == nil || idx.version != version {
+		idx = buildIndex(version, h.store.GetAllRoutes())
+		h.index.Store(idx)
+	}
+	host = strings.ToLower(host)
+	candidates := [][]store.RouteConfig{idx.exact[host]}
+	if _, domain, ok := strings.Cut(host, "."); ok {
+		candidates = append(candidates, idx.wildcard[domain]) // One label, as Ingress wildcards
+	}
+	candidates = append(candidates, idx.catchAll)
+	for _, list := range candidates {
+		for _, route := range list {
+			if matchPath(route, path) {
+				return route, true
+			}
+		}
+	}
+	return store.RouteConfig{}, false
 }
 
 // wantsPage reports whether a request is a browser navigation, which can be answered with the

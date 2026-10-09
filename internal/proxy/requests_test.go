@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	k8stesting "k8s.io/client-go/testing"
 
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/k8s/fakecluster"
@@ -125,5 +127,65 @@ func TestBadgeSkipsResponsesWithoutBody(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "Powered by") || !strings.HasSuffix(string(body), "</body>") {
 		t.Errorf("page = %s", body)
+	}
+}
+
+func TestHostDecidesBeforePath(t *testing.T) {
+	h, _, _ := webHandler(t, []*store.RouteConfig{
+		webRoute("ing-web", "/", "web"),
+		{ID: "ing-other/api", Host: "", Path: "/api", Namespace: "other", Deployment: "api"},
+		{ID: "ing-wild", Host: "*.preview.example.com", Path: "/", Namespace: ns, Deployment: "preview"},
+		{ID: "ing-slash", Host: "s.example.com", Path: "/api/", Namespace: ns, Deployment: "api"},
+	})
+	cases := []struct{ host, path, want string }{
+		{"web.example.com", "/api/orders", "ing-web"}, // Not the catch-all of another app
+		{"Web.Example.com", "/", "ing-web"},           // Hosts are case-insensitive
+		{"x.example.org", "/api/x", "ing-other/api"},  // No route for the host: the catch-all
+		{"pr-1.preview.example.com", "/", "ing-wild"}, // Wildcards cover one label
+		{"a.b.preview.example.com", "/", ""},          // ... not two
+		{"s.example.com", "/api", "ing-slash"},        // Prefix "/api/" serves "/api"
+	}
+	for _, c := range cases {
+		got, found := h.matchRoute(c.host, c.path)
+		if (c.want == "" && found) || (c.want != "" && got.ID != c.want) {
+			t.Errorf("%s%s -> %q (found %v), want %q", c.host, c.path, got.ID, found, c.want)
+		}
+	}
+
+	// The index follows configuration changes.
+	h.store.AddRoute(&store.RouteConfig{ID: "ing-new", Host: "new.example.com", Path: "/", Namespace: ns, Deployment: "new"})
+	if got, _ := h.matchRoute("new.example.com", "/"); got.ID != "ing-new" {
+		t.Errorf("new route not matched: %q", got.ID)
+	}
+}
+
+// An app that can't be woken (e.g. an admission webhook refuses the scale-up) is not proxied to
+// as if it served, and failing requests don't each ask the API server again.
+func TestRefusedWakeIsNotProxied(t *testing.T) {
+	h, c, tr := webHandler(t, []*store.RouteConfig{webRoute("ing-web", "/", "web")}, sleeping("web"))
+	patches := 0
+	c.Kube.PrependReactor("patch", "deployments", func(k8stesting.Action) (bool, runtime.Object, error) {
+		patches++
+		return true, nil, fmt.Errorf("denied by webhook")
+	})
+	for i := 0; i < 5; i++ {
+		r := httptest.NewRequest("GET", "http://web.example.com/api", nil)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		if w.Code != http.StatusServiceUnavailable || tr.last() != "" {
+			t.Fatalf("request %d: %d, proxied to %q", i, w.Code, tr.last())
+		}
+	}
+	if patches > 2 {
+		t.Fatalf("%d scale-up attempts for 5 requests", patches)
+	}
+}
+
+func TestBadgeLeavesPartialContentAlone(t *testing.T) {
+	resp := &http.Response{StatusCode: http.StatusPartialContent, Header: http.Header{"Content-Type": {"text/html"}, "Content-Range": {"bytes 0-9/100"}},
+		Body: io.NopCloser(strings.NewReader("<body>hi</"))}
+	injectBadge(resp)
+	if body, _ := io.ReadAll(resp.Body); string(body) != "<body>hi</" {
+		t.Fatalf("partial content changed: %q", body)
 	}
 }

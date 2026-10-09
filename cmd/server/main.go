@@ -93,6 +93,7 @@ func main() {
 	if proxyHandler.WakeTimeout, err = time.ParseDuration(getEnv("WAKE_TIMEOUT", "2m")); err != nil {
 		log.Fatalf("Invalid WAKE_TIMEOUT: %v", err)
 	}
+	proxyHandler.ClusterDomain = getEnv("CLUSTER_DOMAIN", "cluster.local")
 
 	// 4. Admin Server
 	adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics, serviceName, authn)
@@ -130,6 +131,9 @@ func main() {
 		Addr:              proxyAddr,
 		Handler:           proxyHandler,
 		ReadHeaderTimeout: 10 * time.Second,
+		// Longer than the keep-alive of ingress controllers and routers towards their backends,
+		// so they close idle connections first (no request lost on a connection closed here).
+		IdleTimeout: 10 * time.Minute,
 		// HTTP/2 without TLS too (h2c), as ingress controllers send gRPC.
 		Protocols: func() *http.Protocols {
 			var p http.Protocols

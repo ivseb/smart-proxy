@@ -39,11 +39,14 @@ type Handler struct {
 	Traffic *traffic.Recorder
 	// Transport, when set, replaces the default transport to the applications (tests).
 	Transport http.RoundTripper
+	// ClusterDomain is the cluster's DNS domain (default cluster.local).
+	ClusterDomain string
 	// WakeTimeout is how long requests other than page loads wait for a sleeping app
 	// (default 2 minutes).
 	WakeTimeout time.Duration
 
 	inflight inflight
+	index    atomic.Pointer[routeIndex]
 }
 
 // Probe endpoints, under the reserved /__smart_proxy/ prefix so they can't shadow an
@@ -211,7 +214,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 3. Proxy the request.
 	dest := h.pickTarget(w, r, route)
-	host := fmt.Sprintf("%s.%s.svc.cluster.local:%d", dest.Service, route.Namespace, dest.Port)
+	host := fmt.Sprintf("%s.%s.svc.%s:%d", dest.Service, route.Namespace, h.clusterDomain(), dest.Port)
 	if woken && h.Transport == nil {
 		waitReachable(r.Context(), host, 15*time.Second)
 	}
@@ -249,7 +252,7 @@ const badgeHTML = `
 // injectBadge adds the "Powered by Smart Proxy" badge to HTML pages.
 func injectBadge(resp *http.Response) error {
 	if !strings.Contains(resp.Header.Get("Content-Type"), "text/html") || resp.Header.Get("Content-Encoding") != "" ||
-		resp.StatusCode < 200 || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified ||
+		resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Range") != "" ||
 		resp.ContentLength > maxBadgeBody {
 		return nil
 	}
@@ -282,6 +285,13 @@ func injectBadge(resp *http.Response) error {
 	return nil
 }
 
+func (h *Handler) clusterDomain() string {
+	if h.ClusterDomain != "" {
+		return h.ClusterDomain
+	}
+	return "cluster.local"
+}
+
 func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 	// Status check now needs to know the Host header too to find the right route
 	// The client JS might not send the Host header of the original request easily
@@ -311,7 +321,7 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 
 	if allReady {
 		for _, route := range matchedRoutes {
-			targetURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d%s", route.TargetService, route.Namespace, route.TargetPort, route.Path)
+			targetURL := fmt.Sprintf("http://%s.%s.svc.%s:%d%s", route.TargetService, route.Namespace, h.clusterDomain(), route.TargetPort, route.Path)
 			client := &http.Client{
 				Timeout: 1000 * time.Millisecond,
 				CheckRedirect: func(req *http.Request, via []*http.Request) error {

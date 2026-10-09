@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"time"
+
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/metrics"
@@ -31,7 +33,8 @@ func (h *Handler) ensureAwake(routes []store.RouteConfig) ([]workloadState, bool
 
 	// check returns the deployment's state, waking it when allowed.
 	check := func(namespace, name string, mayWake bool) string {
-		key := namespace + "/" + k8s.WorkloadRef(k8s.ParseWorkload(name))
+		ref := k8s.WorkloadRef(k8s.ParseWorkload(name)) // One spelling per workload, for metrics too
+		key := namespace + "/" + ref
 		if state, ok := seen[key]; ok {
 			return state
 		}
@@ -39,16 +42,19 @@ func (h *Handler) ensureAwake(routes []store.RouteConfig) ([]workloadState, bool
 		replicas, ready, err := h.k8sClient.GetDeploymentStatus(namespace, name)
 		switch {
 		case err != nil:
-			logger.Printf("Error getting status for %s: %v", key, err)
+			// Unknown workload (deleted, renamed): don't block on it, traffic decides.
+			logger.Every("status "+key, time.Minute, "Error getting status for %s: %v", key, err)
 			state = stateError
 		case replicas == 0 && mayWake:
 			if target, err := h.k8sClient.WakeDeployment(namespace, name); err != nil {
-				logger.Printf("Error waking up %s: %v", key, err)
+				// Known to be at zero and not waking (e.g. refused by a webhook): it can't serve.
+				logger.Every("wake "+key, time.Minute, "Error waking up %s: %v", key, err)
 				state = stateError
+				allReady = false
 			} else {
 				if target > 0 {
 					logger.Printf("Waking up %s with %d replica(s)", key, target)
-					metrics.WakeStarted(namespace, name, "request")
+					metrics.WakeStarted(namespace, ref, "request")
 				}
 				state = stateScaling
 			}
@@ -57,7 +63,7 @@ func (h *Handler) ensureAwake(routes []store.RouteConfig) ([]workloadState, bool
 		case ready == 0:
 			state = stateScaling
 		default:
-			metrics.Ready(namespace, name)
+			metrics.Ready(namespace, ref)
 		}
 		seen[key] = state
 		states = append(states, workloadState{Name: name, Status: state})

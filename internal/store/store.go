@@ -3,6 +3,7 @@ package store
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,7 +28,12 @@ type Store struct {
 	// local is the activity seen by this instance, to be shared with other replicas.
 	local     map[string]time.Time
 	startedAt time.Time
+	version   atomic.Uint64 // Changes whenever the configurations do (not their activity)
 }
+
+// Version changes whenever route configurations do, so readers can cache what they derive
+// from them.
+func (s *Store) Version() uint64 { return s.version.Load() }
 
 // NewStore keeps routes in a JSON file.
 func NewStore(filePath string) *Store {
@@ -147,6 +153,7 @@ func (s *Store) Replace(routes []*RouteConfig) {
 		next[c.ID] = &c
 	}
 	s.routes = next
+	s.version.Add(1)
 }
 
 // GetRoute returns a copy of a route.
