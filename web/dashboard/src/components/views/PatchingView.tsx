@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { RefreshCw, Shield, Undo2, Route as RouteIcon, Globe } from "lucide-react";
 import { toast } from "sonner";
+import { apiRequest, errorMessage } from "@/lib/api";
 
 interface PatchableResource {
     name: string;
@@ -22,8 +23,9 @@ export function PatchingView() {
         setLoading(true);
         try {
             const [ingRes, routeRes] = await Promise.all([
-                fetch("/api/k8s/ingresses?namespace=smart-proxy-demo"),
-                fetch("/api/k8s/routes?namespace=smart-proxy-demo")
+                // The server always lists its watched namespace.
+                fetch("/api/k8s/ingresses"),
+                fetch("/api/k8s/routes")
             ]);
 
             const ingresses: PatchableResource[] = await ingRes.json();
@@ -49,27 +51,27 @@ export function PatchingView() {
     const patchResource = async (res: PatchableResource) => {
         const endpoint = res.type === "Route" ? "/api/patch-route" : "/api/patch-ingress";
         try {
-            await fetch(`${endpoint}?name=${res.name}`, {
+            await apiRequest(`${endpoint}?name=${encodeURIComponent(res.name)}`, {
                 method: "POST"
             });
             toast.success(`Successfully patched ${res.type} ${res.name}`);
-            fetchResources();
         } catch (e) {
-            toast.error(`Failed to patch ${res.type}`);
+            toast.error(`Failed to patch ${res.type} ${res.name}: ${errorMessage(e)}`);
         }
+        fetchResources();
     };
 
     const unpatchResource = async (res: PatchableResource) => {
         const endpoint = res.type === "Route" ? "/api/unpatch-route" : "/api/unpatch-ingress";
         try {
-            await fetch(`${endpoint}?name=${res.name}`, {
+            await apiRequest(`${endpoint}?name=${encodeURIComponent(res.name)}`, {
                 method: "POST"
             });
             toast.success(`Restored original backend for ${res.name}`);
-            fetchResources();
         } catch (e) {
-            toast.error(`Failed to unpatch ${res.type}`);
+            toast.error(`Failed to unpatch ${res.type} ${res.name}: ${errorMessage(e)}`);
         }
+        fetchResources();
     };
 
     return (

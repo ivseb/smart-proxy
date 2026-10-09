@@ -10,7 +10,8 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Plus, LayoutDashboard, ScrollText, Shield, Activity as ActivityIcon, LogOut, User } from "lucide-react";
 import { StatsView } from "@/components/views/StatsView";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
+import { apiRequest, errorMessage } from "@/lib/api";
 
 import { RouteDetailView } from "@/components/views/RouteDetailView";
 import type { LogEntry } from "@/types/api";
@@ -40,18 +41,27 @@ export function Dashboard() {
     }, []);
 
     const handleCreateRoute = async (data: Partial<RouteConfig>) => {
-        await fetch("/api/routes", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data),
-        });
+        try {
+            await apiRequest("/api/routes", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            });
+        } catch (e) {
+            toast.error(`Failed to save route: ${errorMessage(e)}`);
+        }
         refetch();
     };
 
     const [routeToDelete, setRouteToDelete] = useState<string | null>(null);
 
+    // Routes created by patching an Ingress or OpenShift Route keep that resource pointed at
+    // Smart Proxy, so deleting only the configuration would leave the app answering 404.
+    const isPatchedRoute = (id: string) => id.startsWith("ing-") || id.startsWith("route-");
+    const patchedKind = (id: string) => (id.startsWith("route-") ? "Route" : "Ingress");
+
     const handleDeleteClick = (id: string) => {
-        if (id.startsWith("ing-")) {
+        if (isPatchedRoute(id)) {
             setRouteToDelete(id);
         } else {
             if (confirm("Are you sure you want to delete this route?")) {
@@ -61,25 +71,40 @@ export function Dashboard() {
     };
 
     const deleteRoute = async (id: string) => {
-        await fetch(`/api/routes?id=${id}`, { method: "DELETE" });
-        setSelectedRouteId(null);
+        try {
+            await apiRequest(`/api/routes?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+            setSelectedRouteId(null);
+        } catch (e) {
+            toast.error(`Failed to delete route: ${errorMessage(e)}`);
+        }
         setRouteToDelete(null);
         refetch();
     };
 
     const handleUnpatch = async (id: string) => {
-        const name = id.replace("ing-", "");
-        await fetch(`/api/ingress/unpatch?name=${name}`, { method: "POST" });
-        setSelectedRouteId(null);
+        const kind = patchedKind(id);
+        const name = id.replace(/^(ing|route)-/, "");
+        const endpoint = kind === "Route" ? "/api/unpatch-route" : "/api/unpatch-ingress";
+        try {
+            await apiRequest(`${endpoint}?name=${encodeURIComponent(name)}`, { method: "POST" });
+            toast.success(`Restored original backend for ${kind} ${name}`);
+            setSelectedRouteId(null);
+        } catch (e) {
+            toast.error(`Failed to unpatch ${kind} ${name}: ${errorMessage(e)}`);
+        }
         setRouteToDelete(null);
         refetch();
     };
 
     const handleStopDeployment = async (route: RouteStatus) => {
         if (!confirm(`Stop deployment ${route.deployment}?`)) return;
-        await fetch(`/api/k8s/stop-deployment?namespace=${route.namespace}&deployment=${route.deployment}`, {
-            method: "POST"
-        });
+        try {
+            await apiRequest(`/api/k8s/stop-deployment?namespace=${encodeURIComponent(route.namespace)}&deployment=${encodeURIComponent(route.deployment)}`, {
+                method: "POST"
+            });
+        } catch (e) {
+            toast.error(`Failed to stop ${route.deployment}: ${errorMessage(e)}`);
+        }
         refetch();
     };
 
@@ -226,11 +251,11 @@ export function Dashboard() {
                     <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-full max-w-md p-6">
                         <h3 className="text-xl font-bold text-white mb-2">Delete Patched Route?</h3>
                         <p className="text-gray-400 mb-6">
-                            This route was created by patching an Ingress. Do you want to revert the Ingress changes or just remove the configuration from Smart Proxy?
+                            This route was created by patching {patchedKind(routeToDelete) === "Route" ? "an OpenShift Route" : "an Ingress"}. Unpatching restores its original backend. Deleting only the configuration leaves it pointed at Smart Proxy, which will answer 404 for it.
                         </p>
                         <div className="flex flex-col gap-3">
                             <Button variant="primary" onClick={() => handleUnpatch(routeToDelete)} className="w-full justify-center bg-blue-600 hover:bg-blue-500">
-                                Unpatch Ingress & Delete
+                                Unpatch {patchedKind(routeToDelete)} & Delete
                             </Button>
                             <Button variant="danger" onClick={() => deleteRoute(routeToDelete)} className="w-full justify-center">
                                 Delete Configuration Only
