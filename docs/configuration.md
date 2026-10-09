@@ -8,6 +8,8 @@
 | `SMART_PROXY_SERVICE_NAME` | Name of the Service fronting Smart Proxy. Patched Ingresses/Routes are pointed at it (on its `proxy` port). Set automatically by the Helm chart. | `smart-proxy` |
 | `WATCH_NAMESPACE` | The namespace to watch for resources. | `default` (or current NS) |
 | `LOG_LEVEL` | Logging verbosity (debug, info, error). | `info` |
+| `ADMIN_ADDR` | Listen address of the admin dashboard. | `:8081` |
+| `AUTH_MODE` | Dashboard authentication: `none`, `basic`, `token`, `oidc` or `header`. See [Authentication](authentication.md) for all `AUTH_*` variables. | `none` |
 
 ## Annotations
 

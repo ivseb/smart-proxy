@@ -33,6 +33,7 @@ Idle environments burn money. Preview, dev, staging and demo namespaces sit runn
 | 🔗 **Dependency chains** | Keep `app → api → db` awake together and let them sleep together. Traffic to one keeps the chain alive. |
 | 🔀 **Ingress *and* Routes** | One dashboard for both vanilla Kubernetes Ingresses and OpenShift Routes. |
 | 🎛️ **Admin dashboard** | A modern React UI with real-time logs, status and one-click patching. |
+| 🔐 **Secure by default** | Dashboard sign-in with basic auth, tokens, SSO via OIDC (Keycloak, Entra ID, Google…) or OpenShift login. |
 | 🪶 **Zero app changes** | Fully annotation-based and reversible — nothing to add to your images. |
 
 ## 🎬 How it works
@@ -52,6 +53,14 @@ See the [Architecture overview](docs/architecture.md) for the details.
 helm repo add smart-proxy https://ivseb.github.io/smart-proxy
 helm install smart-proxy smart-proxy/smart-proxy --namespace smart-proxy --create-namespace
 ```
+
+The dashboard is protected with a generated password by default (user `admin`):
+
+```bash
+kubectl get secret -n smart-proxy smart-proxy-auth -o jsonpath='{.data.basic-password}' | base64 -d
+```
+
+Prefer single sign-on? Switch to OIDC or OpenShift login, see [Authentication](docs/authentication.md).
 
 **Try it locally (Docker Desktop + Kubernetes):**
 
@@ -73,6 +82,7 @@ Then open the dashboard at [http://admin.local](http://admin.local) *(add `127.0
 - [Installation Guide](docs/installation.md) — Helm, from source, and all values
 - [Architecture Overview](docs/architecture.md) — how patching, waking and dependencies work
 - [Configuration Reference](docs/configuration.md) — environment variables and annotations
+- [Authentication](docs/authentication.md) — securing the dashboard with basic, token, OIDC/SSO or OpenShift login
 
 ## 🤝 Contributing
 

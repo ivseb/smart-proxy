@@ -66,6 +66,7 @@ nav:
   - Starting:
     - Installation: installation.md
     - Configuration: configuration.md
+    - Authentication: authentication.md
   - Architecture: architecture.md
 
 markdown_extensions:

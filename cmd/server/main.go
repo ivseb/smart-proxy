@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"smart-proxy/internal/admin"
+	"smart-proxy/internal/auth"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/store"
@@ -33,6 +34,18 @@ func main() {
 	serviceName := getEnv("SMART_PROXY_SERVICE_NAME", "smart-proxy")
 	proxyAddr := ":" + getEnv("SMART_PROXY_PORT", "8080")
 
+	// Admin dashboard authentication (AUTH_MODE and AUTH_* variables).
+	authConfig, err := auth.LoadConfig(os.Getenv)
+	if err != nil {
+		log.Fatalf("Invalid authentication configuration: %v", err)
+	}
+	authn, err := auth.New(authConfig)
+	if err != nil {
+		log.Fatalf("Failed to initialize authentication: %v", err)
+	}
+	// Set to 127.0.0.1:8081 when an auth proxy sidecar fronts the dashboard, so it can't be bypassed.
+	adminAddr := getEnv("ADMIN_ADDR", ":8081")
+
 	// 3. Initialize Proxy Handler
 	proxyHandler := proxy.NewHandler(k8sClient, configStore)
 
@@ -40,11 +53,11 @@ func main() {
 	watcherService := watcher.NewWatcher(k8sClient, configStore, serviceName)
 	go watcherService.Start()
 
-	// 5. Start Admin Server (Port 8081)
+	// 5. Start Admin Server
 	go func() {
-		log.Println("Admin Server listening on :8081")
-		adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics, serviceName)
-		if err := adminServer.ListenAndServe(":8081"); err != nil {
+		log.Printf("Admin Server listening on %s", adminAddr)
+		adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics, serviceName, authn)
+		if err := adminServer.ListenAndServe(adminAddr); err != nil {
 			log.Printf("Admin Server failed: %v", err)
 		}
 	}()

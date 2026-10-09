@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"smart-proxy/internal/auth"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/proxy"
@@ -32,16 +33,18 @@ type Server struct {
 	Metrics   *proxy.Metrics
 	// ServiceName is the Service fronting Smart Proxy; patched Ingresses/Routes point at it.
 	ServiceName string
+	auth        *auth.Auth
 }
 
 // NewServer creates a new instance of the admin Server.
 // It initializes the server with the provided Kubernetes client, configuration store, and metrics collector.
-func NewServer(k8sClient *k8s.Client, store *store.Store, metrics *proxy.Metrics, serviceName string) *Server {
+func NewServer(k8sClient *k8s.Client, store *store.Store, metrics *proxy.Metrics, serviceName string, authn *auth.Auth) *Server {
 	return &Server{
 		k8sClient:   k8sClient,
 		store:       store,
 		Metrics:     metrics,
 		ServiceName: serviceName,
+		auth:        authn,
 	}
 }
 
@@ -76,7 +79,10 @@ func (s *Server) ListenAndServe(addr string) error {
 	mux.HandleFunc("/api/k8s/deployment-service-info", s.handleDeploymentServiceInfo)
 	mux.HandleFunc("/api/k8s/service-routes", s.handleServiceRoutes)
 
-	return http.ListenAndServe(addr, mux)
+	// Login/logout endpoints; everything else requires authentication.
+	s.auth.RegisterRoutes(mux)
+
+	return http.ListenAndServe(addr, s.auth.Wrap(mux))
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {

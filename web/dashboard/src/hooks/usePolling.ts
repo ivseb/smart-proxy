@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { handleUnauthorized } from "@/hooks/useAuth";
 
 export function usePolling<T>(url: string, interval = 2000) {
     const [data, setData] = useState<T | null>(null);
@@ -8,6 +9,7 @@ export function usePolling<T>(url: string, interval = 2000) {
     const fetchData = useCallback(async () => {
         try {
             const res = await fetch(url);
+            if (res.status === 401) handleUnauthorized();
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
             const json = await res.json();
             setData(json);

@@ -3,7 +3,7 @@ name: smart-proxy
 description: Intelligent request handling for Kubernetes Ingresses and OpenShift Routes — auto-sleep, dependency chains and unified route patching.
 type: application
 # Chart version. Bump on every change to the chart itself.
-version: 0.1.2
+version: 0.2.0
 # Version of the Smart Proxy application shipped by default.
 appVersion: "latest"
 home: https://ivseb.github.io/smart-proxy/
@@ -32,5 +32,7 @@ annotations:
     - name: ivseb
       email: ivan.sebben.dati@gmail.com
   artifacthub.io/changes: |
+    - kind: added
+      description: Dashboard authentication (basic, token, OIDC, OpenShift oauth-proxy or trusted header), basic auth enabled by default
     - kind: fixed
       description: Patched Ingresses/Routes now target the release Service name instead of a hardcoded "smart-proxy"

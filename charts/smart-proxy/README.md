@@ -33,6 +33,8 @@ Common values (see [`values.yaml`](values.yaml) for the full, commented list and
 | `rbac.openshiftRoutes` | Also grant permissions on OpenShift Routes. | `true` |
 | `route.enabled` | Expose the admin dashboard via an OpenShift Route. | `false` |
 | `ingress.enabled` | Expose the admin dashboard via a Kubernetes Ingress. | `false` |
+| `auth.mode` | Dashboard sign-in: `basic`, `token`, `oidc`, `openshift`, `header` or `none` ([docs](https://ivseb.github.io/smart-proxy/authentication/)). | `basic` |
+| `auth.existingSecret` | Use your own Secret for the credentials (recommended with GitOps). | `""` |
 | `persistence.enabled` | Use a PVC instead of an ephemeral `emptyDir`. | `false` |
 
 ## Uninstall

@@ -54,6 +54,71 @@ service:
   # Service port exposing the admin dashboard.
   adminPort: 8081
 
+# Admin dashboard authentication. Pick the mode that fits your cluster:
+#   basic     - username/password prompt (default; password generated if empty)
+#   token     - shared access token on a login page, or "Authorization: Bearer" for scripts
+#   oidc      - single sign-on via OpenID Connect (Keycloak, Entra ID, Google, Okta, Dex...)
+#   openshift - OpenShift login through an oauth-proxy sidecar (requires route or ingress)
+#   header    - trust a user header from your own auth proxy (oauth2-proxy, Authelia...)
+#   none      - no authentication; only if the dashboard is never exposed
+# Generated secrets are stored in the "<release>-auth" Secret and kept across upgrades.
+auth:
+  mode: basic
+  # Use your own Secret instead of the generated one. Keys read, depending on mode:
+  # basic-password, token, oidc-client-secret, session-secret, cookie-secret.
+  existingSecret: ""
+  # How long a token/OIDC login lasts.
+  sessionTTL: 12h
+
+  basic:
+    username: admin
+    # Empty = generate a random password (see the install notes to read it).
+    password: ""
+
+  token:
+    # Empty = generate a random token.
+    token: ""
+
+  oidc:
+    # e.g. https://keycloak.example.com/realms/main or https://accounts.google.com
+    issuerURL: ""
+    clientID: ""
+    clientSecret: ""
+    # Empty = <route/ingress URL>/auth/callback. Register it in your identity provider.
+    redirectURL: ""
+    scopes: openid,email,profile
+    # Claim shown as the user name.
+    usernameClaim: email
+    # Claim holding the user's groups (for allowedGroups).
+    groupsClaim: groups
+    # Who may sign in: a user matching any list is allowed. At least one is required
+    # unless allowAll is true (which admits every user of the identity provider).
+    allowedEmails: []
+    allowedDomains: []
+    allowedGroups: []
+    allowAll: false
+
+  header:
+    # Header carrying the authenticated user name.
+    userHeader: X-Forwarded-User
+    # Optional sign-out URL of your auth proxy (e.g. /oauth2/sign_out).
+    logoutURL: ""
+    # WARNING: anyone who can reach the admin port directly can forge this header.
+    # Restrict it with a NetworkPolicy so only your auth proxy can connect.
+
+  openshift:
+    image: quay.io/openshift/origin-oauth-proxy:4.16
+    # SubjectAccessReview a user must pass to get in. Empty = users who can update
+    # Services in the release namespace (e.g. "edit" or "admin" role holders).
+    sar: ""
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
 # Expose the admin dashboard through a Kubernetes Ingress.
 ingress:
   enabled: false

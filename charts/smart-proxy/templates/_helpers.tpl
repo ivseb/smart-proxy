@@ -42,3 +42,43 @@ app: {{ include "smart-proxy.name" . }}
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
+
+{{/* Secret holding the dashboard credentials (generated unless auth.existingSecret is set). */}}
+{{- define "smart-proxy.authSecretName" -}}
+{{- default (printf "%s-auth" (include "smart-proxy.fullname" .)) .Values.auth.existingSecret -}}
+{{- end -}}
+
+{{/* Public URL of the admin dashboard, from the Route or Ingress settings. */}}
+{{- define "smart-proxy.adminURL" -}}
+{{- if .Values.route.enabled -}}
+https://{{ .Values.route.host }}
+{{- else if .Values.ingress.enabled -}}
+http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
+{{- end -}}
+{{- end -}}
+
+{{/* Validates the auth settings and fails the install with a readable message. */}}
+{{- define "smart-proxy.validateAuth" -}}
+{{- $modes := list "none" "basic" "token" "oidc" "header" "openshift" -}}
+{{- if not (has .Values.auth.mode $modes) -}}
+{{- fail (printf "auth.mode must be one of %s (got %q)" (join ", " $modes) .Values.auth.mode) -}}
+{{- end -}}
+{{- if eq .Values.auth.mode "oidc" -}}
+{{- $o := .Values.auth.oidc -}}
+{{- if or (not $o.issuerURL) (not $o.clientID) -}}
+{{- fail "auth.mode=oidc requires auth.oidc.issuerURL and auth.oidc.clientID" -}}
+{{- end -}}
+{{- if and (not $o.clientSecret) (not .Values.auth.existingSecret) -}}
+{{- fail "auth.mode=oidc requires auth.oidc.clientSecret (or auth.existingSecret with an oidc-client-secret key)" -}}
+{{- end -}}
+{{- if and (not $o.redirectURL) (not (include "smart-proxy.adminURL" .)) -}}
+{{- fail "auth.mode=oidc requires auth.oidc.redirectURL when neither route nor ingress is enabled" -}}
+{{- end -}}
+{{- if not (or $o.allowAll $o.allowedEmails $o.allowedDomains $o.allowedGroups) -}}
+{{- fail "auth.mode=oidc requires auth.oidc.allowedEmails, allowedDomains, allowedGroups or allowAll=true" -}}
+{{- end -}}
+{{- end -}}
+{{- if and (eq .Values.auth.mode "openshift") (not (or .Values.route.enabled .Values.ingress.enabled)) -}}
+{{- fail "auth.mode=openshift requires route.enabled or ingress.enabled (the OAuth redirect needs a public host)" -}}
+{{- end -}}
+{{- end -}}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { usePolling } from "@/hooks/usePolling";
+import { useAuth } from "@/hooks/useAuth";
 import type { RouteConfig, RouteStatus, StatsData } from "@/types/api";
 import { RouteTable } from "@/components/views/RouteTable";
 import { LogsView } from "@/components/views/LogsView";
@@ -7,7 +8,7 @@ import { PatchingView } from "@/components/views/PatchingView";
 import { RouteModal } from "@/components/views/RouteModal";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Plus, LayoutDashboard, ScrollText, Shield, Activity as ActivityIcon } from "lucide-react";
+import { Plus, LayoutDashboard, ScrollText, Shield, Activity as ActivityIcon, LogOut, User } from "lucide-react";
 import { StatsView } from "@/components/views/StatsView";
 import { Toaster } from "sonner";
 
@@ -22,6 +23,7 @@ export function Dashboard() {
 
     const { data: routes, refetch } = usePolling<RouteStatus[]>("/api/routes", 2000);
     const { data: stats } = usePolling<StatsData>("/api/stats", 2000);
+    const auth = useAuth();
     // Mock logs for now or pull from LogsView context if we lift state.
     // For MVP, let's just pass empty array or fetch logs if needed.
     // Actually, LogsView fetches its own logs. We should lift logs state or fetch here.
@@ -134,6 +136,26 @@ export function Dashboard() {
                             label="Logs"
                         />
                     </nav>
+
+                    {auth && auth.mode !== "none" && (
+                        <div className="flex items-center space-x-3 text-sm text-gray-400">
+                            {auth.user && (
+                                <span className="flex items-center space-x-1.5" title={`Signed in (${auth.mode})`}>
+                                    <User size={16} />
+                                    <span>{auth.user}</span>
+                                </span>
+                            )}
+                            {auth.logout_url && (
+                                <a
+                                    href={auth.logout_url}
+                                    className="flex items-center space-x-1.5 px-2 py-1 rounded-md hover:text-white hover:bg-white/5 transition-colors"
+                                >
+                                    <LogOut size={16} />
+                                    <span>Sign out</span>
+                                </a>
+                            )}
+                        </div>
+                    )}
                 </header>
 
                 <main>

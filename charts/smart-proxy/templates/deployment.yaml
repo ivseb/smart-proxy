@@ -18,6 +18,8 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
+      {{- $authMode := .Values.auth.mode }}
+      {{- $authSecret := include "smart-proxy.authSecretName" . }}
       serviceAccountName: {{ include "smart-proxy.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -30,8 +32,10 @@ spec:
           ports:
             - name: proxy
               containerPort: {{ .Values.config.proxyPort }}
+            {{- if ne $authMode "openshift" }}
             - name: admin
               containerPort: {{ .Values.config.adminPort }}
+            {{- end }}
           env:
             - name: WATCH_NAMESPACE
             {{- if .Values.config.watchNamespace }}
@@ -47,11 +51,116 @@ spec:
               value: {{ include "smart-proxy.fullname" . | quote }}
             - name: LOG_LEVEL
               value: {{ .Values.config.logLevel | quote }}
+            - name: ADMIN_ADDR
+              {{- /* Behind the oauth-proxy sidecar, listen on localhost only so it can't be bypassed. */}}
+              value: {{ printf "%s:%v" (ternary "127.0.0.1" "" (eq $authMode "openshift")) .Values.config.adminPort | quote }}
+            - name: AUTH_MODE
+              value: {{ ternary "header" $authMode (eq $authMode "openshift") | quote }}
+            - name: AUTH_SESSION_TTL
+              value: {{ .Values.auth.sessionTTL | quote }}
+            {{- if eq $authMode "basic" }}
+            - name: AUTH_BASIC_USERNAME
+              value: {{ .Values.auth.basic.username | quote }}
+            - name: AUTH_BASIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: basic-password
+            {{- end }}
+            {{- if eq $authMode "token" }}
+            - name: AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: token
+            {{- end }}
+            {{- if or (eq $authMode "token") (eq $authMode "oidc") }}
+            - name: AUTH_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: session-secret
+                  optional: true
+            {{- end }}
+            {{- if eq $authMode "oidc" }}
+            {{- $oidc := .Values.auth.oidc }}
+            - name: AUTH_OIDC_ISSUER_URL
+              value: {{ $oidc.issuerURL | quote }}
+            - name: AUTH_OIDC_CLIENT_ID
+              value: {{ $oidc.clientID | quote }}
+            - name: AUTH_OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: oidc-client-secret
+            - name: AUTH_OIDC_REDIRECT_URL
+              value: {{ $oidc.redirectURL | default (printf "%s/auth/callback" (include "smart-proxy.adminURL" .)) | quote }}
+            - name: AUTH_OIDC_SCOPES
+              value: {{ $oidc.scopes | quote }}
+            - name: AUTH_OIDC_USERNAME_CLAIM
+              value: {{ $oidc.usernameClaim | quote }}
+            - name: AUTH_OIDC_GROUPS_CLAIM
+              value: {{ $oidc.groupsClaim | quote }}
+            - name: AUTH_OIDC_ALLOWED_EMAILS
+              value: {{ join "," $oidc.allowedEmails | quote }}
+            - name: AUTH_OIDC_ALLOWED_DOMAINS
+              value: {{ join "," $oidc.allowedDomains | quote }}
+            - name: AUTH_OIDC_ALLOWED_GROUPS
+              value: {{ join "," $oidc.allowedGroups | quote }}
+            - name: AUTH_OIDC_ALLOW_ALL
+              value: {{ $oidc.allowAll | quote }}
+            {{- end }}
+            {{- if eq $authMode "header" }}
+            - name: AUTH_HEADER_USER
+              value: {{ .Values.auth.header.userHeader | quote }}
+            - name: AUTH_HEADER_LOGOUT_URL
+              value: {{ .Values.auth.header.logoutURL | quote }}
+            {{- end }}
+            {{- if eq $authMode "openshift" }}
+            - name: AUTH_HEADER_USER
+              value: X-Forwarded-User
+            - name: AUTH_HEADER_LOGOUT_URL
+              value: /oauth/sign_out
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: data
               mountPath: /data
+        {{- if eq $authMode "openshift" }}
+        - name: oauth-proxy
+          image: {{ .Values.auth.openshift.image | quote }}
+          args:
+            - --provider=openshift
+            - --http-address=:4180
+            - --https-address=
+            - --upstream=http://127.0.0.1:{{ .Values.config.adminPort }}
+            - --openshift-service-account={{ include "smart-proxy.serviceAccountName" . }}
+            {{- $sar := .Values.auth.openshift.sar | default (printf `{"namespace":"%s","resource":"services","verb":"update"}` .Release.Namespace) }}
+            - {{ printf "--openshift-sar=%s" $sar | quote }}
+            - --cookie-secret=$(COOKIE_SECRET)
+            - --email-domain=*
+            - --skip-provider-button
+          env:
+            - name: COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $authSecret }}
+                  key: cookie-secret
+          ports:
+            - name: admin
+              containerPort: 4180
+          readinessProbe:
+            httpGet:
+              path: /oauth/healthz
+              port: admin
+          livenessProbe:
+            httpGet:
+              path: /oauth/healthz
+              port: admin
+          resources:
+            {{- toYaml .Values.auth.openshift.resources | nindent 12 }}
+        {{- end }}
       volumes:
         - name: data
         {{- if .Values.persistence.enabled }}
