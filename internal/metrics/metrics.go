@@ -110,8 +110,7 @@ func SetLeader(isLeader bool) {
 type SleepingSource func() (deployments map[string]int, replicas map[string]int)
 
 // RegisterSleeping exposes the sleeping deployments and replicas, computed at scrape time.
-// "Replica-hours saved" is then sum_over_time(smart_proxy_sleeping_replicas[1d]) / 60 (with a
-// 1m scrape interval), or similar.
+// Replica-hours saved can then be computed in PromQL (see docs/configuration.md).
 func RegisterSleeping(source SleepingSource) {
 	registry.MustRegister(&sleepingCollector{source: source})
 }
