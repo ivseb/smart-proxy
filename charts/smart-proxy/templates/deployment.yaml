@@ -21,6 +21,10 @@ spec:
       {{- $authMode := .Values.auth.mode }}
       {{- $authSecret := include "smart-proxy.authSecretName" . }}
       serviceAccountName: {{ include "smart-proxy.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -47,6 +51,8 @@ spec:
             {{- end }}
             - name: SMART_PROXY_PORT
               value: {{ .Values.config.proxyPort | quote }}
+            - name: CONFIG_PATH
+              value: /data/routes.json
             - name: SMART_PROXY_SERVICE_NAME
               value: {{ include "smart-proxy.fullname" . | quote }}
             - name: LOG_LEVEL

@@ -42,6 +42,9 @@ spec:
             requests:
               cpu: "50m"
               memory: "64Mi"
+          env:
+            - name: CONFIG_PATH
+              value: /data/routes.json
           volumeMounts:
             - name: data
               mountPath: /data

@@ -153,6 +153,11 @@ persistence:
   size: 1Gi
   storageClass: ""
 
+# Pod-level securityContext. With persistence on vanilla Kubernetes the volume may be
+# owned by root; set "fsGroup: 1001" so Smart Proxy can write to it. Leave empty on
+# OpenShift, which assigns an fsGroup automatically.
+podSecurityContext: {}
+
 podAnnotations: {}
 nodeSelector: {}
 tolerations: []

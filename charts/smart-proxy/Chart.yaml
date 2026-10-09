@@ -38,5 +38,7 @@ annotations:
       description: Patched Ingresses/Routes now target the release Service name instead of a hardcoded "smart-proxy"
     - kind: added
       description: Liveness and readiness probes on /__smart_proxy/healthz, with graceful shutdown
+    - kind: fixed
+      description: Route configurations are saved to /data, so the optional PersistentVolumeClaim is actually used
     - kind: changed
       description: Role can read HorizontalPodAutoscalers, so deployments wake at their original size or HPA minReplicas
