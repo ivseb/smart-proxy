@@ -1,0 +1,39 @@
+# Changelog
+
+## 2.0.0 — chart 0.2.0
+
+Upgrading from 1.x? Read the [upgrade guide](docs/upgrading.md) first: authentication is now on by default, Smart Proxy runs two replicas, and manually created routes must be exported.
+
+### Added
+- **Dashboard authentication**, chosen at install time: basic (default), token, OpenID Connect (Keycloak, Entra ID, Google, Okta, Dex…), OpenShift login (oauth-proxy sidecar) or a trusted header from your own auth proxy. CSRF protection for the API.
+- **Multiple namespaces**: a list, all namespaces, or every namespace carrying a label (`namespaceSelector`), onboarded without a restart.
+- **High availability**: two replicas by default sharing routes (ConfigMap) and activity, with leader election and a PodDisruptionBudget.
+- **Safe uninstall**: `helm uninstall` restores every patched Ingress/Route and wakes sleeping workloads first. `smart-proxy restore` does it by hand.
+- **Wake at the original size**: the replica count is recorded before sleeping; HPAs wake at `minReplicas`; KEDA-managed workloads are never put to sleep.
+- **StatefulSets** as targets and dependencies (`statefulset/<name>`).
+- **Ordered start** of dependencies ("Start in order").
+- **Schedules**: keep a route awake during given hours and days, in any timezone.
+- **Declarative routes** from `smart-proxy/*` annotations on Ingresses/Routes, for GitOps; documentation for Argo CD and Flux.
+- **Prometheus metrics** on a dedicated port: cold-start durations, wake-ups, sleeps, sleeping workloads and replicas; optional ServiceMonitor.
+- **Dashboard**: routes grouped by namespace with search and filters, "sleeps in" timers, wake/sleep actions, namespace-aware patching, schedule editor, linkable tabs.
+- Liveness and readiness probes, graceful shutdown, signed container images (cosign keyless), CI with tests and linting.
+
+### Changed
+- Reads are served from informer caches: proxied requests no longer call the Kubernetes API.
+- Patched Ingresses point at the Smart Proxy Service's named port `proxy`, and at the release's Service name (it was hardcoded to `smart-proxy`). Existing patches are migrated automatically.
+- Route IDs include the namespace (`ing-<namespace>/<name>`); old IDs keep working.
+- The image uses `ENTRYPOINT`; `SMART_PROXY_PORT` is the proxy's listen port.
+- Kubernetes libraries 0.36, OpenShift client release-4.23, Node 22 for the dashboard build.
+
+### Fixed
+- Restarts no longer put every application to sleep on the first watcher tick.
+- Unpatching an Ingress restored port 80 instead of the original port; named ports were lost.
+- Ingresses with a non-Service backend crashed patching.
+- Offline mode (no cluster) crashed the process.
+- A route without idle timeout was put to sleep every 30 seconds.
+- The dashboard called a non-existent unpatch endpoint, reported failures as successes, showed made-up data, and stopped streaming logs after a reconnect.
+- The waiting page waited for every replica instead of the first ready one.
+
+## 1.0.0
+
+Initial public release.

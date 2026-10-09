@@ -5,7 +5,7 @@ type: application
 # Chart version. Bump on every change to the chart itself.
 version: 0.2.0
 # Version of the Smart Proxy application shipped by default.
-appVersion: "latest"
+appVersion: "2.0.0"
 home: https://ivseb.github.io/smart-proxy/
 icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
 sources:
@@ -27,7 +27,7 @@ annotations:
       url: https://ivseb.github.io/smart-proxy/
   artifacthub.io/images: |
     - name: smart-proxy
-      image: docker.io/isebben/smart-proxy:latest
+      image: docker.io/isebben/smart-proxy:2.0.0
   artifacthub.io/maintainers: |
     - name: ivseb
       email: ivan.sebben.dati@gmail.com

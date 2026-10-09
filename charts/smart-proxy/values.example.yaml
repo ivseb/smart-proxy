@@ -6,8 +6,8 @@
 #     -f charts/smart-proxy/values.example.yaml
 
 image:
-  # Pin to a released version in production instead of "latest".
-  tag: "latest"
+  # Empty = the chart's appVersion (the release it was tested with).
+  tag: ""
 
 config:
   logLevel: info

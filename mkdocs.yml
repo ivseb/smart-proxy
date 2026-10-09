@@ -68,6 +68,7 @@ nav:
     - Configuration: configuration.md
     - Authentication: authentication.md
     - GitOps: gitops.md
+    - Upgrading: upgrading.md
   - Architecture: architecture.md
 
 markdown_extensions:

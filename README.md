@@ -91,6 +91,8 @@ Then open the dashboard at [http://admin.local](http://admin.local) *(add `127.0
 - [Installation Guide](docs/installation.md) — Helm, from source, and all values
 - [Architecture Overview](docs/architecture.md) — how patching, waking and dependencies work
 - [Configuration Reference](docs/configuration.md) — environment variables and annotations
+- [Upgrading](docs/upgrading.md) — from 1.x to 2.0 (authentication on by default, two replicas, …)
+- [Changelog](CHANGELOG.md)
 - [GitOps](docs/gitops.md) — configure routes with annotations; Argo CD and Flux settings
 - [Authentication](docs/authentication.md) — securing the dashboard with basic, token, OIDC/SSO or OpenShift login
 
