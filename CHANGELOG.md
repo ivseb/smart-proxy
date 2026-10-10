@@ -1,12 +1,24 @@
 # Changelog
 
+## 2.3.1 — chart 0.5.1
+
+### Added
+- **English and Italian**: the dashboard, the "waking up" page and the sign-in pages follow the browser's language; the dashboard has a switch in its header.
+
+### Fixed
+- The "waking up" page loaded its styles from a CDN: without internet access (air-gapped clusters, strict egress) it showed unstyled. It is now self-contained, built into the binary.
+- The traffic chart spans its whole period (30 minutes by default) with a readable time axis, instead of stretching the first minutes of data.
+
+### Changed
+- Examples in the dashboard and docs no longer revolve around SAML: backends with conditions are shown with a beta of a mobile app, open paths with webhooks.
+
 ## 2.3.0 — chart 0.5.0
 
 Three optional tools on each route's page; routes not using them work as before. Upgrading from 2.2: see [the upgrade notes](docs/upgrading.md#from-22-to-23).
 
 ### Added
 - **Requests inspector**: record a route's requests for a few minutes and see what was sent (headers with credentials masked, cookie and parameter names) and what Smart Proxy did with each. Gathered from every replica. See [Inspect, route, protect](docs/routes.md).
-- **Backends with conditions**: any route can get more backends (Services of its namespace). Requests matching a backend's conditions (header, cookie, query parameter, path, client IP) go there whatever the weights, and the browser stays there, cross-site posts included (e.g. a SAML response). `/__smart_proxy/use/<backend>` pins a browser for testing.
+- **Backends with conditions**: any route can get more backends (Services of its namespace). Requests matching a backend's conditions (header, cookie, query parameter, path, client IP) go there whatever the weights, and the browser stays there, cross-site posts included. `/__smart_proxy/use/<backend>` pins a browser for testing.
 - **Built-in protection**: require sign-in (a page on the application's own address, shared password or named people) or access tokens for scripts. The application gets the caller in `X-Smart-Proxy-User`.
 - Smart Proxy keeps its own Secret, `<release>-state` (peer token, login key, hashed credentials), created on first start; the chart grants access to it.
 
