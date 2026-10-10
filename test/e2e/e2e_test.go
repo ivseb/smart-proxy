@@ -334,7 +334,7 @@ func testConditions(t *testing.T) {
 	route["backends"] = []map[string]any{
 		{"service": "echo", "port": 80, "weight": 100, "workload": "echo", "managed": true},
 		{"service": "echo-b", "port": 80, "weight": 0, "workload": "echo-b", "managed": false,
-			"when": []map[string]any{{"field": "header", "name": "Origin", "op": "equals", "value": "https://idp.e2e.test"}}},
+			"when": []map[string]any{{"field": "header", "name": "X-App-Version", "op": "prefix", "value": "5."}}},
 	}
 	saveRoute(t, route)
 	defer func() {
@@ -346,11 +346,11 @@ func testConditions(t *testing.T) {
 
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	variant := func(method, path, origin string) string {
+	variant := func(method, path, version string) string {
 		req, _ := http.NewRequest(method, proxyURL+path, nil)
 		req.Host = appHost
-		if origin != "" {
-			req.Header.Set("Origin", origin)
+		if version != "" {
+			req.Header.Set("X-App-Version", version)
 		}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -367,8 +367,8 @@ func testConditions(t *testing.T) {
 	if v := variant("GET", "/echo", ""); v != "a" {
 		t.Fatalf("ordinary request answered by %q", v)
 	}
-	if v := variant("POST", "/echo", "https://idp.e2e.test"); v != "b" {
-		t.Fatalf("request from the identity provider answered by %q", v)
+	if v := variant("POST", "/echo", "5.0.0-beta.2"); v != "b" {
+		t.Fatalf("request from the beta answered by %q", v)
 	}
 	if v := variant("GET", "/echo", ""); v != "b" {
 		t.Fatalf("follow-up answered by %q: the client wasn't kept on b", v)

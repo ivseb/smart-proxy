@@ -134,7 +134,7 @@ func matchCondition(c store.Condition, r *http.Request, client net.IP) bool {
 }
 
 // pin keeps a client on a backend. Over HTTPS the cookie is SameSite=None, so it also comes with
-// cross-site form posts, such as an identity provider's SAML response.
+// cross-site form posts, such as a payment or sign-in page posting back.
 func pin(w http.ResponseWriter, r *http.Request, route store.RouteConfig, service string, maxAge time.Duration) {
 	cookie := &http.Cookie{Name: stickyCookie(route.ID), Value: service, Path: cookiePath(route), HttpOnly: true, MaxAge: int(maxAge.Seconds())}
 	if maxAge < 0 {

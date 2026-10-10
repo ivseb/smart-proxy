@@ -18,7 +18,7 @@ import (
 
 func TestOpenPathsCantBeUsedToReachProtectedOnes(t *testing.T) {
 	h, tr, _, _ := protectedHandler(t, true)
-	for _, path := range []string{"/health/..;/admin", "/health/%2e%2e;/admin", "/health/..%3B/admin", "/saml/acs/..;/admin",
+	for _, path := range []string{"/health/..;/admin", "/health/%2e%2e;/admin", "/health/..%3B/admin", "/webhooks/..;/admin",
 		"/health/..%2Fadmin", "/health/..\\admin", "/health;x/../admin"} {
 		tr.got = nil
 		w := httptest.NewRecorder()
@@ -149,7 +149,7 @@ func TestChangingThePasswordSignsEveryoneOut(t *testing.T) {
 // The status endpoint must not wake a backend Smart Proxy doesn't manage (a pin to it can be
 // had by anyone, with the link).
 func TestStatusNeverWakesUnmanagedBackends(t *testing.T) {
-	h, c, _ := webHandler(t, []*store.RouteConfig{samlRoute(false)}, ready("app-a", 1), sleeping("app-b"))
+	h, c, _ := webHandler(t, []*store.RouteConfig{betaRoute(false)}, ready("app-a", 1), sleeping("app-b"))
 	r := httptest.NewRequest("GET", "http://portal.example.com/__smart_proxy/status?path=/", nil)
 	r.AddCookie(&http.Cookie{Name: stickyCookie("ing-portal"), Value: "app-b"})
 	w := httptest.NewRecorder()

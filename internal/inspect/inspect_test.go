@@ -11,14 +11,14 @@ import (
 )
 
 func TestDescribeMasksCredentials(t *testing.T) {
-	r := httptest.NewRequest("POST", "http://app.example.com/saml/acs?RelayState=x&token=secret", nil)
-	r.Header.Set("Origin", "https://idp.example.org")
+	r := httptest.NewRequest("POST", "http://app.example.com/checkout/return?order=x&token=secret", nil)
+	r.Header.Set("Origin", "https://partner.example.org")
 	r.Header.Set("Authorization", "Bearer abc")
 	r.Header.Set("X-Api-Key", "k")
 	r.Header.Set("Cookie", "session=s; lang=it")
 	e := Describe(r, net.ParseIP("10.1.2.3"))
 
-	if e.Headers["Origin"] != "https://idp.example.org" {
+	if e.Headers["Origin"] != "https://partner.example.org" {
 		t.Errorf("Origin = %q", e.Headers["Origin"])
 	}
 	if e.Headers["Authorization"] != Masked || e.Headers["X-Api-Key"] != Masked {
@@ -27,7 +27,7 @@ func TestDescribeMasksCredentials(t *testing.T) {
 	if _, ok := e.Headers["Cookie"]; ok || len(e.Cookies) != 2 || e.Cookies[0] != "lang" {
 		t.Errorf("cookies = %v, headers %v", e.Cookies, e.Headers)
 	}
-	if len(e.Query) != 2 || e.Query[0] != "RelayState" || e.Client != "10.1.2.3" {
+	if len(e.Query) != 2 || e.Query[0] != "order" || e.Client != "10.1.2.3" {
 		t.Errorf("query = %v, client %q", e.Query, e.Client)
 	}
 }
@@ -77,14 +77,14 @@ func TestMoreCredentialHeadersAreMasked(t *testing.T) {
 		"X-Amzn-Oidc-Data", "X-Ms-Client-Principal", "X-Forwarded-Client-Cert", "X-Csrf-Token"} {
 		r.Header.Set(h, "secret-value")
 	}
-	r.Header.Set("Origin", "https://idp.example")
+	r.Header.Set("Origin", "https://partner.example")
 	e := Describe(r, nil)
 	for name, value := range e.Headers {
 		if value == "secret-value" {
 			t.Errorf("%s recorded in clear", name)
 		}
 	}
-	if e.Headers["Origin"] != "https://idp.example" {
+	if e.Headers["Origin"] != "https://partner.example" {
 		t.Error("Origin masked")
 	}
 }

@@ -10,15 +10,15 @@ import (
 	"smart-proxy/internal/store"
 )
 
-// The SAML test: the route serves app-a; app-b, with weight 0, gets only what comes from the new
-// identity provider, and the clients it got stay there.
-func samlRoute(bManaged bool) *store.RouteConfig {
+// The beta test: the route serves app-a; app-b, with weight 0, gets only what the beta of the
+// mobile app sends, and the clients it got stay there.
+func betaRoute(bManaged bool) *store.RouteConfig {
 	r := &store.RouteConfig{ID: "ing-portal", Host: "portal.example.com", Path: "/", Namespace: ns, Deployment: "app-a",
 		TargetService: "app-a", TargetPort: 8080,
 		Backends: []store.WeightedBackend{
 			{Service: "app-a", Port: 8080, Weight: 100, Workload: "app-a", Managed: true},
 			{Service: "app-b", Port: 8080, Weight: 0, Workload: "app-b", Managed: bManaged, When: []store.Condition{
-				{Field: store.FieldHeader, Name: "Origin", Op: store.OpEquals, Value: "https://login.new-idp.example"},
+				{Field: store.FieldHeader, Name: "X-App-Version", Op: store.OpPrefix, Value: "5."},
 			}},
 		}}
 	if err := r.NormalizeBackends(); err != nil {
@@ -28,7 +28,7 @@ func samlRoute(bManaged bool) *store.RouteConfig {
 }
 
 func portal(method, path string, header http.Header, cookies ...*http.Cookie) *http.Request {
-	r := httptest.NewRequest(method, "http://portal.example.com"+path, strings.NewReader("SAMLResponse=x"))
+	r := httptest.NewRequest(method, "http://portal.example.com"+path, strings.NewReader("{}"))
 	r.Header = header.Clone()
 	r.Header.Set("X-Forwarded-Proto", "https")
 	for _, c := range cookies {
@@ -37,8 +37,8 @@ func portal(method, path string, header http.Header, cookies ...*http.Cookie) *h
 	return r
 }
 
-func TestConditionSendsTheIdPResponseToTheTestBackendAndSticks(t *testing.T) {
-	h, c, tr := webHandler(t, []*store.RouteConfig{samlRoute(false)}, ready("app-a", 1), ready("app-b", 1))
+func TestConditionSendsTheBetaToTheTestBackendAndSticks(t *testing.T) {
+	h, c, tr := webHandler(t, []*store.RouteConfig{betaRoute(false)}, ready("app-a", 1), ready("app-b", 1))
 	_ = c
 
 	// Ordinary traffic: app-a.
@@ -49,11 +49,11 @@ func TestConditionSendsTheIdPResponseToTheTestBackendAndSticks(t *testing.T) {
 		}
 	}
 
-	// The new IdP posts its response: app-b, and the client is pinned there.
+	// The beta calls: app-b, and the client is pinned there.
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, portal("POST", "/saml/acs", http.Header{"Origin": {"https://login.new-idp.example"}}))
+	h.ServeHTTP(w, portal("POST", "/api/cart", http.Header{"X-App-Version": {"5.0.0-beta.2"}}))
 	if tr.last() != "app-b" {
-		t.Fatalf("IdP response went to %q", tr.last())
+		t.Fatalf("beta request went to %q", tr.last())
 	}
 	var pinned *http.Cookie
 	for _, ck := range w.Result().Cookies() {
@@ -62,7 +62,7 @@ func TestConditionSendsTheIdPResponseToTheTestBackendAndSticks(t *testing.T) {
 		}
 	}
 	if pinned == nil || pinned.Value != "app-b" || pinned.SameSite != http.SameSiteNoneMode || !pinned.Secure {
-		t.Fatalf("pin cookie = %+v (must be SameSite=None; Secure to survive the IdP's cross-site post)", pinned)
+		t.Fatalf("pin cookie = %+v (must be SameSite=None; Secure to survive cross-site posts)", pinned)
 	}
 
 	// Its next requests, without the header, stay on app-b.
@@ -73,7 +73,7 @@ func TestConditionSendsTheIdPResponseToTheTestBackendAndSticks(t *testing.T) {
 }
 
 func TestTheLinkPinsAndUnpins(t *testing.T) {
-	h, _, tr := webHandler(t, []*store.RouteConfig{samlRoute(false)}, ready("app-a", 1), ready("app-b", 1))
+	h, _, tr := webHandler(t, []*store.RouteConfig{betaRoute(false)}, ready("app-a", 1), ready("app-b", 1))
 
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, portal("GET", "/__smart_proxy/use/app-b", http.Header{}))
@@ -100,24 +100,24 @@ func TestTheLinkPinsAndUnpins(t *testing.T) {
 }
 
 func TestConditionalBackendWakesOnlyWhenUsed(t *testing.T) {
-	h, c, tr := webHandler(t, []*store.RouteConfig{samlRoute(true)}, ready("app-a", 1), sleeping("app-b"))
+	h, c, tr := webHandler(t, []*store.RouteConfig{betaRoute(true)}, ready("app-a", 1), sleeping("app-b"))
 
 	h.ServeHTTP(httptest.NewRecorder(), portal("GET", "/", http.Header{}))
 	if tr.last() != "app-a" || replicas(t, c, "app-b") != 0 {
 		t.Fatalf("ordinary traffic woke app-b (went to %q)", tr.last())
 	}
 
-	// The IdP's post wakes app-b (not app-a's chain), waits for it, then reaches it.
-	h.ServeHTTP(httptest.NewRecorder(), portal("POST", "/saml/acs", http.Header{"Origin": {"https://login.new-idp.example"}}))
+	// The beta's request wakes app-b (not app-a's chain), waits for it, then reaches it.
+	h.ServeHTTP(httptest.NewRecorder(), portal("POST", "/api/cart", http.Header{"X-App-Version": {"5.0.0-beta.2"}}))
 	if replicas(t, c, "app-b") == 0 {
 		t.Fatal("app-b not woken by the request sent to it")
 	}
 }
 
 func TestUnmanagedConditionalBackendDownIsReported(t *testing.T) {
-	h, _, tr := webHandler(t, []*store.RouteConfig{samlRoute(false)}, ready("app-a", 1), sleeping("app-b"))
+	h, _, tr := webHandler(t, []*store.RouteConfig{betaRoute(false)}, ready("app-a", 1), sleeping("app-b"))
 	w := httptest.NewRecorder()
-	h.ServeHTTP(w, portal("POST", "/saml/acs", http.Header{"Origin": {"https://login.new-idp.example"}}))
+	h.ServeHTTP(w, portal("POST", "/api/cart", http.Header{"X-App-Version": {"5.0.0-beta.2"}}))
 	if w.Code != http.StatusServiceUnavailable || tr.last() != "" || !strings.Contains(w.Body.String(), "app-b") {
 		t.Fatalf("got %d %q via %q: must not silently fall back to app-a", w.Code, w.Body.String(), tr.last())
 	}

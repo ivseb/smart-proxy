@@ -21,24 +21,26 @@ A route can have more than one backend, each a Service of its namespace. **Add a
 
 - **Conditions** send matching requests to a backend, whatever the weights: a header, cookie or query parameter that *is*, *contains*, *starts with* a value or *is present*; a path; a client IP or CIDR. Any of a backend's conditions is enough; the first backend with a matching condition wins.
 - **Weights** share the other requests among the backends that are running. A backend with weight `0` gets only the requests matching its conditions.
-- **The browser stays** on the backend it was sent to (cookie), so a login or session started there continues there. Over HTTPS the cookie is `SameSite=None`, so it also comes with cross-site form posts, such as an identity provider's SAML response.
+- **The browser stays** on the backend it was sent to (cookie), so a login or session started there continues there. Over HTTPS the cookie is `SameSite=None`, so it also comes with cross-site form posts, such as a payment or sign-in page posting back.
 - **Managed** backends are woken by the requests sent to them and sleep with the route; others are never touched. A request sent by a condition to an unmanaged backend that isn't running gets `503` (never another backend).
 - **The link** `https://<host>/__smart_proxy/use/<backend>` keeps a browser on a backend for 12 hours; `…/use/default` goes back to the weights.
 
-![A route's backends: the current portal, and a new one getting only requests from the new identity provider](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-backends.png)
+![A route's backends: the current version takes all traffic, the next one only the mobile app's beta and the testers](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-backends.png)
 
 ![Editing where requests go: weights, conditions, the link for testers](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/backends-editor.png)
 
-### Example: trying a new SAML identity provider in production
+### Example: the next version, for the beta of the mobile app
 
-Users reach your application through an external portal and sign in with SAML. You want to try a new identity provider with some users, without touching the others.
+The shop's API has a new version, and you want the beta of the mobile app to use it before everyone else.
 
-1. Deploy the version configured for the new provider next to the current one, in the same namespace (e.g. `portal-b`).
-2. On the route's page, **Add a backend** → `portal-b` (weight 0, conditions only).
-3. Find what identifies the new provider: start recording, sign in through it once, and look at the request reaching your ACS endpoint. Its `Origin` header is usually the provider's address. **Route like this…** on that header adds the condition.
-4. From then on, the new provider's responses go to `portal-b`, and so does everything those users do next. Everyone else stays on the current version.
+1. Deploy the new version next to the current one, in the same namespace (e.g. `shop-next`).
+2. On the route's page, **Add a backend** → `shop-next` (weight 0: conditions only).
+3. Find what identifies the beta: start recording, open the beta app once, and look at its requests. It sends `X-App-Version: 5.0.0-beta.2`; **Route like this…** on that header adds the condition (change *is* to *starts with* `5.`).
+4. From then on, the beta's requests go to `shop-next`. Everyone else stays on the current version.
 
-If the provider doesn't send `Origin`, testers open `https://<host>/__smart_proxy/use/portal-b` once before signing in.
+Colleagues trying it from a browser open `https://<host>/__smart_proxy/use/shop-next` once, or get a `beta` cookie: add *cookie `beta` is present* as a second condition.
+
+The same works for anything a request carries: a tenant header, an office network (client IP), a new external provider calling back (its `Origin`), an `/api/v2` path.
 
 ## Access: require sign-in or a token
 
@@ -46,7 +48,7 @@ If the provider doesn't send `Origin`, testers open `https://<host>/__smart_prox
 
 - **People**, who sign in on a page served by Smart Proxy on the application's own address (`/__smart_proxy/login`, `/__smart_proxy/logout`). With a single person the page only asks for the password: use it as a shared password for a team. A login lasts 12 hours. Removing a person signs them out.
 - **Access tokens**, for scripts and other services: `Authorization: Bearer <token>`, or `X-Api-Key: <token>` when the application uses `Authorization` itself. Each token is named after who uses it, shown once, and can be revoked.
-- **Open paths**, reachable without signing in: an identity provider's callback (`/saml/acs`), webhooks, health checks (`/health*`).
+- **Open paths**, reachable without signing in: webhooks (`/webhooks/*`), callbacks from other services, health checks (`/health*`).
 
 ![Access settings of a route](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-access.png){ width="640" }
 ![Sign-in page on the application's address](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/sign-in.png){ width="280" }

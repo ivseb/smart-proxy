@@ -74,9 +74,9 @@ func TestBackendConditionsAreValidated(t *testing.T) {
 		}}
 	}
 	valid := []Condition{
-		{Field: FieldHeader, Name: "Origin", Op: OpEquals, Value: "https://idp"},
+		{Field: FieldHeader, Name: "Origin", Op: OpEquals, Value: "https://partner"},
 		{Field: FieldCookie, Name: "beta", Op: OpExists},
-		{Field: FieldPath, Op: OpPrefix, Value: "/saml"},
+		{Field: FieldPath, Op: OpPrefix, Value: "/api/v2"},
 		{Field: FieldClient, Value: "10.0.0.0/8"},
 	}
 	for _, c := range valid {
@@ -88,7 +88,7 @@ func TestBackendConditionsAreValidated(t *testing.T) {
 		{Field: FieldHeader, Op: OpEquals, Value: "x"},     // no name
 		{Field: FieldHeader, Name: "Origin", Op: OpEquals}, // no value
 		{Field: FieldPath, Op: OpContains, Value: "/x"},    // path compares with equals/prefix
-		{Field: FieldPath, Op: OpPrefix, Value: "saml"},    // relative
+		{Field: FieldPath, Op: OpPrefix, Value: "api/v2"},  // relative
 		{Field: FieldClient, Value: "not-an-ip"},
 		{Field: "body", Op: OpEquals, Value: "x"},
 	}

@@ -27,7 +27,7 @@ func (h *headers) RoundTrip(r *http.Request) (*http.Response, error) {
 func protectedHandler(t *testing.T, appUp bool) (*Handler, *headers, string, func() int32) {
 	t.Helper()
 	route := webRoute("ing-web", "/", "web")
-	route.Protection = &store.Protection{Enabled: true, Open: []string{"/saml/acs", "/health*"}}
+	route.Protection = &store.Protection{Enabled: true, Open: []string{"/webhooks/*", "/health*"}}
 	dep := sleeping("web")
 	if appUp {
 		dep = ready("web", 1)
@@ -95,7 +95,7 @@ func TestTokensAndOpenPathsGoThrough(t *testing.T) {
 		t.Fatal("X-Api-Key not accepted or not removed")
 	}
 
-	r = httptest.NewRequest("POST", "http://web.example.com/saml/acs", strings.NewReader("SAMLResponse=x"))
+	r = httptest.NewRequest("POST", "http://web.example.com/webhooks/payments", strings.NewReader("{}"))
 	r.Header.Set(guard.UserHeader, "admin")
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, r)

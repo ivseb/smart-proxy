@@ -67,7 +67,7 @@ Idle environments burn money. Preview, dev, staging and demo namespaces run 24/7
 
     ---
 
-    Send requests matching a condition — a header, cookie, path or client IP — to another backend, and keep those users there. Made for trying a new identity provider in production.
+    Send requests matching a condition — a header, cookie, path or client IP — to another backend, and keep those users there. Made for trying a new version in production, with a beta or a few colleagues first.
 
 -   :material-lock:{ .lg .middle } &nbsp; __Built-in sign-in__
 

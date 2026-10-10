@@ -280,8 +280,8 @@ func (r RouteConfig) Inspecting(now time.Time) bool {
 // application. Who may log in, and the tokens, are kept hashed in Smart Proxy's Secret.
 type Protection struct {
 	Enabled bool `json:"enabled"`
-	// Open paths are reachable without login, e.g. an identity provider's callback
-	// ("/saml/acs") or health checks ("/health*"): exact, or prefixes ending with "*".
+	// Open paths are reachable without login, e.g. webhooks ("/webhooks/*") or health
+	// checks ("/health*"): exact, or prefixes ending with "*".
 	Open []string `json:"open,omitempty"`
 	// SessionHours is how long a browser login lasts (default 12).
 	SessionHours int `json:"session_hours,omitempty"`
