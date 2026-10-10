@@ -181,14 +181,14 @@ export function RequestInspector({ route, onChanged, headerAction }: RequestInsp
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
-                                <tr className="text-left text-xs text-gray-500 border-y border-gray-700/70">
+                                <tr className="text-left text-xs text-gray-500 border-y border-gray-700/70 whitespace-nowrap">
                                     <th className="pl-6 pr-2 py-2 font-medium w-6" />
                                     <th className="px-2 py-2 font-medium">Time</th>
                                     <th className="px-2 py-2 font-medium">Request</th>
                                     <th className="px-2 py-2 font-medium">Status</th>
                                     <th className="px-2 py-2 font-medium">What happened</th>
                                     <th className="px-2 py-2 font-medium">Backend</th>
-                                    <th className="pl-2 pr-6 py-2 font-medium text-right">Time taken</th>
+                                    <th className="pl-2 pr-6 py-2 font-medium text-right whitespace-nowrap">Time taken</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-700/50">
