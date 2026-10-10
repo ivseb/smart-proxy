@@ -32,25 +32,52 @@ Idle environments burn money. Preview, dev, staging and demo namespaces sit runn
 | 💤 **Auto-sleep & instant wake** | Scale idle deployments to zero; the next request transparently wakes them back up. |
 | 🔗 **Dependency chains** | Keep `app → api → db` awake together, optionally starting them in order, and let them sleep together. |
 | 🩺 **Monitor-aware** | Uptime monitors and health checks never keep apps awake or wake them; they get a 200 while apps sleep. See who keeps an app awake and ignore it in one click. |
+| 🔍 **Requests inspector** | Record what reaches a route for a few minutes: headers (credentials masked), cookies, and what Smart Proxy did with each request. |
+| 🧪 **Try a new version with some users** | Send requests matching a condition (a header, cookie, path, client IP…) to another backend and keep those users there — e.g. a new SAML identity provider in production. |
+| 🔒 **Built-in sign-in** | Put any app behind a sign-in page or access tokens, without an identity provider and without touching the app. |
 | 🗓️ **Schedules** | Keep apps awake during office hours (any timezone) and let them sleep the rest of the time. |
 | 📈 **Prometheus metrics** | Cold-start durations, wake-ups, sleeping deployments and replica-hours saved. |
 | 🔀 **Ingress *and* Routes** | One dashboard for both vanilla Kubernetes Ingresses and OpenShift Routes. |
 | 🗂️ **Many namespaces** | Manage a list of namespaces, all of them, or any namespace you label `smart-proxy=enabled`. |
 | 🎛️ **Admin dashboard** | Routes grouped by namespace with search and filters, live status and "sleeps in" timers, one-click patching, wake and sleep. |
 | 🔐 **Secure by default** | Dashboard sign-in with basic auth, tokens, SSO via OIDC (Keycloak, Entra ID, Google…) or OpenShift login. |
+| 🛡️ **Built for production** | Two replicas with leader election, WebSockets and streams, gRPC, bursts of requests sharing one wake-up, GitOps-aware self-healing — tested end to end on a real cluster. |
 | 🪶 **Zero app changes** | Fully annotation-based and reversible — nothing to add to your images. Opt in from the dashboard or with annotations in Git. |
 
 ## 🖥️ The dashboard
+
+Traffic of the last 30 minutes and what sleeps, at a glance:
+
+<img src="media/dashboard-overview.png" alt="Overview: deployments asleep, requests per second over the last 30 minutes, namespaces" width="820"/>
 
 Patch Ingresses and Routes in one click, across namespaces:
 
 <img src="media/dashboard-patching.png" alt="Patching view listing Ingresses across namespaces, with their Service and Deployment state" width="820"/>
 
+## 🧰 More than sleeping
+
+Three optional tools on each route's page — routes that don't use them work as before. [Read more →](docs/routes.md)
+
+**See what arrives.** Record a route's requests for a few minutes: who sends them, their headers (credentials masked), and what Smart Proxy did with each — answered by the app, woke it first, showed the waking page, which backend got it and why.
+
+<img src="media/route-requests.png" alt="Requests recorded for a route, one expanded with its headers, showing a SAML response sent to another backend" width="820"/>
+
+**Try a new version with some users.** Give a route a second backend and the conditions that send requests to it — here, responses from a new identity provider, recognized by their `Origin`. Those users stay on the new version for the rest of their session; everyone else keeps the current one. **Route like this…** on a recorded request turns one of its headers into a condition.
+
+<img src="media/route-backends.png" alt="A route's backends: the current portal takes all traffic, the new one only requests whose Origin is the new identity provider" width="820"/>
+
+**Require sign-in or a token.** Put an application behind a sign-in page served on its own address (a shared password, or named people) and access tokens for scripts — no identity provider needed. The application gets the caller in `X-Smart-Proxy-User`; strangers never wake it.
+
+<p>
+  <img src="media/route-access.png" alt="Access settings of a route: people who can sign in, access tokens, paths open without signing in" width="560"/>
+  <img src="media/sign-in.png" alt="Sign-in page served by Smart Proxy on the application's address" width="250"/>
+</p>
+
 ## 🎬 How it works
 
 1. **Patch** a route from the dashboard → Smart Proxy points the Ingress/Route to itself (originals saved in annotations).
 2. **Serve** → incoming traffic hits Smart Proxy, which checks the target's state.
-3. **Wake** → if the deployment is asleep, it holds the request, scales it up, and shows a "waking up" page until ready.
+3. **Wake** → if the deployment is asleep, it scales it up: browsers see a "waking up" page until it's ready, API calls and WebSockets simply wait for it.
 4. **Sleep** → after an idle timeout with no traffic, it scales the deployment back to zero.
 
 See the [Architecture overview](docs/architecture.md) for the details.
@@ -92,7 +119,7 @@ Then open the dashboard at [http://admin.local](http://admin.local) *(add `127.0
 - [Installation Guide](docs/installation.md) — Helm, from source, and all values
 - [Architecture Overview](docs/architecture.md) — how patching, waking and dependencies work
 - [Configuration Reference](docs/configuration.md) — environment variables and annotations
-- [Upgrading](docs/upgrading.md) — from 1.x to 2.0 (authentication on by default, two replicas, …)
+- [Upgrading](docs/upgrading.md) — what changes from one version to the next
 - [Changelog](CHANGELOG.md)
 - [Inspect, route, protect](docs/routes.md) — record what reaches a route, send some requests to another backend (e.g. a new identity provider), require sign-in or an access token
 - [GitOps](docs/gitops.md) — configure routes with annotations; Argo CD and Flux settings
@@ -102,7 +129,7 @@ Then open the dashboard at [http://admin.local](http://admin.local) *(add `127.0
 
 Issues and pull requests are welcome. If Smart Proxy saves you some cluster bills, a ⭐ on GitHub is appreciated!
 
-`go test -race ./...` runs the unit tests. `test/e2e/run.sh` runs the end-to-end tests on a local [kind](https://kind.sigs.k8s.io) cluster (Docker, kind, kubectl and Helm needed): waking from a browser, API calls with large bodies, bursts of requests, WebSockets, gRPC-style HTTP/2, long streams, leader failover and uninstall. CI runs both.
+`go test -race ./...` runs the unit tests. `test/e2e/run.sh` runs the end-to-end tests on a local [kind](https://kind.sigs.k8s.io) cluster (Docker, kind, kubectl and Helm needed): through ingress-nginx, waking from a browser, API calls with large bodies, bursts of requests, WebSockets, gRPC-style HTTP/2, the requests inspector, backend conditions, sign-in and tokens, long streams, leader failover and uninstall. CI runs both.
 
 ## License
 

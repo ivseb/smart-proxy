@@ -55,7 +55,25 @@ Idle environments burn money. Preview, dev, staging and demo namespaces run 24/7
 
     ---
 
-    A modern React UI with real-time logs, live status indicators and one-click patching.
+    Routes grouped by namespace with live status, "sleeps in" timers, traffic charts, one-click patching, wake and sleep.
+
+-   :material-magnify-scan:{ .lg .middle } &nbsp; __Requests inspector__
+
+    ---
+
+    Record what reaches a route for a few minutes: headers (credentials masked), cookies, and what Smart Proxy did with each request.
+
+-   :material-call-split:{ .lg .middle } &nbsp; __Try a new version with some users__
+
+    ---
+
+    Send requests matching a condition — a header, cookie, path or client IP — to another backend, and keep those users there. Made for trying a new identity provider in production.
+
+-   :material-lock:{ .lg .middle } &nbsp; __Built-in sign-in__
+
+    ---
+
+    Put any application behind a sign-in page or access tokens, without an identity provider and without touching it.
 
 -   :material-feather:{ .lg .middle } &nbsp; __Zero app changes__
 
@@ -77,7 +95,7 @@ Idle environments burn money. Preview, dev, staging and demo namespaces run 24/7
 
     1. **Patch** a route from the dashboard — Smart Proxy points the Ingress/Route to itself (originals saved in annotations).
     2. **Serve** — incoming traffic hits Smart Proxy, which checks the target's state.
-    3. **Wake** — if the deployment is asleep, it holds the request, scales it up, and shows a "waking up" page until ready.
+    3. **Wake** — if the deployment is asleep, it scales it up: browsers see a "waking up" page until it's ready, API calls and WebSockets simply wait for it.
     4. **Sleep** — after an idle timeout with no traffic, it scales the deployment back to zero.
 
 ```mermaid
@@ -90,6 +108,16 @@ flowchart LR
 ```
 
 [Read the full architecture →](architecture.md)
+
+## More than sleeping
+
+Three optional tools on each route's page: see what arrives, send some requests to another version, require sign-in.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-requests.png" alt="Requests recorded for a route" width="820"/>
+</p>
+
+[Inspect, route, protect →](routes.md)
 
 ## Get started
 

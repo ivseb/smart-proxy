@@ -9,6 +9,8 @@ Three optional tools on each route's page in the dashboard. A route that doesn't
 - what was sent: method, path, query parameter names, headers (credentials such as `Authorization`, cookies, tokens and API keys are masked), cookie names, client IP and user agent. Bodies are never recorded.
 - what Smart Proxy did with it: answered by the application, woke it up first, showed the waking page, answered for it while asleep (an ignored monitor), refused it (no login), or couldn't reach it; which backend got it and why.
 
+![Requests recorded for a route, one expanded with its headers](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-requests.png)
+
 Every replica records the requests it serves; the dashboard gathers them, whichever replica it talks to. Recordings are kept in memory (the latest 300 per route and replica).
 
 Use it to find what identifies a client before writing an [ignore rule](configuration.md) or a backend condition: from a recorded request, **Route like this…** next to a header turns it into a condition.
@@ -22,6 +24,10 @@ A route can have more than one backend, each a Service of its namespace. **Add a
 - **The browser stays** on the backend it was sent to (cookie), so a login or session started there continues there. Over HTTPS the cookie is `SameSite=None`, so it also comes with cross-site form posts, such as an identity provider's SAML response.
 - **Managed** backends are woken by the requests sent to them and sleep with the route; others are never touched. A request sent by a condition to an unmanaged backend that isn't running gets `503` (never another backend).
 - **The link** `https://<host>/__smart_proxy/use/<backend>` keeps a browser on a backend for 12 hours; `…/use/default` goes back to the weights.
+
+![A route's backends: the current portal, and a new one getting only requests from the new identity provider](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-backends.png)
+
+![Editing where requests go: weights, conditions, the link for testers](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/backends-editor.png)
 
 ### Example: trying a new SAML identity provider in production
 
@@ -41,6 +47,9 @@ If the provider doesn't send `Origin`, testers open `https://<host>/__smart_prox
 - **People**, who sign in on a page served by Smart Proxy on the application's own address (`/__smart_proxy/login`, `/__smart_proxy/logout`). With a single person the page only asks for the password: use it as a shared password for a team. A login lasts 12 hours. Removing a person signs them out.
 - **Access tokens**, for scripts and other services: `Authorization: Bearer <token>`, or `X-Api-Key: <token>` when the application uses `Authorization` itself. Each token is named after who uses it, shown once, and can be revoked.
 - **Open paths**, reachable without signing in: an identity provider's callback (`/saml/acs`), webhooks, health checks (`/health*`).
+
+![Access settings of a route](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-access.png){ width="640" }
+![Sign-in page on the application's address](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/sign-in.png){ width="280" }
 
 The application receives the caller in the `X-Smart-Proxy-User` header (a person's name, or `token:<name>`); Smart Proxy's own credentials and cookie are removed. Requests without credentials never wake the application and don't count as activity.
 
