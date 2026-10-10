@@ -1,6 +1,7 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { usePolling } from "@/hooks/usePolling";
 import type { StatsHistory } from "@/types/api";
+import { t } from "@/lib/i18n";
 
 interface RequestsChartProps {
     routeId?: string; // All routes when omitted
@@ -27,12 +28,12 @@ export function RequestsChart({ routeId, height = 260 }: RequestsChartProps) {
     const gradient = `requests-${routeId || "all"}`.replace(/[^\w-]/g, "_");
 
     if (data && points.length === 0) {
-        return <div style={{ height }} className="flex items-center justify-center text-sm text-gray-500">Collecting data…</div>;
+        return <div style={{ height }} className="flex items-center justify-center text-sm text-gray-500">{t("Collecting data…")}</div>;
     }
     const minutes = Math.round((data?.retention || 0) / 60);
     return (
         <div style={{ height }} className="w-full relative">
-            {minutes > 0 && <span className="absolute right-0 -top-6 text-xs text-gray-500">last {minutes} min</span>}
+            {minutes > 0 && <span className="absolute right-0 -top-6 text-xs text-gray-500">{t("last {n} min", { n: minutes })}</span>}
             <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={points}>
                     <defs>
@@ -48,7 +49,7 @@ export function RequestsChart({ routeId, height = 260 }: RequestsChartProps) {
                     <Tooltip
                         contentStyle={{ backgroundColor: "#1f2937", borderColor: "#374151", color: "#fff" }}
                         itemStyle={{ color: "#60a5fa" }}
-                        formatter={(v) => [`${Number(v).toFixed(2)} req/s`, "Traffic"]}
+                        formatter={(v) => [t("{n} req/s", { n: Number(v).toFixed(2) }), t("Traffic")]}
                         labelFormatter={t => clock(Number(t), true)}
                     />
                     <Area type="monotoneX" dataKey="rps" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill={`url(#${gradient})`} isAnimationActive={false} />

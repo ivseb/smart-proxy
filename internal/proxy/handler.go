@@ -4,6 +4,7 @@ package proxy
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -17,9 +18,9 @@ import (
 	"time"
 
 	"smart-proxy/internal/guard"
+	"smart-proxy/internal/i18n"
 	"smart-proxy/internal/inspect"
 	"smart-proxy/internal/k8s"
-	"smart-proxy/internal/logger"
 	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
@@ -28,7 +29,6 @@ import (
 type Handler struct {
 	k8sClient *k8s.Client
 	store     *store.Store
-	tmpl      *template.Template
 	Metrics   *Metrics
 	ready     atomic.Bool
 	draining  atomic.Bool
@@ -74,15 +74,9 @@ func (h *Handler) SetDraining() {
 }
 
 func NewHandler(k8sClient *k8s.Client, store *store.Store) *Handler {
-	tmpl, err := template.ParseFiles("web/templates/loading.html")
-	if err != nil {
-		logger.Printf("Warning: Could not parse loading template: %v", err)
-	}
-
 	return &Handler{
 		k8sClient: k8sClient,
 		store:     store,
-		tmpl:      tmpl,
 		Metrics:   NewMetrics(),
 	}
 }
@@ -258,7 +252,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if _, allReady := h.ensureAwake([]store.RouteConfig{route}); !allReady && !h.hasServingPassThrough(route) {
 			if wantsPage(r) {
 				rec.set(inspect.OutcomeWakingPage)
-				h.serveLoadingPage(w)
+				h.serveLoadingPage(w, r)
 				return
 			}
 			if !h.waitAwake(r.Context(), route) {
@@ -447,15 +441,23 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func (h *Handler) serveLoadingPage(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "text/html")
+// loadingPage is the "waking up" page, in the browser's language. It follows the wake-up on the
+// status endpoint and reloads when the application is ready.
+//
+//go:embed loading.html
+var loadingHTML string
+
+var loadingTmpl = template.Must(template.New("loading").Parse(loadingHTML))
+
+func (h *Handler) serveLoadingPage(w http.ResponseWriter, r *http.Request) {
+	lang := i18n.FromRequest(r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
 	w.WriteHeader(http.StatusOK)
-	if h.tmpl != nil {
-		h.tmpl.Execute(w, nil)
-	} else {
-		w.Write([]byte("<h1>Waking up... please wait...</h1><script>setTimeout(() => location.reload(), 2000)</script>"))
-	}
+	loadingTmpl.Execute(w, struct {
+		L     i18n.Lang
+		Texts map[string]string
+	}{lang, lang.Texts("Ready", "Starting…", "Waiting", "Error", "Checking…", "Ready! Opening…", "Connection lost, retrying…")})
 }

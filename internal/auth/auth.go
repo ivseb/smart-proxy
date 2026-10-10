@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"strings"
 
+	"smart-proxy/internal/i18n"
 	"smart-proxy/internal/logger"
 )
 
@@ -147,12 +148,12 @@ func (a *Auth) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 func (a *Auth) handleTokenLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		renderPage(w, http.StatusOK, pageData{Form: true})
+		renderPage(w, r, http.StatusOK, pageData{Form: true})
 		return
 	}
 	if !secureEqual(r.PostFormValue("token"), a.cfg.Token) {
 		logger.Printf("Auth: failed token login from %s", r.RemoteAddr)
-		renderPage(w, http.StatusUnauthorized, pageData{Form: true, Error: "Invalid token"})
+		renderPage(w, r, http.StatusUnauthorized, pageData{Form: true, Error: "Invalid token"})
 		return
 	}
 	if err := a.setSession(w, r, "token"); err != nil {
@@ -170,7 +171,7 @@ func (a *Auth) handleCallback(w http.ResponseWriter, r *http.Request) {
 	user, err := a.oidc.finishLogin(w, r)
 	if err != nil {
 		logger.Printf("Auth: OIDC login failed: %v", err)
-		renderPage(w, http.StatusForbidden, pageData{Error: "Sign-in failed or not allowed.", Retry: true})
+		renderPage(w, r, http.StatusForbidden, pageData{Error: "Sign-in failed or not allowed.", Retry: true})
 		return
 	}
 	if err := a.setSession(w, r, user); err != nil {
@@ -185,7 +186,7 @@ func (a *Auth) handleLogout(w http.ResponseWriter, r *http.Request) {
 	switch a.cfg.Mode {
 	case ModeToken, ModeOIDC:
 		clearCookie(w, r, sessionCookie)
-		renderPage(w, http.StatusOK, pageData{Message: "You have been signed out.", Retry: true})
+		renderPage(w, r, http.StatusOK, pageData{Message: "You have been signed out.", Retry: true})
 	case ModeHeader:
 		if a.cfg.HeaderLogoutURL != "" {
 			http.Redirect(w, r, a.cfg.HeaderLogoutURL, http.StatusFound)
@@ -237,6 +238,7 @@ func secureEqual(a, b string) bool {
 }
 
 type pageData struct {
+	L       i18n.Lang
 	Form    bool
 	Error   string
 	Message string
@@ -244,8 +246,8 @@ type pageData struct {
 }
 
 var pageTmpl = template.Must(template.New("page").Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Smart Proxy · Sign in</title>
+<html lang="{{.L}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Proxy · {{.L.T "Sign in"}}</title>
 <style>
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;color:#e2e8f0;font-family:system-ui,-apple-system,sans-serif}
 .card{width:100%;max-width:360px;margin:16px;padding:32px;background:#1e293b;border:1px solid #334155;border-radius:16px}
@@ -254,15 +256,16 @@ input{box-sizing:border-box;width:100%;padding:10px 12px;margin-bottom:12px;back
 button,a.btn{display:block;box-sizing:border-box;width:100%;padding:10px;background:#3b82f6;color:#fff;border:0;border-radius:8px;font-size:14px;font-weight:600;text-align:center;text-decoration:none;cursor:pointer}
 .err{color:#fca5a5;margin-bottom:12px;font-size:14px}.msg{margin-bottom:16px;font-size:14px}
 </style></head><body><div class="card"><h1>⚡ Smart Proxy</h1>
-{{if .Error}}<div class="err">{{.Error}}</div>{{end}}
-{{if .Message}}<div class="msg">{{.Message}}</div>{{end}}
+{{if .Error}}<div class="err">{{.L.T .Error}}</div>{{end}}
+{{if .Message}}<div class="msg">{{.L.T .Message}}</div>{{end}}
 {{if .Form}}<form method="post" action="/auth/login">
-<input type="password" name="token" placeholder="Access token" autocomplete="current-password" autofocus required>
-<button type="submit">Sign in</button></form>{{end}}
-{{if .Retry}}<a class="btn" href="/auth/login">Sign in</a>{{end}}
+<input type="password" name="token" placeholder="{{.L.T "Access token"}}" autocomplete="current-password" autofocus required>
+<button type="submit">{{.L.T "Sign in"}}</button></form>{{end}}
+{{if .Retry}}<a class="btn" href="/auth/login">{{.L.T "Sign in"}}</a>{{end}}
 </div></body></html>`))
 
-func renderPage(w http.ResponseWriter, status int, data pageData) {
+func renderPage(w http.ResponseWriter, r *http.Request, status int, data pageData) {
+	data.L = i18n.FromRequest(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)

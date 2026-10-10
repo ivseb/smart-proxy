@@ -3,11 +3,12 @@ import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import type { ClusterInfo, RouteConfig, Schedule, TrafficRules, WhenAsleep } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { formatDuration, parseDuration, splitHosts, workloadLabel } from "@/lib/format";
+import { msg, t } from "@/lib/i18n";
 
 const DEFAULT_TIMEOUT = "30m";
 const DAYS: { value: string; label: string }[] = [
-    { value: "mon", label: "Mon" }, { value: "tue", label: "Tue" }, { value: "wed", label: "Wed" },
-    { value: "thu", label: "Thu" }, { value: "fri", label: "Fri" }, { value: "sat", label: "Sat" }, { value: "sun", label: "Sun" },
+    { value: "mon", label: msg("Mon") }, { value: "tue", label: msg("Tue") }, { value: "wed", label: msg("Wed") },
+    { value: "thu", label: msg("Thu") }, { value: "fri", label: msg("Fri") }, { value: "sat", label: msg("Sat") }, { value: "sun", label: msg("Sun") },
 ];
 
 function defaultSchedule(): Schedule {
@@ -62,7 +63,8 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
     const [timeoutInput, setTimeoutInput] = useState(DEFAULT_TIMEOUT);
     const [deployments, setDeployments] = useState<string[]>([]);
     const [selectedDepToAdd, setSelectedDepToAdd] = useState("");
-    const [resolvedInfo, setResolvedInfo] = useState<string | null>(null);
+    // Kept untranslated (text and its values) so it follows a language change.
+    const [resolvedInfo, setResolvedInfo] = useState<{ text: string; vars?: Record<string, string | number> } | null>(null);
     const [connected, setConnected] = useState<ConnectedResource[]>([]);
     const [saving, setSaving] = useState(false);
 
@@ -129,14 +131,14 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                 `/api/k8s/deployment-service-info?${new URLSearchParams({ namespace: ns, deployment: dep })}`);
             if (svc.service) {
                 setFormData(prev => ({ ...prev, target_service: svc.service, target_port: svc.port }));
-                setResolvedInfo(`Found Service ${svc.service} on port ${svc.port}.`);
+                setResolvedInfo({ text: msg("Found Service {service} on port {port}."), vars: { service: svc.service, port: svc.port } });
                 loadConnected(ns, svc.service);
             } else {
                 setFormData(prev => ({ ...prev, target_service: dep, target_port: 80 }));
-                setResolvedInfo("No Service selects this deployment; enter the Service and port yourself.");
+                setResolvedInfo({ text: msg("No Service selects this deployment; enter the Service and port yourself.") });
             }
         } catch {
-            setResolvedInfo("Could not look up the deployment's Service.");
+            setResolvedInfo({ text: msg("Could not look up the deployment's Service.") });
         }
     };
 
@@ -175,37 +177,37 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
             <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
                 <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
-                    <h2 className="text-lg font-bold text-white">{initialData ? "Edit route" : "New route"}</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white" aria-label="Close"><X className="w-6 h-6" /></button>
+                    <h2 className="text-lg font-bold text-white">{initialData ? t("Edit route") : t("New route")}</h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white" aria-label={t("Close")}><X className="w-6 h-6" /></button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-5">
                     {initialData?.declarative && (
                         <div className="bg-purple-900/20 border border-purple-800 text-purple-200 px-4 py-3 rounded-lg text-sm">
-                            This route is defined by <span className="font-mono">smart-proxy/*</span> annotations on its Ingress/Route.
-                            Changes made here are overwritten within 30 seconds; edit the annotations instead (usually in Git).
+                            {t("This route is defined by")} <span className="font-mono">smart-proxy/*</span> {t("annotations on its Ingress/Route.")}{" "}
+                            {t("Changes made here are overwritten within 30 seconds; edit the annotations instead (usually in Git).")}
                         </div>
                     )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-namespace">Namespace</label>
+                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-namespace">{t("Namespace")}</label>
                             <select
                                 id="rm-namespace"
                                 className={inputClass}
                                 value={formData.namespace}
                                 onChange={e => changeNamespace(e.target.value)}
                                 disabled={boundToResource}
-                                title={boundToResource ? "This route belongs to a patched Ingress/Route in this namespace" : undefined}
+                                title={boundToResource ? t("This route belongs to a patched Ingress/Route in this namespace") : undefined}
                                 required
                             >
-                                {!namespaces.includes(formData.namespace || "") && <option value={formData.namespace}>{formData.namespace || "Select…"}</option>}
+                                {!namespaces.includes(formData.namespace || "") && <option value={formData.namespace}>{formData.namespace || t("Select…")}</option>}
                                 {namespaces.map(ns => <option key={ns} value={ns}>{ns}</option>)}
                             </select>
                         </div>
                         <div>
-                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-deployment">Workload</label>
+                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-deployment">{t("Workload")}</label>
                             <select id="rm-deployment" className={inputClass} value={formData.deployment} onChange={e => selectDeployment(e.target.value)} required>
-                                <option value="">Select a workload…</option>
+                                <option value="">{t("Select a workload…")}</option>
                                 {formData.deployment && !deployments.includes(formData.deployment) && <option value={formData.deployment}>{workloadLabel(formData.deployment)}</option>}
                                 {deployments.map(d => <option key={d} value={d}>{workloadLabel(d)}</option>)}
                             </select>
@@ -214,10 +216,10 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
 
                     {resolvedInfo && (
                         <div className="bg-blue-900/20 border border-blue-800 text-blue-200 px-4 py-3 rounded-lg text-sm space-y-2">
-                            <p>{resolvedInfo}</p>
+                            <p>{t(resolvedInfo.text, resolvedInfo.vars)}</p>
                             {connected.length > 0 && (
                                 <div>
-                                    <p className="text-xs text-blue-300 mb-1.5">Hosts already serving this Service (select to use them):</p>
+                                    <p className="text-xs text-blue-300 mb-1.5">{t("Hosts already serving this Service (select to use them):")}</p>
                                     <ul className="space-y-1">
                                         {connected.map(r => (
                                             <li key={`${r.type}-${r.name}`}>
@@ -225,7 +227,7 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                                                     <input type="checkbox" checked={hosts.includes(r.host)} onChange={() => toggleHost(r.host)} className="w-4 h-4 rounded bg-gray-900 border-gray-600" />
                                                     <span className="font-mono text-gray-200">{r.host}</span>
                                                     <span className="text-gray-500">
-                                                        ({r.type} {r.name}{r.alternate ? `, alternate backend, ${Math.round(r.share)}%` : r.share < 100 ? `, ${Math.round(r.share)}%` : ""})
+                                                        ({r.type} {r.name}{r.alternate ? `, ${t("alternate backend")}, ${Math.round(r.share)}%` : r.share < 100 ? `, ${Math.round(r.share)}%` : ""})
                                                     </span>
                                                 </label>
                                             </li>
@@ -238,25 +240,25 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
 
                     <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-4">
                         <div>
-                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-host">Hosts</label>
+                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-host">{t("Hosts")}</label>
                             <input id="rm-host" type="text" placeholder="app.example.com, www.example.com" className={inputClass}
                                 value={formData.host} onChange={e => setFormData({ ...formData, host: e.target.value })} />
-                            <p className="text-xs text-gray-500 mt-1">Comma-separated. Empty matches any host.</p>
+                            <p className="text-xs text-gray-500 mt-1">{t("Comma-separated. Empty matches any host.")}</p>
                         </div>
                         <div>
-                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-path">Path</label>
+                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-path">{t("Path")}</label>
                             <input id="rm-path" type="text" className={inputClass} value={formData.path} onChange={e => setFormData({ ...formData, path: e.target.value })} />
                         </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr] gap-4">
                         <div>
-                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-service">Service</label>
+                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-service">{t("Service")}</label>
                             <input id="rm-service" type="text" className={inputClass} value={formData.target_service}
                                 onChange={e => setFormData({ ...formData, target_service: e.target.value })} required />
                         </div>
                         <div>
-                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-port">Port</label>
+                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-port">{t("Port")}</label>
                             <input id="rm-port" type="number" min={1} max={65535} className={inputClass} value={formData.target_port}
                                 onChange={e => setFormData({ ...formData, target_port: parseInt(e.target.value) || 0 })} required />
                         </div>
@@ -265,21 +267,21 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                     <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700 space-y-3">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                             <div>
-                                <p className="text-gray-200 text-sm font-medium">Dependencies</p>
+                                <p className="text-gray-200 text-sm font-medium">{t("Dependencies")}</p>
                                 <p className="text-xs text-gray-500">
                                     {formData.start_in_order
-                                        ? "Woken one at a time in this order, each once the previous is ready; the app starts last."
-                                        : "Woken together with the app."}{" "}
-                                    "Sleeps too" puts them to sleep when it goes idle.
+                                        ? t("Woken one at a time in this order, each once the previous is ready; the app starts last.")
+                                        : t("Woken together with the app.")}{" "}
+                                    {t("\"Sleeps too\" puts them to sleep when it goes idle.")}
                                 </p>
                             </div>
                             <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer shrink-0">
                                 <input type="checkbox" className="w-3.5 h-3.5 rounded bg-gray-800 border-gray-500" checked={formData.start_in_order || false}
                                     onChange={e => setFormData({ ...formData, start_in_order: e.target.checked })} />
-                                Start in order
+                                {t("Start in order")}
                             </label>
                         </div>
-                        {(formData.dependencies || []).length === 0 && <div className="text-gray-500 text-sm italic">No dependencies.</div>}
+                        {(formData.dependencies || []).length === 0 && <div className="text-gray-500 text-sm italic">{t("No dependencies.")}</div>}
                         {(formData.dependencies || []).map((dep, idx) => (
                             <div key={dep.name} className="flex justify-between items-center gap-2 bg-gray-800 px-3 py-2 rounded border border-gray-600">
                                 <span className="flex items-center gap-2 min-w-0">
@@ -298,18 +300,18 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                                                 setFormData({ ...formData, dependencies: deps });
                                             }}
                                         />
-                                        Sleeps too
+                                        {t("Sleeps too")}
                                     </label>
                                     {formData.start_in_order && (
                                         <span className="flex">
                                             <button type="button" onClick={() => moveDependency(idx, -1)} disabled={idx === 0}
-                                                className="p-1 text-gray-400 hover:text-white disabled:opacity-30" aria-label={`Move ${dep.name} up`}><ArrowUp size={14} /></button>
+                                                className="p-1 text-gray-400 hover:text-white disabled:opacity-30" aria-label={t("Move {name} up", { name: dep.name })}><ArrowUp size={14} /></button>
                                             <button type="button" onClick={() => moveDependency(idx, 1)} disabled={idx === (formData.dependencies?.length || 0) - 1}
-                                                className="p-1 text-gray-400 hover:text-white disabled:opacity-30" aria-label={`Move ${dep.name} down`}><ArrowDown size={14} /></button>
+                                                className="p-1 text-gray-400 hover:text-white disabled:opacity-30" aria-label={t("Move {name} down", { name: dep.name })}><ArrowDown size={14} /></button>
                                         </span>
                                     )}
                                     <button type="button" onClick={() => setFormData(prev => ({ ...prev, dependencies: prev.dependencies?.filter(d => d.name !== dep.name) }))}
-                                        className="text-red-400 hover:text-red-300" aria-label={`Remove ${dep.name}`}>
+                                        className="text-red-400 hover:text-red-300" aria-label={t("Remove {name}", { name: dep.name })}>
                                         <X size={16} />
                                     </button>
                                 </div>
@@ -317,19 +319,19 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                         ))}
                         <div className="flex gap-2">
                             <select className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none" value={selectedDepToAdd}
-                                onChange={e => setSelectedDepToAdd(e.target.value)} aria-label="Dependency to add">
-                                <option value="">Add a dependency…</option>
+                                onChange={e => setSelectedDepToAdd(e.target.value)} aria-label={t("Dependency to add")}>
+                                <option value="">{t("Add a dependency…")}</option>
                                 {deployments
                                     .filter(d => d !== formData.deployment && !formData.dependencies?.some(dep => dep.name === d))
                                     .map(d => <option key={d} value={d}>{workloadLabel(d)}</option>)}
                             </select>
-                            <Button type="button" size="sm" onClick={addDependency} disabled={!selectedDepToAdd} aria-label="Add dependency"><Plus size={16} /></Button>
+                            <Button type="button" size="sm" onClick={addDependency} disabled={!selectedDepToAdd} aria-label={t("Add dependency")}><Plus size={16} /></Button>
                         </div>
                     </div>
 
                     {(formData.backends?.length || 0) > 0 && (
                         <p className="text-xs text-gray-500">
-                            This route has several backends: edit them from the route's page (Backends).
+                            {t("This route has several backends: edit them from the route's page (Backends).")}
                         </p>
                     )}
 
@@ -347,31 +349,31 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
                         <div>
-                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-timeout">Sleep after</label>
+                            <label className="block text-gray-400 text-sm mb-1" htmlFor="rm-timeout">{t("Sleep after")}</label>
                             <input id="rm-timeout" type="text" placeholder={DEFAULT_TIMEOUT}
                                 className={`${inputClass} ${timeoutValid ? "" : "border-red-500 focus:ring-red-500"}`}
                                 value={timeoutInput} onChange={e => setTimeoutInput(e.target.value)} aria-invalid={!timeoutValid} />
                             <p className={`text-xs mt-1 ${timeoutValid ? "text-gray-500" : "text-red-400"}`}>
-                                {timeoutValid ? "Of inactivity, e.g. 30m, 1h, 1h30m." : "Use a duration like 30m, 1h or 90s."}
+                                {timeoutValid ? t("Of inactivity, e.g. 30m, 1h, 1h30m.") : t("Use a duration like 30m, 1h or 90s.")}
                             </p>
                         </div>
                         <div className="space-y-2 sm:pt-6">
                             <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
                                 <input type="checkbox" className="w-4 h-4 rounded bg-gray-700 border-gray-600" checked={formData.always_on || false}
                                     onChange={e => setFormData({ ...formData, always_on: e.target.checked })} />
-                                Always on (never sleep)
+                                {t("Always on (never sleep)")}
                             </label>
                             <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
                                 <input type="checkbox" className="w-4 h-4 rounded bg-gray-700 border-gray-600" checked={formData.inject_badge || false}
                                     onChange={e => setFormData({ ...formData, inject_badge: e.target.checked })} />
-                                Show a "Powered by Smart Proxy" badge
+                                {t("Show a \"Powered by Smart Proxy\" badge")}
                             </label>
                         </div>
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4 border-t border-gray-700">
-                        <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-                        <Button type="submit" disabled={saving || !timeoutValid}>{saving ? "Saving…" : "Save route"}</Button>
+                        <Button type="button" variant="secondary" onClick={onClose}>{t("Cancel")}</Button>
+                        <Button type="submit" disabled={saving || !timeoutValid}>{saving ? t("Saving…") : t("Save route")}</Button>
                     </div>
                 </form>
             </div>
@@ -394,32 +396,32 @@ function ScheduleEditor({ schedule, onChange }: { schedule: Schedule | null; onC
                 <input type="checkbox" className="mt-0.5 w-4 h-4 rounded bg-gray-700 border-gray-600" checked={!!schedule}
                     onChange={e => onChange(e.target.checked ? defaultSchedule() : null)} />
                 <span>
-                    <span className="block text-sm text-gray-200 font-medium">Keep awake on a schedule</span>
-                    <span className="block text-xs text-gray-500">Woken at the start and never put to sleep during these hours, e.g. office hours. Outside them the idle timeout applies.</span>
+                    <span className="block text-sm text-gray-200 font-medium">{t("Keep awake on a schedule")}</span>
+                    <span className="block text-xs text-gray-500">{t("Woken at the start and never put to sleep during these hours, e.g. office hours. Outside them the idle timeout applies.")}</span>
                 </span>
             </label>
             {schedule && (
                 <div className="space-y-3 pl-6">
-                    <div className="flex flex-wrap gap-1" role="group" aria-label="Days">
+                    <div className="flex flex-wrap gap-1" role="group" aria-label={t("Days")}>
                         {DAYS.map(d => (
                             <button key={d.value} type="button" onClick={() => toggleDay(d.value)}
                                 aria-pressed={days.includes(d.value)}
                                 className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${days.includes(d.value) ? "bg-blue-600 border-blue-500 text-white" : "bg-gray-800 border-gray-600 text-gray-400 hover:text-white"}`}>
-                                {d.label}
+                                {t(d.label)}
                             </button>
                         ))}
-                        <span className="text-xs text-gray-500 self-center ml-1">{days.length === 0 ? "every day" : ""}</span>
+                        <span className="text-xs text-gray-500 self-center ml-1">{days.length === 0 ? t("every day") : ""}</span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-sm text-gray-300">
-                        <span>From</span>
-                        <input type="time" className={timeClass} value={schedule.from} onChange={e => onChange({ ...schedule, from: e.target.value })} aria-label="From" required />
-                        <span>to</span>
-                        <input type="time" className={timeClass} value={schedule.to} onChange={e => onChange({ ...schedule, to: e.target.value })} aria-label="To" required />
+                        <span>{t("From")}</span>
+                        <input type="time" className={timeClass} value={schedule.from} onChange={e => onChange({ ...schedule, from: e.target.value })} aria-label={t("From")} required />
+                        <span>{t("to")}</span>
+                        <input type="time" className={timeClass} value={schedule.to} onChange={e => onChange({ ...schedule, to: e.target.value })} aria-label={t("To")} required />
                         <input type="text" className={`${timeClass} flex-1 min-w-[10rem]`} value={schedule.timezone || ""} placeholder="UTC"
-                            onChange={e => onChange({ ...schedule, timezone: e.target.value })} aria-label="Timezone" title="IANA timezone, e.g. Europe/Rome" />
+                            onChange={e => onChange({ ...schedule, timezone: e.target.value })} aria-label={t("Timezone")} title={t("IANA timezone, e.g. Europe/Rome")} />
                     </div>
                     {schedule.from && schedule.to && schedule.to < schedule.from && (
-                        <p className="text-xs text-gray-500">Spans midnight: until {schedule.to} the next day.</p>
+                        <p className="text-xs text-gray-500">{t("Spans midnight: until {time} the next day.", { time: schedule.to })}</p>
                     )}
                 </div>
             )}
@@ -428,10 +430,10 @@ function ScheduleEditor({ schedule, onChange }: { schedule: Schedule | null; onC
 }
 
 const RULE_FIELDS: { key: keyof TrafficRules; label: string; placeholder: string }[] = [
-    { key: "user_agents", label: "User agents contain", placeholder: "MyMonitor, internal-checker" },
-    { key: "paths", label: "Paths", placeholder: "/healthz, /status/*" },
-    { key: "sources", label: "Client IPs / CIDRs", placeholder: "10.20.0.0/16" },
-    { key: "methods", label: "Methods", placeholder: "HEAD" },
+    { key: "user_agents", label: msg("User agents contain"), placeholder: "MyMonitor, internal-checker" },
+    { key: "paths", label: msg("Paths"), placeholder: "/healthz, /status/*" },
+    { key: "sources", label: msg("Client IPs / CIDRs"), placeholder: "10.20.0.0/16" },
+    { key: "methods", label: msg("Methods"), placeholder: "HEAD" },
 ];
 
 function IgnoreEditor({ rules, whenAsleep, defaults, onChange }: {
@@ -449,12 +451,12 @@ function IgnoreEditor({ rules, whenAsleep, defaults, onChange }: {
     return (
         <div className="bg-gray-700/30 p-4 rounded-lg border border-gray-700 space-y-3">
             <div>
-                <p className="text-sm text-gray-200 font-medium">Monitors &amp; health checks</p>
+                <p className="text-sm text-gray-200 font-medium">{t("Monitors & health checks")}</p>
                 <p className="text-xs text-gray-500">
-                    Matching requests don&apos;t count as activity and never wake the app. Common monitors are ignored already
+                    {t("Matching requests don't count as activity and never wake the app. Common monitors are ignored already")}
                     {defaults?.user_agents?.length ? (
                         <details className="inline">
-                            <summary className="inline cursor-pointer text-gray-400 hover:text-gray-200"> (list)</summary>
+                            <summary className="inline cursor-pointer text-gray-400 hover:text-gray-200">{" "}{t("(list)")}</summary>
                             <span className="block mt-1 text-gray-400">{defaults.user_agents.join(", ")}</span>
                         </details>
                     ) : null}
@@ -464,7 +466,7 @@ function IgnoreEditor({ rules, whenAsleep, defaults, onChange }: {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {RULE_FIELDS.map(f => (
                     <label key={f.key} className="block">
-                        <span className="block text-xs text-gray-400 mb-1">{f.label}</span>
+                        <span className="block text-xs text-gray-400 mb-1">{t(f.label)}</span>
                         <input type="text" className={field} placeholder={f.placeholder}
                             value={text[f.key]}
                             onChange={e => {
@@ -475,11 +477,11 @@ function IgnoreEditor({ rules, whenAsleep, defaults, onChange }: {
                 ))}
             </div>
             <label className="block">
-                <span className="block text-xs text-gray-400 mb-1">While the app sleeps, answer them with</span>
+                <span className="block text-xs text-gray-400 mb-1">{t("While the app sleeps, answer them with")}</span>
                 <select className={field} value={whenAsleep} onChange={e => onChange(rules, e.target.value as WhenAsleep)}>
-                    <option value="respond">200 OK from Smart Proxy (monitors stay green, the app keeps sleeping)</option>
-                    <option value="unavailable">503 Service Unavailable (monitors report it down)</option>
-                    <option value="wake">Wake the app (it goes back to sleep after the idle timeout)</option>
+                    <option value="respond">{t("200 OK from Smart Proxy (monitors stay green, the app keeps sleeping)")}</option>
+                    <option value="unavailable">{t("503 Service Unavailable (monitors report it down)")}</option>
+                    <option value="wake">{t("Wake the app (it goes back to sleep after the idle timeout)")}</option>
                 </select>
             </label>
         </div>

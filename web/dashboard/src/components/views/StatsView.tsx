@@ -4,6 +4,7 @@ import { Activity, Moon, Server, Zap } from "lucide-react";
 import type { ClusterInfo, RouteStatus, StatsData } from "@/types/api";
 import { StatusDot } from "@/components/ui/StatusBadge";
 import { RequestsChart } from "@/components/views/RequestsChart";
+import { t, tn } from "@/lib/i18n";
 
 
 
@@ -48,23 +49,23 @@ export function StatsView({ stats, fetchedAt, routes, info }: StatsViewProps) {
     return (
         <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                <Metric label="Asleep now" icon={<Moon className="w-5 h-5 text-slate-300" />} tint="bg-slate-500/10"
-                    value={`${asleep} / ${managed.length}`} hint="deployments with an idle timer" />
-                <Metric label="Requests / sec" icon={<Zap className="w-5 h-5 text-green-400" />} tint="bg-green-500/10"
-                    value={rps.toFixed(1)} hint="over the last poll" />
-                <Metric label="Total requests" icon={<Activity className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10"
-                    value={String(stats?.TotalRequests || 0)} hint="since Smart Proxy started" />
-                <Metric label="Cluster" icon={<Server className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10"
-                    value={!info ? "…" : !info.connected ? "Offline" : issues > 0 ? `${issues} issue${issues === 1 ? "" : "s"}` : "Healthy"}
+                <Metric label={t("Asleep now")} icon={<Moon className="w-5 h-5 text-slate-300" />} tint="bg-slate-500/10"
+                    value={`${asleep} / ${managed.length}`} hint={t("deployments with an idle timer")} />
+                <Metric label={t("Requests / sec")} icon={<Zap className="w-5 h-5 text-green-400" />} tint="bg-green-500/10"
+                    value={rps.toFixed(1)} hint={t("over the last poll")} />
+                <Metric label={t("Total requests")} icon={<Activity className="w-5 h-5 text-blue-400" />} tint="bg-blue-500/10"
+                    value={String(stats?.TotalRequests || 0)} hint={t("since Smart Proxy started")} />
+                <Metric label={t("Cluster")} icon={<Server className="w-5 h-5 text-purple-400" />} tint="bg-purple-500/10"
+                    value={!info ? "…" : !info.connected ? t("Offline") : issues > 0 ? tn(issues, "{n} issue", "{n} issues") : t("Healthy")}
                     valueClass={!info?.connected || issues > 0 ? "text-orange-300" : "text-green-400"}
-                    hint={info?.connected ? info.scope : "no Kubernetes connection"} />
+                    hint={info?.connected ? info.scope : t("no Kubernetes connection")} />
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Traffic</CardTitle>
-                        <p className="text-gray-400 text-sm">Requests per second through Smart Proxy</p>
+                        <CardTitle>{t("Traffic")}</CardTitle>
+                        <p className="text-gray-400 text-sm">{t("Requests per second through Smart Proxy")}</p>
                     </CardHeader>
                     <CardContent>
                         <RequestsChart />
@@ -73,12 +74,12 @@ export function StatsView({ stats, fetchedAt, routes, info }: StatsViewProps) {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Namespaces</CardTitle>
-                        <p className="text-gray-400 text-sm">Routes awake and asleep</p>
+                        <CardTitle>{t("Namespaces")}</CardTitle>
+                        <p className="text-gray-400 text-sm">{t("Routes awake and asleep")}</p>
                     </CardHeader>
                     <CardContent className="p-0">
                         {namespaces.length === 0 ? (
-                            <p className="p-6 text-sm text-gray-500">No namespaces managed.</p>
+                            <p className="p-6 text-sm text-gray-500">{t("No namespaces managed.")}</p>
                         ) : (
                             <ul className="divide-y divide-gray-700/70 max-h-[260px] overflow-y-auto">
                                 {namespaces.map(([ns, items]) => {
@@ -90,7 +91,7 @@ export function StatsView({ stats, fetchedAt, routes, info }: StatsViewProps) {
                                             <span className="flex items-center gap-3 text-xs text-gray-400 shrink-0 tabular-nums">
                                                 <span className="flex items-center gap-1"><StatusDot status="Ready" />{awake}</span>
                                                 <span className="flex items-center gap-1"><StatusDot status="Sleep" />{sleeping}</span>
-                                                <span className="text-gray-500">{items.length} route{items.length === 1 ? "" : "s"}</span>
+                                                <span className="text-gray-500">{tn(items.length, "{n} route", "{n} routes")}</span>
                                             </span>
                                         </li>
                                     );

@@ -5,10 +5,13 @@ import { Button } from "@/components/ui/Button";
 import { StatusDot } from "@/components/ui/StatusBadge";
 import { apiRequest, errorMessage } from "@/lib/api";
 import { workloadLabel } from "@/lib/format";
+import { msg, t, tn } from "@/lib/i18n";
 import { useStoredState } from "@/hooks/useStoredState";
 import type { ClusterInfo, PatchableResource } from "@/types/api";
 
 type PatchFilter = "all" | "unpatched" | "patched";
+
+const FILTER_LABELS: Record<PatchFilter, string> = { all: msg("All"), unpatched: msg("Unpatched"), patched: msg("Patched") };
 
 function deploymentStatus(res: PatchableResource): string {
     const d = res.deployment;
@@ -38,7 +41,7 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
             const lists: PatchableResource[][] = await Promise.all(requests);
             setResources(lists.flat());
         } catch (e) {
-            toast.error(`Failed to load Ingresses/Routes: ${errorMessage(e)}`);
+            toast.error(t("Failed to load Ingresses/Routes: {error}", { error: errorMessage(e) }));
         } finally {
             setLoading(false);
         }
@@ -57,10 +60,11 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
         try {
             await apiRequest(`${endpoint}?${new URLSearchParams({ namespace: res.namespace, name: res.name })}`, { method: "POST" });
             toast.success(res.patched
-                ? `Restored the original backend of ${res.namespace}/${res.name}`
-                : `${res.namespace}/${res.name} now goes through Smart Proxy`);
+                ? t("Restored the original backend of {name}", { name: `${res.namespace}/${res.name}` })
+                : t("{name} now goes through Smart Proxy", { name: `${res.namespace}/${res.name}` }));
         } catch (e) {
-            toast.error(`Failed to ${action} ${res.type} ${res.name}: ${errorMessage(e)}`);
+            const vars = { kind: res.type, name: res.name, error: errorMessage(e) };
+            toast.error(res.patched ? t("Failed to unpatch {kind} {name}: {error}", vars) : t("Failed to patch {kind} {name}: {error}", vars));
         } finally {
             setBusy(null);
             onChanged();
@@ -85,9 +89,9 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
     return (
         <div className="space-y-4">
             <div>
-                <h2 className="text-lg font-semibold text-white">Ingresses &amp; Routes</h2>
+                <h2 className="text-lg font-semibold text-white">{t("Ingresses & Routes")}</h2>
                 <p className="text-sm text-gray-400">
-                    Patch a resource to send its traffic through Smart Proxy: its deployment then sleeps when idle and wakes on the next request.
+                    {t("Patch a resource to send its traffic through Smart Proxy: its deployment then sleeps when idle and wakes on the next request.")}
                 </p>
             </div>
 
@@ -98,7 +102,7 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
                         type="search"
                         value={query}
                         onChange={e => setQuery(e.target.value)}
-                        placeholder="Search name, host, service…"
+                        placeholder={t("Search name, host, service…")}
                         className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     />
                 </div>
@@ -108,38 +112,38 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
                             value={activeNamespace}
                             onChange={e => setNamespace(e.target.value)}
                             className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                            aria-label="Namespace"
+                            aria-label={t("Namespace")}
                         >
-                            <option value="">All namespaces ({namespaces.length})</option>
+                            <option value="">{t("All namespaces ({n})", { n: namespaces.length })}</option>
                             {namespaces.map(ns => <option key={ns} value={ns}>{ns}</option>)}
                         </select>
                     )}
-                    <div className="flex bg-gray-800 border border-gray-700 rounded-lg p-0.5" role="group" aria-label="Patch filter">
+                    <div className="flex bg-gray-800 border border-gray-700 rounded-lg p-0.5" role="group" aria-label={t("Patch filter")}>
                         {(["all", "unpatched", "patched"] as PatchFilter[]).map(f => (
                             <button
                                 key={f}
                                 onClick={() => setFilter(f)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize transition-colors ${filter === f ? "bg-gray-600 text-white" : "text-gray-400 hover:text-white"}`}
+                                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${filter === f ? "bg-gray-600 text-white" : "text-gray-400 hover:text-white"}`}
                             >
-                                {f}
+                                {t(FILTER_LABELS[f])}
                             </button>
                         ))}
                     </div>
-                    <Button variant="ghost" size="icon" onClick={fetchResources} disabled={loading} title="Refresh" aria-label="Refresh">
+                    <Button variant="ghost" size="icon" onClick={fetchResources} disabled={loading} title={t("Refresh")} aria-label={t("Refresh")}>
                         <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                     </Button>
                 </div>
             </div>
 
             <div className="text-xs text-gray-500">
-                {resources.length} resource{resources.length === 1 ? "" : "s"} · {patchedCount} behind Smart Proxy
-                {!info?.routes_enabled && info?.connected && " · OpenShift Routes not available on this cluster"}
+                {tn(resources.length, "{n} resource", "{n} resources")} · {t("{n} behind Smart Proxy", { n: patchedCount })}
+                {!info?.routes_enabled && info?.connected && ` · ${t("OpenShift Routes not available on this cluster")}`}
             </div>
 
             <div className="bg-gray-800/60 border border-gray-700 rounded-xl overflow-hidden">
                 {visible.length === 0 ? (
                     <div className="py-12 text-center text-sm text-gray-500">
-                        {loading ? "Loading…" : resources.length === 0 ? "No Ingresses or Routes in the managed namespaces." : "Nothing matches these filters."}
+                        {loading ? t("Loading…") : resources.length === 0 ? t("No Ingresses or Routes in the managed namespaces.") : t("Nothing matches these filters.")}
                     </div>
                 ) : (
                     <ul className="divide-y divide-gray-700/70">
@@ -155,14 +159,14 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
                                             <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">{res.type}</span>
                                             {res.patched && (
                                                 <span className="shrink-0 inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-200">
-                                                    <CheckCircle2 size={11} /> via Smart Proxy
+                                                    <CheckCircle2 size={11} /> {t("via Smart Proxy")}
                                                 </span>
                                             )}
                                         </div>
                                         <div className="text-xs text-gray-400 truncate pl-6">
                                             <span className="font-mono">{res.namespace}</span>
                                             <span className="text-gray-600"> · </span>
-                                            <span title={res.host}>{res.host || "any host"}{res.path !== "/" ? res.path : ""}</span>
+                                            <span title={res.host}>{res.host || t("any host")}{res.path !== "/" ? res.path : ""}</span>
                                         </div>
                                     </div>
                                     <div className="min-w-0 text-sm pl-6 md:pl-0">
@@ -171,7 +175,7 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
                                         </div>
                                         <div className="flex items-center gap-1.5 text-xs text-gray-400">
                                             <StatusDot status={deploymentStatus(res)} />
-                                            {res.deployment ? <>{workloadLabel(res.deployment.name)} · {res.deployment.ready}/{res.deployment.replicas}</> : "workload not found"}
+                                            {res.deployment ? <>{workloadLabel(res.deployment.name)} · {res.deployment.ready}/{res.deployment.replicas}</> : t("workload not found")}
                                         </div>
                                     </div>
                                     <div className="flex justify-end pl-6 md:pl-0">
@@ -182,7 +186,7 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
                                             disabled={busy === key}
                                             className="gap-1.5 min-w-[7.5rem]"
                                         >
-                                            {res.patched ? <><Undo2 className="w-4 h-4" /> Unpatch</> : <><Shield className="w-4 h-4" /> Patch</>}
+                                            {res.patched ? <><Undo2 className="w-4 h-4" /> {t("Unpatch")}</> : <><Shield className="w-4 h-4" /> {t("Patch")}</>}
                                         </Button>
                                     </div>
                                 </li>

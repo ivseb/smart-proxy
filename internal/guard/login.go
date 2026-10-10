@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"smart-proxy/internal/i18n"
 	"smart-proxy/internal/store"
 )
 
@@ -53,6 +54,7 @@ func (g *Guard) ServeLogin(w http.ResponseWriter, r *http.Request, route store.R
 	}
 	sort.Strings(users)
 	data := loginPage{
+		L:       i18n.FromRequest(r),
 		Host:    strings.Split(r.Host, ":")[0],
 		Action:  basePath(route) + LoginPath,
 		Next:    safeNext(r.URL.Query().Get("next"), route),
@@ -134,13 +136,14 @@ func secure(r *http.Request) bool {
 }
 
 type loginPage struct {
-	Host, Action, Next, User, Error string
+	L                               i18n.Lang
+	Host, Action, Next, User, Error string // Error in English, translated when shown
 	AskName                         bool
 }
 
 var loginTmpl = template.Must(template.New("login").Parse(`<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex"><title>Sign in · {{.Host}}</title>
+<html lang="{{.L}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>{{.L.T "Sign in"}} · {{.Host}}</title>
 <style>
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;color:#e2e8f0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
 .card{width:100%;max-width:380px;margin:16px;padding:32px;background:#1e293b;border:1px solid #334155;border-radius:16px;box-shadow:0 20px 40px rgba(0,0,0,.35)}
@@ -152,14 +155,14 @@ button{width:100%;padding:11px;background:#3b82f6;color:#fff;border:0;border-rad
 button:hover{background:#2563eb}.err{color:#fecaca;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:14px}
 .foot{margin-top:20px;font-size:12px;color:#64748b;text-align:center}
 </style></head><body><main class="card">
-<h1>Sign in</h1><p class="host">to {{.Host}}</p>
-{{if .Error}}<div class="err" role="alert">{{.Error}}</div>{{end}}
+<h1>{{.L.T "Sign in"}}</h1><p class="host">{{.L.With "to {host}" "host" .Host}}</p>
+{{if .Error}}<div class="err" role="alert">{{.L.T .Error}}</div>{{end}}
 <form method="post" action="{{.Action}}">
 <input type="hidden" name="next" value="{{.Next}}">
-{{if .AskName}}<label for="user">Name</label><input id="user" name="user" value="{{.User}}" autocomplete="username" autofocus required>{{end}}
-<label for="password">Password</label><input id="password" type="password" name="password" autocomplete="current-password" {{if not .AskName}}autofocus{{end}} required>
-<button type="submit">Sign in</button></form>
-<p class="foot">Protected by Smart Proxy</p></main></body></html>`))
+{{if .AskName}}<label for="user">{{.L.T "Name"}}</label><input id="user" name="user" value="{{.User}}" autocomplete="username" autofocus required>{{end}}
+<label for="password">{{.L.T "Password"}}</label><input id="password" type="password" name="password" autocomplete="current-password" {{if not .AskName}}autofocus{{end}} required>
+<button type="submit">{{.L.T "Sign in"}}</button></form>
+<p class="foot">{{.L.T "Protected by Smart Proxy"}}</p></main></body></html>`))
 
 func renderLogin(w http.ResponseWriter, status int, data loginPage) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

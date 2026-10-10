@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity as ActivityIcon, Layers, LayoutDashboard, LogOut, ScrollText, Shield, User } from "lucide-react";
+import { Activity as ActivityIcon, Languages, Layers, LayoutDashboard, LogOut, ScrollText, Shield, User } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { usePolling } from "@/hooks/usePolling";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,6 +13,7 @@ import { RouteDetailView } from "@/components/views/RouteDetailView";
 import { StatsView } from "@/components/views/StatsView";
 import { Button } from "@/components/ui/Button";
 import { apiRequest, errorMessage } from "@/lib/api";
+import { LANGS, setLang, t, tn, useLang } from "@/lib/i18n";
 
 type Tab = "stats" | "routes" | "patching" | "logs";
 
@@ -28,6 +29,7 @@ function tabFromHash(): Tab | null {
 const query = (params: Record<string, string>) => new URLSearchParams(params).toString();
 
 export function Dashboard() {
+    const lang = useLang();
     const [storedTab, setActiveTab] = useStoredState<Tab>("dashboard.tab", "routes");
     const [hashTab, setHashTab] = useState<Tab | null>(tabFromHash);
     const activeTab = hashTab ?? storedTab;
@@ -76,17 +78,17 @@ export function Dashboard() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data),
-        }), "Route saved", "Failed to save route");
+        }), t("Route saved"), t("Failed to save route"));
 
     // Deleting a route restores every Ingress/Route patched for it (server-side).
     const requestDelete = (route: RouteStatus) => {
         if (route.declarative) {
-            toast.error("This route is defined by smart-proxy/* annotations on its Ingress/Route: set smart-proxy/enabled to \"false\" there to remove it.");
+            toast.error(t("This route is defined by smart-proxy/* annotations on its Ingress/Route: set smart-proxy/enabled to \"false\" there to remove it."));
             return;
         }
         if (route.resources.length > 0) {
             setRouteToDelete(route);
-        } else if (confirm(`Delete the route for ${route.host || route.deployment}?`)) {
+        } else if (confirm(t("Delete the route for {name}?", { name: route.host || route.deployment }))) {
             deleteRoute(route);
         }
     };
@@ -96,28 +98,28 @@ export function Dashboard() {
         const ok = await run(async () => {
             const res = await apiRequest(`/api/routes?${query({ id: route.id })}`, { method: "DELETE" });
             restored = ((await res.json()).restored || []).length;
-        }, null, "Failed to delete route");
+        }, null, t("Failed to delete route"));
         if (ok) {
-            toast.success(restored > 0 ? `Route deleted, ${restored} resource${restored === 1 ? "" : "s"} restored` : "Route deleted");
+            toast.success(restored > 0 ? tn(restored, "Route deleted, {n} resource restored", "Route deleted, {n} resources restored") : t("Route deleted"));
             setSelectedRouteId(null);
         }
         setRouteToDelete(null);
     };
 
     const stopRoute = async (route: RouteStatus) => {
-        if (!confirm(`Put ${route.namespace}/${route.deployment} to sleep now?`)) return;
+        if (!confirm(t("Put {name} to sleep now?", { name: `${route.namespace}/${route.deployment}` }))) return;
         await run(
             () => apiRequest(`/api/k8s/stop-deployment?${query({ namespace: route.namespace, deployment: route.deployment })}`, { method: "POST" }),
-            `${route.deployment} is going to sleep`,
-            `Failed to stop ${route.deployment}`,
+            t("{name} is going to sleep", { name: route.deployment }),
+            t("Failed to stop {name}", { name: route.deployment }),
         );
     };
 
     const wakeRoute = (route: RouteStatus) =>
         run(
             () => apiRequest(`/api/k8s/wake-deployment?${query({ namespace: route.namespace, deployment: route.deployment })}`, { method: "POST" }),
-            `Waking up ${route.deployment}`,
-            `Failed to wake ${route.deployment}`,
+            t("Waking up {name}", { name: route.deployment }),
+            t("Failed to wake {name}", { name: route.deployment }),
         );
 
     const openNewModal = () => {
@@ -154,26 +156,34 @@ export function Dashboard() {
                                 <p className="text-gray-400 text-xs sm:text-sm flex items-center gap-1.5 truncate" title={info.scope}>
                                     <Layers size={14} className="shrink-0" />
                                     {!info.connected
-                                        ? "Not connected to a cluster"
+                                        ? t("Not connected to a cluster")
                                         : info.all_namespaces
                                             ? `${info.scope} (${namespaceCount})`
-                                            : namespaceCount === 1 ? `Namespace ${info.namespaces[0]}` : `${namespaceCount} namespaces`}
+                                            : namespaceCount === 1 ? t("Namespace {name}", { name: info.namespaces[0] }) : t("{n} namespaces", { n: namespaceCount })}
                                 </p>
                             )}
                         </div>
                     </div>
 
                     <nav className="order-last w-full md:order-none md:w-auto flex gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700 overflow-x-auto">
-                        <TabButton active={activeTab === "stats" && !selectedRouteId} onClick={() => goTo("stats")} icon={<ActivityIcon size={18} />} label="Overview" />
-                        <TabButton active={activeTab === "routes" || !!selectedRouteId} onClick={() => goTo("routes")} icon={<LayoutDashboard size={18} />} label="Routes" />
-                        <TabButton active={activeTab === "patching" && !selectedRouteId} onClick={() => goTo("patching")} icon={<Shield size={18} />} label="Patching" />
-                        <TabButton active={activeTab === "logs" && !selectedRouteId} onClick={() => goTo("logs")} icon={<ScrollText size={18} />} label="Logs" />
+                        <TabButton active={activeTab === "stats" && !selectedRouteId} onClick={() => goTo("stats")} icon={<ActivityIcon size={18} />} label={t("Overview")} />
+                        <TabButton active={activeTab === "routes" || !!selectedRouteId} onClick={() => goTo("routes")} icon={<LayoutDashboard size={18} />} label={t("Routes")} />
+                        <TabButton active={activeTab === "patching" && !selectedRouteId} onClick={() => goTo("patching")} icon={<Shield size={18} />} label={t("Patching")} />
+                        <TabButton active={activeTab === "logs" && !selectedRouteId} onClick={() => goTo("logs")} icon={<ScrollText size={18} />} label={t("Logs")} />
                     </nav>
 
+                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <label className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:text-white hover:bg-white/5 transition-colors cursor-pointer" title={t("Language")}>
+                            <Languages size={16} />
+                            <select value={lang} onChange={e => setLang(e.target.value as typeof lang)} aria-label={t("Language")}
+                                className="bg-transparent text-sm focus:outline-none cursor-pointer">
+                                {LANGS.map(l => <option key={l.value} value={l.value} className="bg-gray-800">{l.label}</option>)}
+                            </select>
+                        </label>
                     {auth && auth.mode !== "none" && (
-                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <>
                             {auth.user && (
-                                <span className="flex items-center gap-1.5 max-w-[12rem] truncate" title={`Signed in (${auth.mode})`}>
+                                <span className="flex items-center gap-1.5 max-w-[12rem] truncate" title={t("Signed in ({mode})", { mode: auth.mode })}>
                                     <User size={16} className="shrink-0" />
                                     <span className="truncate">{auth.user}</span>
                                 </span>
@@ -181,11 +191,12 @@ export function Dashboard() {
                             {auth.logout_url && (
                                 <a href={auth.logout_url} className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:text-white hover:bg-white/5 transition-colors">
                                     <LogOut size={16} />
-                                    <span className="hidden sm:inline">Sign out</span>
+                                    <span className="hidden sm:inline">{t("Sign out")}</span>
                                 </a>
                             )}
-                        </div>
+                        </>
                     )}
+                    </div>
                 </header>
 
                 <main className="pt-6">
@@ -236,23 +247,25 @@ export function Dashboard() {
             {routeToDelete && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
                     <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-full max-w-md p-6">
-                        <h3 className="text-xl font-bold text-white mb-2">Delete route?</h3>
+                        <h3 className="text-xl font-bold text-white mb-2">{t("Delete route?")}</h3>
                         <p className="text-gray-400 mb-3 text-sm">
-                            These resources point at Smart Proxy for this route and get their original backend back:
+                            {t("These resources point at Smart Proxy for this route and get their original backend back:")}
                         </p>
                         <ul className="mb-6 space-y-1 text-sm">
                             {routeToDelete.resources.map(r => (
                                 <li key={`${r.kind}/${r.namespace}/${r.name}`} className="font-mono text-gray-200 truncate">
-                                    {r.kind} {r.namespace}/{r.name} <span className="text-gray-500">({r.host || "any host"})</span>
+                                    {r.kind} {r.namespace}/{r.name} <span className="text-gray-500">({r.host || t("any host")})</span>
                                 </li>
                             ))}
                         </ul>
                         <div className="flex flex-col gap-3">
                             <Button variant="danger" onClick={() => deleteRoute(routeToDelete)} className="w-full">
-                                Delete and restore {routeToDelete.resources.length === 1 ? routeToDelete.resources[0].kind : `${routeToDelete.resources.length} resources`}
+                                {routeToDelete.resources.length === 1
+                                    ? t("Delete and restore {kind}", { kind: routeToDelete.resources[0].kind })
+                                    : t("Delete and restore {n} resources", { n: routeToDelete.resources.length })}
                             </Button>
                             <Button variant="secondary" onClick={() => setRouteToDelete(null)} className="w-full">
-                                Cancel
+                                {t("Cancel")}
                             </Button>
                         </div>
                     </div>

@@ -6,14 +6,15 @@ import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
 import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 import { useStoredState } from "@/hooks/useStoredState";
+import { msg, t, tn } from "@/lib/i18n";
 
 type StatusFilter = "all" | "awake" | "asleep" | "issues";
 
 const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "awake", label: "Awake" },
-    { value: "asleep", label: "Asleep" },
-    { value: "issues", label: "Issues" },
+    { value: "all", label: msg("All") },
+    { value: "awake", label: msg("Awake") },
+    { value: "asleep", label: msg("Asleep") },
+    { value: "issues", label: msg("Issues") },
 ];
 
 function matchesStatus(route: RouteStatus, filter: StatusFilter): boolean {
@@ -98,7 +99,7 @@ export function RoutesView({ routes, stats, info, onNew, onEdit, onDelete, onSto
                         type="search"
                         value={query}
                         onChange={e => setQuery(e.target.value)}
-                        placeholder="Search host, deployment, service…"
+                        placeholder={t("Search host, deployment, service…")}
                         className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     />
                 </div>
@@ -108,40 +109,40 @@ export function RoutesView({ routes, stats, info, onNew, onEdit, onDelete, onSto
                             value={activeNamespace}
                             onChange={e => setNamespace(e.target.value)}
                             className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                            aria-label="Namespace"
+                            aria-label={t("Namespace")}
                         >
-                            <option value="">All namespaces ({namespaces.length})</option>
+                            <option value="">{t("All namespaces ({n})", { n: namespaces.length })}</option>
                             {namespaces.map(ns => <option key={ns} value={ns}>{ns}</option>)}
                         </select>
                     )}
-                    <div className="flex bg-gray-800 border border-gray-700 rounded-lg p-0.5" role="group" aria-label="Status filter">
+                    <div className="flex bg-gray-800 border border-gray-700 rounded-lg p-0.5" role="group" aria-label={t("Status filter")}>
                         {STATUS_FILTERS.map(f => (
                             <button
                                 key={f.value}
                                 onClick={() => setStatusFilter(f.value)}
                                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${statusFilter === f.value ? "bg-gray-600 text-white" : "text-gray-400 hover:text-white"}`}
                             >
-                                {f.label}
+                                {t(f.label)}
                             </button>
                         ))}
                     </div>
                     <Button onClick={onNew} size="md" className="gap-1.5">
                         <Plus size={16} />
-                        New route
+                        {t("New route")}
                     </Button>
                 </div>
             </div>
 
             <div className="text-xs text-gray-500">
-                {routes.length} route{routes.length === 1 ? "" : "s"} · {awake} awake · {asleep} asleep
-                {filtered.length !== routes.length && <> · showing {filtered.length}</>}
+                {tn(routes.length, "{n} route", "{n} routes")} · {t("{n} awake", { n: awake })} · {t("{n} asleep", { n: asleep })}
+                {filtered.length !== routes.length && <> · {t("showing {n}", { n: filtered.length })}</>}
             </div>
 
             {routes.length === 0 ? (
                 <EmptyState onNew={onNew} />
             ) : filtered.length === 0 ? (
                 <div className="py-12 text-center text-sm text-gray-500 border border-dashed border-gray-700 rounded-xl">
-                    No routes match these filters.
+                    {t("No routes match these filters.")}
                 </div>
             ) : (
                 <div className="space-y-4">
@@ -161,7 +162,7 @@ export function RoutesView({ routes, stats, info, onNew, onEdit, onDelete, onSto
                                             <span className="font-mono text-sm">{ns}</span>
                                         </span>
                                         <span className="text-xs text-gray-400">
-                                            {items.length} route{items.length === 1 ? "" : "s"} · {groupAwake} awake
+                                            {tn(items.length, "{n} route", "{n} routes")} · {t("{n} awake", { n: groupAwake })}
                                         </span>
                                     </button>
                                 )}
@@ -219,7 +220,7 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                 <div className="flex items-center gap-2 min-w-0">
                     <StatusDot status={route.status} />
                     <span className="font-medium text-white truncate" title={hosts.join(", ")}>
-                        {hosts[0] || <span className="italic text-gray-500">any host</span>}
+                        {hosts[0] || <span className="italic text-gray-500">{t("any host")}</span>}
                     </span>
                     {route.path && route.path !== "/" && <span className="font-mono text-sm text-blue-300 truncate">{route.path}</span>}
                     {hosts.length > 1 && (
@@ -232,12 +233,12 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                     <SourceChip route={route} />
                     {route.resources.length > 1 && (
                         <span className="shrink-0 text-gray-500" title={route.resources.map(r => `${r.kind} ${r.namespace}/${r.name}`).join("\n")}>
-                            +{route.resources.length - 1} more
+                            {t("+{n} more", { n: route.resources.length - 1 })}
                         </span>
                     )}
                     {route.declarative && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-200 shrink-0" title="Configured by smart-proxy/* annotations on the resource (e.g. from Git)">
-                            <FileCode2 size={11} /> annotations
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-900/30 text-purple-200 shrink-0" title={t("Configured by smart-proxy/* annotations on the resource (e.g. from Git)")}>
+                            <FileCode2 size={11} /> {t("annotations")}
                         </span>
                     )}
                     {showNamespace && <span className="font-mono truncate">{route.namespace}</span>}
@@ -254,10 +255,10 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
                         {route.backend_status.map(b => (
                             <span key={b.service} className="inline-flex items-center gap-1.5"
-                                title={`${b.service}: weight ${b.weight}${b.managed ? "" : ", not managed by Smart Proxy"} — ${b.status}`}>
+                                title={`${b.managed ? t("{service}: weight {weight}", { service: b.service, weight: b.weight }) : t("{service}: weight {weight}, not managed by Smart Proxy", { service: b.service, weight: b.weight })} — ${b.status}`}>
                                 <StatusDot status={b.status} />
-                                {b.service} <span className="text-gray-500 tabular-nums">{b.weight > 0 ? `${Math.round(b.share)}%` : (b.when?.length || 0) > 0 ? "on condition" : "0%"}</span>
-                                {!b.managed && <span className="text-gray-500">· not managed</span>}
+                                {b.service} <span className="text-gray-500 tabular-nums">{b.weight > 0 ? `${Math.round(b.share)}%` : (b.when?.length || 0) > 0 ? t("on condition") : "0%"}</span>
+                                {!b.managed && <span className="text-gray-500">· {t("not managed")}</span>}
                             </span>
                         ))}
                     </div>
@@ -265,7 +266,7 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                 {deps.length > 0 && (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-400">
                         {deps.map(dep => (
-                            <span key={dep.name} className="inline-flex items-center gap-1.5" title={`${dep.name}: ${route.dependency_status?.[dep.name] || "Unknown"}`}>
+                            <span key={dep.name} className="inline-flex items-center gap-1.5" title={`${dep.name}: ${route.dependency_status?.[dep.name] || t("Unknown")}`}>
                                 <StatusDot status={route.dependency_status?.[dep.name] || "Unknown"} />
                                 {workloadLabel(dep.name)}
                             </span>
@@ -284,33 +285,33 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                 </div>
                 <div className="text-gray-500">
                     {route.always_on ? (
-                        <span className="inline-flex items-center gap-1"><Pin size={12} /> Always on</span>
+                        <span className="inline-flex items-center gap-1"><Pin size={12} /> {t("Always on")}</span>
                     ) : route.schedule_active && route.schedule ? (
-                        <span className="inline-flex items-center gap-1" title="Kept awake by its schedule">
-                            <CalendarClock size={12} /> Scheduled until {route.schedule.to}
+                        <span className="inline-flex items-center gap-1" title={t("Kept awake by its schedule")}>
+                            <CalendarClock size={12} /> {t("Scheduled until {time}", { time: route.schedule.to })}
                         </span>
                     ) : !route.source ? (
-                        <span>Not managed by idle timer</span>
+                        <span>{t("Not managed by idle timer")}</span>
                     ) : route.sleeps_at ? (
-                        <span title={`Idle timeout ${formatDuration(route.effective_idle_timeout)}`}>
-                            Sleeps {formatRelative(route.sleeps_at, now)}
+                        <span title={t("Idle timeout {duration}", { duration: formatDuration(route.effective_idle_timeout) })}>
+                            {t("Sleeps {time}", { time: formatRelative(route.sleeps_at, now) })}
                         </span>
                     ) : (
-                        <span>Wakes on next request</span>
+                        <span>{t("Wakes on next request")}</span>
                     )}
-                    <span className="text-gray-600"> · {requests} req</span>
+                    <span className="text-gray-600"> · {t("{n} req", { n: requests })}</span>
                     {route.protection?.enabled && (
-                        <span className="inline-flex items-center gap-1 ml-2 text-green-400/80" title="Requires sign-in or an access token">
-                            <Lock size={11} /> protected
+                        <span className="inline-flex items-center gap-1 ml-2 text-green-400/80" title={t("Requires sign-in or an access token")}>
+                            <Lock size={11} /> {t("protected")}
                         </span>
                     )}
                     {route.inspect_until && new Date(route.inspect_until).getTime() > now && (
-                        <span className="inline-flex items-center gap-1 ml-2 text-red-300" title="Requests are being recorded">
-                            <Circle size={8} className="fill-red-500 text-red-500" /> recording
+                        <span className="inline-flex items-center gap-1 ml-2 text-red-300" title={t("Requests are being recorded")}>
+                            <Circle size={8} className="fill-red-500 text-red-500" /> {t("recording")}
                         </span>
                     )}
                     {route.schedule && !route.schedule_active && (
-                        <div className="inline-flex items-center gap-1 text-gray-500" title={`Kept awake ${formatSchedule(route.schedule)}${route.schedule.timezone ? ` (${route.schedule.timezone})` : ""}`}>
+                        <div className="inline-flex items-center gap-1 text-gray-500" title={`${t("Kept awake {schedule}", { schedule: formatSchedule(route.schedule) })}${route.schedule.timezone ? ` (${route.schedule.timezone})` : ""}`}>
                             <CalendarClock size={12} /> {formatSchedule(route.schedule)}
                         </div>
                     )}
@@ -320,18 +321,18 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
             {/* Actions */}
             <div className="flex items-center justify-end gap-1 pl-4 md:pl-0" onClick={e => e.stopPropagation()}>
                 {asleep ? (
-                    <Button variant="ghost" size="icon" onClick={onWake} title="Wake now" aria-label="Wake now">
+                    <Button variant="ghost" size="icon" onClick={onWake} title={t("Wake now")} aria-label={t("Wake now")}>
                         <Power className="w-4 h-4 text-green-400" />
                     </Button>
                 ) : (
-                    <Button variant="ghost" size="icon" onClick={onStop} title="Put to sleep now" aria-label="Put to sleep now">
+                    <Button variant="ghost" size="icon" onClick={onStop} title={t("Put to sleep now")} aria-label={t("Put to sleep now")}>
                         <Octagon className="w-4 h-4 text-orange-400" />
                     </Button>
                 )}
-                <Button variant="ghost" size="icon" onClick={onEdit} title="Edit" aria-label="Edit">
+                <Button variant="ghost" size="icon" onClick={onEdit} title={t("Edit")} aria-label={t("Edit")}>
                     <Edit2 className="w-4 h-4 text-blue-400" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={onDelete} title="Delete" aria-label="Delete">
+                <Button variant="ghost" size="icon" onClick={onDelete} title={t("Delete")} aria-label={t("Delete")}>
                     <Trash2 className="w-4 h-4 text-gray-400" />
                 </Button>
             </div>
@@ -342,8 +343,8 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
 function SourceChip({ route }: { route: RouteStatus }) {
     if (!route.source) {
         return (
-            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-700/60 text-gray-300" title="Configured manually; traffic must be routed to Smart Proxy by you">
-                <Hand size={11} /> Manual
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-700/60 text-gray-300" title={t("Configured manually; traffic must be routed to Smart Proxy by you")}>
+                <Hand size={11} /> {t("Manual")}
             </span>
         );
     }
@@ -357,13 +358,15 @@ function SourceChip({ route }: { route: RouteStatus }) {
 }
 
 function EmptyState({ onNew }: { onNew: () => void }) {
+    // The tab name is highlighted: the sentence is translated whole, then split around it.
+    const [before, after = ""] = t("Patch an Ingress or Route from the {tab} tab, or create a route manually.").split("{tab}");
     return (
         <div className="py-16 text-center border border-dashed border-gray-700 rounded-xl space-y-3">
-            <p className="text-gray-300 font-medium">No routes yet</p>
+            <p className="text-gray-300 font-medium">{t("No routes yet")}</p>
             <p className="text-sm text-gray-500 max-w-md mx-auto">
-                Patch an Ingress or Route from the <span className="text-gray-300">Patching</span> tab, or create a route manually.
+                {before}<span className="text-gray-300">{t("Patching")}</span>{after}
             </p>
-            <Button onClick={onNew} className="gap-1.5"><Plus size={16} /> New route</Button>
+            <Button onClick={onNew} className="gap-1.5"><Plus size={16} /> {t("New route")}</Button>
         </div>
     );
 }

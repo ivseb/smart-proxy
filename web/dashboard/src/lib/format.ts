@@ -1,3 +1,5 @@
+import { msg, t } from "@/lib/i18n";
+
 const NS_PER_SECOND = 1_000_000_000;
 
 // formatDuration renders a Go duration (nanoseconds) compactly: "45s", "30m", "1h30m".
@@ -27,24 +29,24 @@ export function parseDuration(text: string): number | null {
 export function formatRelative(iso: string, now: number): string {
     const diff = new Date(iso).getTime() - now;
     const abs = Math.abs(diff);
-    if (abs < 30_000) return "now";
+    if (abs < 30_000) return t("now");
     const text = formatDuration(abs * 1_000_000);
-    return diff > 0 ? `in ${text}` : `${text} ago`;
+    return diff > 0 ? t("in {time}", { time: text }) : t("{time} ago", { time: text });
 }
 
 const DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-const DAY_LABEL: Record<string, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+const DAY_LABEL: Record<string, string> = { mon: msg("Mon"), tue: msg("Tue"), wed: msg("Wed"), thu: msg("Thu"), fri: msg("Fri"), sat: msg("Sat"), sun: msg("Sun") };
 
 // formatSchedule renders a schedule compactly, e.g. "Mon–Fri 08:00–19:00".
 export function formatSchedule(s: { days?: string[]; from: string; to: string }): string {
     const days = (s.days || []).map(d => d.toLowerCase()).sort((a, b) => DAY_ORDER.indexOf(a) - DAY_ORDER.indexOf(b));
-    let label = "Every day";
+    let label = t("Every day");
     if (days.length > 0 && days.length < 7) {
         const idx = days.map(d => DAY_ORDER.indexOf(d));
         const contiguous = idx.every((v, i) => i === 0 || v === idx[i - 1] + 1);
         label = contiguous && days.length > 2
-            ? `${DAY_LABEL[days[0]]}–${DAY_LABEL[days[days.length - 1]]}`
-            : days.map(d => DAY_LABEL[d]).join(", ");
+            ? `${t(DAY_LABEL[days[0]])}–${t(DAY_LABEL[days[days.length - 1]])}`
+            : days.map(d => t(DAY_LABEL[d])).join(", ");
     }
     return `${label} ${s.from}–${s.to}`;
 }

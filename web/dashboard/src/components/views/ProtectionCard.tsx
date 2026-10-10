@@ -7,6 +7,7 @@ import { apiRequest, errorMessage } from "@/lib/api";
 import { copyText } from "@/lib/clipboard";
 import { formatRelative, splitHosts } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
+import { t } from "@/lib/i18n";
 import type { Credential, Protection, RouteConfig, RouteStatus } from "@/types/api";
 
 const inputClass = "bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder:text-gray-500 focus:ring-2 focus:ring-blue-500 outline-none";
@@ -44,22 +45,22 @@ export function ProtectionCard({ route, onSave, onChanged }: ProtectionCardProps
             <div className="space-y-1">
                 <CardTitle className="flex items-center gap-2">
                     {enabled ? <Lock size={18} className="text-green-400" /> : <LockOpen size={18} className="text-gray-400" />}
-                    Access
+                    {t("Access")}
                 </CardTitle>
                 <p className="text-sm text-gray-400">
                     {enabled
-                        ? "Only people who sign in, and scripts with an access token, reach the application. Others never wake it."
-                        : "Anyone who reaches this route can use the application."}
+                        ? t("Only people who sign in, and scripts with an access token, reach the application. Others never wake it.")
+                        : t("Anyone who reaches this route can use the application.")}
                 </p>
             </div>
             {enabled ? (
                 <Button variant="secondary" size="sm" className="gap-1.5 shrink-0"
-                    onClick={() => confirm("Make the application reachable without signing in again?") && save({ ...protection, enabled: false })}>
-                    <LockOpen size={14} /> Turn off
+                    onClick={() => confirm(t("Make the application reachable without signing in again?")) && save({ ...protection, enabled: false })}>
+                    <LockOpen size={14} /> {t("Turn off")}
                 </Button>
             ) : !setup && (
                 <Button size="sm" className="gap-1.5 shrink-0" onClick={() => setSetup(true)} disabled={!route.protection_available}>
-                    <Lock size={14} /> Require sign-in
+                    <Lock size={14} /> {t("Require sign-in")}
                 </Button>
             )}
         </CardHeader>
@@ -71,7 +72,7 @@ export function ProtectionCard({ route, onSave, onChanged }: ProtectionCardProps
                 {header}
                 <CardContent>
                     <p className="text-sm text-orange-300 bg-orange-400/10 border border-orange-400/20 rounded-lg px-3 py-2">
-                        Unavailable: Smart Proxy can't use its Secret ({"<release>"}-state) in its namespace. Check its permissions (the Helm chart grants them).
+                        {t("Unavailable: Smart Proxy can't use its Secret (<release>-state) in its namespace. Check its permissions (the Helm chart grants them).")}
                     </p>
                 </CardContent>
             </Card>
@@ -88,7 +89,7 @@ export function ProtectionCard({ route, onSave, onChanged }: ProtectionCardProps
             <CardContent className="space-y-6">
                 {!enabled && (
                     <p className="text-sm text-blue-100 bg-blue-900/20 border border-blue-800 rounded-lg px-3 py-2">
-                        Add who can sign in and, for scripts, access tokens. Then turn protection on.
+                        {t("Add who can sign in and, for scripts, access tokens. Then turn protection on.")}
                     </p>
                 )}
 
@@ -99,18 +100,17 @@ export function ProtectionCard({ route, onSave, onChanged }: ProtectionCardProps
                 <div className="flex items-start gap-2 text-xs text-yellow-200/90 bg-yellow-400/5 border border-yellow-400/20 rounded-lg px-3 py-2">
                     <AlertTriangle size={14} className="shrink-0 mt-0.5" />
                     <span>
-                        Only traffic going through Smart Proxy is protected. If the route is unpatched or Smart Proxy is uninstalled,
-                        the application is public again; inside the cluster its Service stays reachable (use a NetworkPolicy for that).
+                        {t("Only traffic going through Smart Proxy is protected. If the route is unpatched or Smart Proxy is uninstalled, the application is public again; inside the cluster its Service stays reachable (use a NetworkPolicy for that).")}
                     </span>
                 </div>
 
                 {!enabled && (
                     <div className="flex justify-end gap-2">
-                        <Button variant="ghost" onClick={() => setSetup(false)}>Cancel</Button>
+                        <Button variant="ghost" onClick={() => setSetup(false)}>{t("Cancel")}</Button>
                         <Button className="gap-1.5" disabled={users.length + tokens.length === 0}
-                            title={users.length + tokens.length === 0 ? "Add a user or a token first" : undefined}
+                            title={users.length + tokens.length === 0 ? t("Add a user or a token first") : undefined}
                             onClick={async () => { if (await save({ ...protection, enabled: true })) setSetup(false); }}>
-                            <Lock size={14} /> Turn protection on
+                            <Lock size={14} /> {t("Turn protection on")}
                         </Button>
                     </div>
                 )}
@@ -147,7 +147,7 @@ function UsersSection({ route, users, loginURL, onChanged }: { route: RouteStatu
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ id: route.id, name: name.trim(), password }),
             });
-            toast.success(`${name.trim()} can sign in`);
+            toast.success(t("{name} can sign in", { name: name.trim() }));
             setName(""); setPassword("");
             onChanged();
         } catch (e) {
@@ -157,7 +157,7 @@ function UsersSection({ route, users, loginURL, onChanged }: { route: RouteStatu
         }
     };
     const remove = async (user: string) => {
-        if (!confirm(`Remove ${user}? They are signed out at once.`)) return;
+        if (!confirm(t("Remove {name}? They are signed out at once.", { name: user }))) return;
         try {
             await apiRequest(`/api/routes/protection/users?${new URLSearchParams({ id: route.id, name: user })}`, { method: "DELETE" });
             onChanged();
@@ -168,30 +168,30 @@ function UsersSection({ route, users, loginURL, onChanged }: { route: RouteStatu
 
     return (
         <section className="space-y-2">
-            <h3 className="text-sm font-medium text-gray-200">People (browsers)</h3>
+            <h3 className="text-sm font-medium text-gray-200">{t("People (browsers)")}</h3>
             <p className="text-xs text-gray-500">
-                They sign in on a page served by Smart Proxy, on the application's own address
-                {loginURL && <> (<span className="font-mono break-all">{loginURL}</span>)</>}. With a single person, the page only asks for the
-                password: use it as a shared password for your team.
+                {t("They sign in on a page served by Smart Proxy, on the application's own address")}
+                {loginURL && <> (<span className="font-mono break-all">{loginURL}</span>)</>}.{" "}
+                {t("With a single person, the page only asks for the password: use it as a shared password for your team.")}
             </p>
             {users.length > 0 && (
                 <ul className="divide-y divide-gray-700/70">
                     {users.map(u => (
                         <CredentialRow key={u.name} icon={<UserRound size={14} className="text-gray-400" />} title={u.name}
-                            detail={`added ${formatRelative(u.created, now)}`} removeLabel="Remove" onRemove={() => remove(u.name)} />
+                            detail={t("added {time}", { time: formatRelative(u.created, now) })} removeLabel={t("Remove")} onRemove={() => remove(u.name)} />
                     ))}
                 </ul>
             )}
             <div className="flex flex-wrap items-center gap-2">
-                <input className={`${inputClass} w-full sm:w-40`} placeholder="Name" value={name} onChange={e => setName(e.target.value)} aria-label="Name" />
+                <input className={`${inputClass} w-full sm:w-40`} placeholder={t("Name")} value={name} onChange={e => setName(e.target.value)} aria-label={t("Name")} />
                 <div className="flex items-center gap-1 w-full sm:w-auto">
-                    <input className={`${inputClass} flex-1 min-w-0 sm:w-60 sm:flex-none font-mono`} placeholder="Password (8+ characters)" value={password}
-                        onChange={e => setPassword(e.target.value)} aria-label="Password" autoComplete="new-password" />
-                    <Button variant="ghost" size="sm" onClick={() => setPassword(generatePassword())} title="Generate a strong password">Generate</Button>
-                    {password && <Button variant="ghost" size="icon" onClick={() => copyText(password)} aria-label="Copy password"><Copy size={14} /></Button>}
+                    <input className={`${inputClass} flex-1 min-w-0 sm:w-60 sm:flex-none font-mono`} placeholder={t("Password (8+ characters)")} value={password}
+                        onChange={e => setPassword(e.target.value)} aria-label={t("Password")} autoComplete="new-password" />
+                    <Button variant="ghost" size="sm" onClick={() => setPassword(generatePassword())} title={t("Generate a strong password")}>{t("Generate")}</Button>
+                    {password && <Button variant="ghost" size="icon" onClick={() => copyText(password)} aria-label={t("Copy password")}><Copy size={14} /></Button>}
                 </div>
                 <Button size="sm" className="gap-1.5" onClick={add} disabled={busy || !name.trim() || password.length < 8}>
-                    <Plus size={14} /> {users.some(u => u.name === name.trim()) ? "Change password" : "Add"}
+                    <Plus size={14} /> {users.some(u => u.name === name.trim()) ? t("Change password") : t("Add")}
                 </Button>
             </div>
         </section>
@@ -221,7 +221,7 @@ function TokensSection({ route, tokens, onChanged }: { route: RouteStatus; token
         }
     };
     const revoke = async (token: string) => {
-        if (!confirm(`Revoke the token ${token}? Scripts using it are refused at once.`)) return;
+        if (!confirm(t("Revoke the token {name}? Scripts using it are refused at once.", { name: token }))) return;
         try {
             await apiRequest(`/api/routes/protection/tokens?${new URLSearchParams({ id: route.id, name: token })}`, { method: "DELETE" });
             onChanged();
@@ -232,35 +232,35 @@ function TokensSection({ route, tokens, onChanged }: { route: RouteStatus; token
 
     return (
         <section className="space-y-2">
-            <h3 className="text-sm font-medium text-gray-200">Access tokens (scripts, other services)</h3>
+            <h3 className="text-sm font-medium text-gray-200">{t("Access tokens (scripts, other services)")}</h3>
             <p className="text-xs text-gray-500">
-                Sent as <span className="font-mono break-all">Authorization: Bearer &lt;token&gt;</span>, or <span className="font-mono break-all">X-Api-Key: &lt;token&gt;</span> if
-                the application uses Authorization itself. The application receives the caller in <span className="font-mono">X-Smart-Proxy-User</span>.
+                {t("Sent as")} <span className="font-mono break-all">Authorization: Bearer &lt;token&gt;</span>, {t("or")} <span className="font-mono break-all">X-Api-Key: &lt;token&gt;</span>{" "}
+                {t("if the application uses Authorization itself.")} {t("The application receives the caller in")} <span className="font-mono">X-Smart-Proxy-User</span>.
             </p>
             {created && (
                 <div className="bg-green-900/20 border border-green-800 rounded-lg px-3 py-2 space-y-1">
                     <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm text-green-200">Token <span className="font-medium">{created.name}</span>: copy it now, it won't be shown again.</p>
-                        <Button variant="ghost" size="icon" onClick={() => setCreated(null)} aria-label="Dismiss"><X size={14} /></Button>
+                        <p className="text-sm text-green-200">{t("Token")} <span className="font-medium">{created.name}</span>: {t("copy it now, it won't be shown again.")}</p>
+                        <Button variant="ghost" size="icon" onClick={() => setCreated(null)} aria-label={t("Dismiss")}><X size={14} /></Button>
                     </div>
                     <div className="flex items-center gap-2">
                         <code className="font-mono text-sm text-white break-all">{created.token}</code>
-                        <Button variant="secondary" size="sm" className="gap-1 shrink-0" onClick={() => copyText(created.token)}><Copy size={12} /> Copy</Button>
+                        <Button variant="secondary" size="sm" className="gap-1 shrink-0" onClick={() => copyText(created.token)}><Copy size={12} /> {t("Copy")}</Button>
                     </div>
                 </div>
             )}
             {tokens.length > 0 && (
                 <ul className="divide-y divide-gray-700/70">
-                    {tokens.map(t => (
-                        <CredentialRow key={t.name} icon={<KeyRound size={14} className="text-gray-400" />} title={t.name}
-                            detail={`…${t.hint} · created ${formatRelative(t.created, now)}`} removeLabel="Revoke" onRemove={() => revoke(t.name)} />
+                    {tokens.map(tok => (
+                        <CredentialRow key={tok.name} icon={<KeyRound size={14} className="text-gray-400" />} title={tok.name}
+                            detail={`…${tok.hint} · ${t("created {time}", { time: formatRelative(tok.created, now) })}`} removeLabel={t("Revoke")} onRemove={() => revoke(tok.name)} />
                     ))}
                 </ul>
             )}
             <div className="flex flex-wrap items-center gap-2">
-                <input className={`${inputClass} w-full sm:w-56`} placeholder="Who uses it, e.g. jenkins" value={name} onChange={e => setName(e.target.value)} aria-label="Token name" />
-                <Button size="sm" variant="secondary" className="gap-1.5" onClick={create} disabled={busy || !name.trim() || tokens.some(t => t.name === name.trim())}>
-                    <Plus size={14} /> New token
+                <input className={`${inputClass} w-full sm:w-56`} placeholder={t("Who uses it, e.g. jenkins")} value={name} onChange={e => setName(e.target.value)} aria-label={t("Token name")} />
+                <Button size="sm" variant="secondary" className="gap-1.5" onClick={create} disabled={busy || !name.trim() || tokens.some(tok => tok.name === name.trim())}>
+                    <Plus size={14} /> {t("New token")}
                 </Button>
             </div>
         </section>
@@ -276,25 +276,25 @@ function OpenPaths({ protection, onSave }: { protection: Protection; onSave: (p:
     };
     return (
         <section className="space-y-2">
-            <h3 className="text-sm font-medium text-gray-200">Reachable without signing in</h3>
+            <h3 className="text-sm font-medium text-gray-200">{t("Reachable without signing in")}</h3>
             <p className="text-xs text-gray-500">
-                Paths others must reach directly: an identity provider's callback (e.g. <span className="font-mono">/saml/acs</span>), webhooks,
-                health checks. End with <span className="font-mono">*</span> for everything under a path.
+                {t("Paths others must reach directly: webhooks, callbacks from other services, health checks.")}{" "}
+                {t("End with")} <span className="font-mono">*</span> {t("for everything under a path.")}
             </p>
             {open.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                     {open.map(p => (
                         <span key={p} className="flex items-center gap-1 font-mono text-xs px-2 py-1 rounded bg-gray-700 text-gray-200">
                             {p}
-                            <button onClick={() => onSave({ ...protection, open: open.filter(x => x !== p) })} aria-label={`Remove ${p}`} className="text-gray-400 hover:text-white"><X size={12} /></button>
+                            <button onClick={() => onSave({ ...protection, open: open.filter(x => x !== p) })} aria-label={t("Remove {name}", { name: p })} className="text-gray-400 hover:text-white"><X size={12} /></button>
                         </span>
                     ))}
                 </div>
             )}
             <div className="flex items-center gap-2">
-                <input className={`${inputClass} flex-1 min-w-0 sm:flex-none sm:w-56 font-mono`} placeholder="/saml/acs" value={path} onChange={e => setPath(e.target.value)} aria-label="Open path"
+                <input className={`${inputClass} flex-1 min-w-0 sm:flex-none sm:w-56 font-mono`} placeholder="/webhooks/*" value={path} onChange={e => setPath(e.target.value)} aria-label={t("Open path")}
                     onKeyDown={e => { if (e.key === "Enter" && valid) add(); }} />
-                <Button size="sm" variant="secondary" className="gap-1.5" onClick={add} disabled={!valid}><Plus size={14} /> Add</Button>
+                <Button size="sm" variant="secondary" className="gap-1.5" onClick={add} disabled={!valid}><Plus size={14} /> {t("Add")}</Button>
             </div>
         </section>
     );

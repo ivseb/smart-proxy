@@ -30,7 +30,6 @@ COPY --from=backend-builder /app/smart-proxy .
 # Copy built frontend assets to the static directory
 # We create /app/web/static and copy contents of dist there
 COPY --from=frontend-builder /app/web/dashboard/dist ./web/static
-COPY --from=backend-builder /app/web/templates ./web/templates
 
 # Expose ports
 EXPOSE 8080 8081

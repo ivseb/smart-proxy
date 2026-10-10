@@ -33,7 +33,7 @@ Idle environments burn money. Preview, dev, staging and demo namespaces sit runn
 | 🔗 **Dependency chains** | Keep `app → api → db` awake together, optionally starting them in order, and let them sleep together. |
 | 🩺 **Monitor-aware** | Uptime monitors and health checks never keep apps awake or wake them; they get a 200 while apps sleep. See who keeps an app awake and ignore it in one click. |
 | 🔍 **Requests inspector** | Record what reaches a route for a few minutes: headers (credentials masked), cookies, and what Smart Proxy did with each request. |
-| 🧪 **Try a new version with some users** | Send requests matching a condition (a header, cookie, path, client IP…) to another backend and keep those users there — e.g. a new SAML identity provider in production. |
+| 🧪 **Try a new version with some users** | Send requests matching a condition (a header, cookie, path, client IP…) to another backend and keep those users there — e.g. the beta of your mobile app on the next version of the API. |
 | 🔒 **Built-in sign-in** | Put any app behind a sign-in page or access tokens, without an identity provider and without touching the app. |
 | 🗓️ **Schedules** | Keep apps awake during office hours (any timezone) and let them sleep the rest of the time. |
 | 📈 **Prometheus metrics** | Cold-start durations, wake-ups, sleeping deployments and replica-hours saved. |
@@ -54,17 +54,19 @@ Patch Ingresses and Routes in one click, across namespaces:
 
 <img src="media/dashboard-patching.png" alt="Patching view listing Ingresses across namespaces, with their Service and Deployment state" width="820"/>
 
+The dashboard, the "waking up" page and the sign-in page speak **English and Italian**, following the browser's language (the dashboard has a switch in its header).
+
 ## 🧰 More than sleeping
 
 Three optional tools on each route's page — routes that don't use them work as before. [Read more →](docs/routes.md)
 
 **See what arrives.** Record a route's requests for a few minutes: who sends them, their headers (credentials masked), and what Smart Proxy did with each — answered by the app, woke it first, showed the waking page, which backend got it and why.
 
-<img src="media/route-requests.png" alt="Requests recorded for a route, one expanded with its headers, showing a SAML response sent to another backend" width="820"/>
+<img src="media/route-requests.png" alt="Requests recorded for a route, one expanded with its headers, showing a request of the app's beta sent to the next version" width="820"/>
 
-**Try a new version with some users.** Give a route a second backend and the conditions that send requests to it — here, responses from a new identity provider, recognized by their `Origin`. Those users stay on the new version for the rest of their session; everyone else keeps the current one. **Route like this…** on a recorded request turns one of its headers into a condition.
+**Try a new version with some users.** Give a route a second backend and the conditions that send requests to it — here, the beta of the mobile app, recognized by its `X-App-Version` header. Those users stay on the new version for the rest of their session; everyone else keeps the current one. **Route like this…** on a recorded request turns one of its headers into a condition.
 
-<img src="media/route-backends.png" alt="A route's backends: the current portal takes all traffic, the new one only requests whose Origin is the new identity provider" width="820"/>
+<img src="media/route-backends.png" alt="A route's backends: the current version takes all traffic, the next one only the mobile app's beta and the testers" width="820"/>
 
 **Require sign-in or a token.** Put an application behind a sign-in page served on its own address (a shared password, or named people) and access tokens for scripts — no identity provider needed. The application gets the caller in `X-Smart-Proxy-User`; strangers never wake it.
 
@@ -79,6 +81,10 @@ Three optional tools on each route's page — routes that don't use them work as
 2. **Serve** → incoming traffic hits Smart Proxy, which checks the target's state.
 3. **Wake** → if the deployment is asleep, it scales it up: browsers see a "waking up" page until it's ready, API calls and WebSockets simply wait for it.
 4. **Sleep** → after an idle timeout with no traffic, it scales the deployment back to zero.
+
+<p align="center">
+  <img src="media/waking-page.png" alt="The waking up page a browser sees while a sleeping application starts" width="420"/>
+</p>
 
 See the [Architecture overview](docs/architecture.md) for the details.
 
@@ -121,7 +127,7 @@ Then open the dashboard at [http://admin.local](http://admin.local) *(add `127.0
 - [Configuration Reference](docs/configuration.md) — environment variables and annotations
 - [Upgrading](docs/upgrading.md) — what changes from one version to the next
 - [Changelog](CHANGELOG.md)
-- [Inspect, route, protect](docs/routes.md) — record what reaches a route, send some requests to another backend (e.g. a new identity provider), require sign-in or an access token
+- [Inspect, route, protect](docs/routes.md) — record what reaches a route, send some requests to another backend (e.g. a beta), require sign-in or an access token
 - [GitOps](docs/gitops.md) — configure routes with annotations; Argo CD and Flux settings
 - [Authentication](docs/authentication.md) — securing the dashboard with basic, token, OIDC/SSO or OpenShift login
 

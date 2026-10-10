@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/Button";
 import type { RouteConfig, RouteStatus, TrafficRules, TrafficSource } from "@/types/api";
 import { formatDuration, formatRelative } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
+import { msg, t, tn } from "@/lib/i18n";
 
 const REASONS: Record<string, string> = {
-    "user-agent": "user agent",
-    path: "path",
-    source: "source IP",
-    method: "method",
-    "probe-path": "probe path",
+    "user-agent": msg("user agent"),
+    path: msg("path"),
+    source: msg("source IP"),
+    method: msg("method"),
+    "probe-path": msg("probe path"),
 };
 
 interface TrafficSourcesProps {
@@ -40,22 +41,21 @@ export function TrafficSources({ route, onSave }: TrafficSourcesProps) {
     return (
         <Card>
             <CardHeader>
-                <CardTitle>Who keeps it awake</CardTitle>
+                <CardTitle>{t("Who keeps it awake")}</CardTitle>
                 <p className="text-sm text-gray-400">
-                    Clients sending requests in the last 24 hours. Uptime monitors and health checks should be ignored: they then
-                    never wake the app, and get an answer from Smart Proxy while it sleeps.
+                    {t("Clients sending requests in the last 24 hours. Uptime monitors and health checks should be ignored: they then never wake the app, and get an answer from Smart Proxy while it sleeps.")}
                 </p>
             </CardHeader>
             <CardContent className="p-0">
                 {!sources ? (
-                    <p className="p-6 text-sm text-gray-500">Loading…</p>
+                    <p className="p-6 text-sm text-gray-500">{t("Loading…")}</p>
                 ) : sources.length === 0 ? (
-                    <p className="p-6 text-sm text-gray-500">No requests yet.</p>
+                    <p className="p-6 text-sm text-gray-500">{t("No requests yet.")}</p>
                 ) : (
                     <>
                         {keepingAwake.length > 0 && keepingAwake.every(s => s.client !== "Browser") && (
                             <p className="mx-6 mt-4 text-sm text-yellow-300 bg-yellow-400/10 border border-yellow-400/20 rounded-lg px-3 py-2">
-                                Only automated clients are keeping this route awake. If they are monitors, ignore them.
+                                {t("Only automated clients are keeping this route awake. If they are monitors, ignore them.")}
                             </p>
                         )}
                         <ul className="divide-y divide-gray-700/70">
@@ -67,22 +67,22 @@ export function TrafficSources({ route, onSave }: TrafficSourcesProps) {
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <span className="font-medium text-white truncate">{src.client}</span>
                                                 {src.counts_as_activity ? (
-                                                    <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-green-900/40 text-green-300">keeps it awake</span>
+                                                    <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-green-900/40 text-green-300">{t("keeps it awake")}</span>
                                                 ) : (
                                                     <span className="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-300">
-                                                        ignored{src.reason ? ` · ${REASONS[src.reason] || src.reason}` : ""}
+                                                        {t("ignored")}{src.reason ? ` · ${REASONS[src.reason] ? t(REASONS[src.reason]) : src.reason}` : ""}
                                                     </span>
                                                 )}
                                             </div>
                                             <div className="text-xs text-gray-500 truncate" title={src.user_agent}>
                                                 {src.method !== "*" && <span className="font-mono">{src.method} {src.path} · </span>}
-                                                {src.user_agent || "no user agent"}{src.last_ip ? ` · ${src.last_ip}` : ""}
+                                                {src.user_agent || t("no user agent")}{src.last_ip ? ` · ${src.last_ip}` : ""}
                                             </div>
                                         </div>
                                         <div className="text-xs text-gray-400 tabular-nums">
-                                            {src.requests} request{src.requests === 1 ? "" : "s"}
-                                            {src.interval_seconds >= 1 && src.requests > 2 && <> · every ~{formatDuration(src.interval_seconds * 1e9)}</>}
-                                            <span className="text-gray-500"> · last {formatRelative(src.last_seen, now)}</span>
+                                            {tn(src.requests, "{n} request", "{n} requests")}
+                                            {src.interval_seconds >= 1 && src.requests > 2 && <> · {t("every ~{time}", { time: formatDuration(src.interval_seconds * 1e9) })}</>}
+                                            <span className="text-gray-500"> · {t("last {time}", { time: formatRelative(src.last_seen, now) })}</span>
                                         </div>
                                         <div className="flex justify-end">
                                             {src.counts_as_activity && ignorable && (
@@ -93,10 +93,10 @@ export function TrafficSources({ route, onSave }: TrafficSourcesProps) {
                                                     onClick={() => ignore(src)}
                                                     disabled={route.declarative}
                                                     title={route.declarative
-                                                        ? "Defined by annotations: add smart-proxy/ignore-user-agents or ignore-paths there"
-                                                        : src.client === "Browser" || src.client === "(no user agent)" ? `Ignore requests to ${src.path}` : `Ignore requests from ${src.client}`}
+                                                        ? t("Defined by annotations: add smart-proxy/ignore-user-agents or ignore-paths there")
+                                                        : src.client === "Browser" || src.client === "(no user agent)" ? t("Ignore requests to {path}", { path: src.path }) : t("Ignore requests from {client}", { client: src.client })}
                                                 >
-                                                    <EyeOff size={14} /> Ignore
+                                                    <EyeOff size={14} /> {t("Ignore")}
                                                 </Button>
                                             )}
                                         </div>

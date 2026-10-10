@@ -94,6 +94,10 @@ Smart Proxy answers these paths itself on the proxy port, for every host:
 | `/__smart_proxy/use/<backend>` | Keeps a browser on one of the route's backends for 12 hours (`default` goes back to the weights). See [Backends](routes.md#backends-send-some-requests-elsewhere). |
 | `/__smart_proxy/login`, `/__smart_proxy/logout` | Sign-in page of a [protected route](routes.md#access-require-sign-in-or-a-token). |
 
+## Languages
+
+The dashboard, the "waking up" page and the sign-in page of protected routes are in English or Italian, following the browser's preferred language (`Accept-Language`); the dashboard can be switched from its header, and remembers the choice. Other languages fall back to English.
+
 ## Annotations
 
 Smart Proxy uses annotations on Ingress/Route objects to store state and configuration.
