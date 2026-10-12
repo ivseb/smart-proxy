@@ -4,6 +4,47 @@ entries:
   - annotations:
       artifacthub.io/changes: |
         - kind: added
+          description: Select all / Deselect all for the hosts serving a route's Service
+        - kind: fixed
+          description: Editing a route now shows the hosts serving its Service, to add or remove them
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.4.2
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.4.2
+    created: "2026-10-12T18:52:03.863672431Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: 0f7e04765eff67f48ce72beb19a82837d7cc75c8d96cd62ce844539a3ae66c5d
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.6.2/smart-proxy-0.6.2.tgz
+    version: 0.6.2
+  - annotations:
+      artifacthub.io/changes: |
+        - kind: added
           description: Ignore rules with several conditions (path, methods, user agent, client IP), all of which must match
       artifacthub.io/images: |
         - name: smart-proxy
@@ -393,4 +434,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-12T16:53:07.172526434Z"
+generated: "2026-10-12T18:52:03.863743205Z"
