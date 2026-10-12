@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.2 — chart 0.6.2
+
+### Added
+- **Select all / Deselect all** for the hosts already serving a route's Service, in the route form, with how many are selected.
+
+### Fixed
+- Editing a route didn't show the hosts already serving its Service (only creating one did), so hosts couldn't be added or removed by ticking them.
+
 ## 2.4.1 — chart 0.6.1
 
 ### Added
