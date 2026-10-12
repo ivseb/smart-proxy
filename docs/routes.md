@@ -1,6 +1,6 @@
 # Inspecting, routing and protecting routes
 
-Three optional tools on each route's page in the dashboard. A route that doesn't use them works exactly as before.
+Tools on each route's page in the dashboard. A route that doesn't use them works exactly as before.
 
 ## Requests: see what arrives
 
@@ -13,7 +13,17 @@ Three optional tools on each route's page in the dashboard. A route that doesn't
 
 Every replica records the requests it serves; the dashboard gathers them, whichever replica it talks to. Recordings are kept in memory (the latest 300 per route and replica).
 
-Use it to find what identifies a client before writing an [ignore rule](configuration.md) or a backend condition: from a recorded request, **Route like this…** next to a header turns it into a condition.
+Finding your way in the list:
+
+- **Search** with words: all must match (path, header, IP, status…); a word starting with `-` hides the requests containing it, e.g. `-/health`.
+- **Quick views**: all requests, *without ignored* (monitors and health checks hidden), *problems* (errors, refused requests, requests the app couldn't answer), *ignored only*; and one backend when the route has several.
+- **The list holds still** while a request is open: new requests are counted (*3 new requests*) and shown when you ask, so the request you are reading doesn't move away. **Pause** does the same without opening one.
+
+From a recorded request:
+
+- **Route like this…** next to a header turns it into a backend condition;
+- **Hide … here** hides the requests to that path from the list;
+- **Don't count as activity** adds an [ignore rule](#ignored-requests-monitors-and-health-checks) for its path, user agent or IP.
 
 ## Backends: send some requests elsewhere
 
@@ -41,6 +51,41 @@ The shop's API has a new version, and you want the beta of the mobile app to use
 Colleagues trying it from a browser open `https://<host>/__smart_proxy/use/shop-next` once, or get a `beta` cookie: add *cookie `beta` is present* as a second condition.
 
 The same works for anything a request carries: a tenant header, an office network (client IP), a new external provider calling back (its `Origin`), an `/api/v2` path.
+
+## Pause: just forward, for a while
+
+**Pause** on a route's page (or in the list of routes) turns Smart Proxy into a plain reverse proxy for that route: for 1 hour, 4 hours, until tomorrow morning, until a date and time, or until you resume it.
+
+- The application and its dependencies are woken at once, and nothing is put to sleep while the pause lasts.
+- Requests go to the route's main backend: no other backend, no condition, no pinned browser.
+- Monitors and health checks reach the application like anyone else; nothing is answered for it.
+- Sign-in, if the route requires it, stays on: a pause doesn't open an application to everyone.
+
+![Pausing a route: for 1 hour, 4 hours, until tomorrow morning, until a date, or until resumed](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/pause-dialog.png){ width="420" }
+
+The list shows the route as *Paused until 18:00*. When the pause ends the route is back to normal by itself, and its idle timeout starts then: it doesn't go to sleep the moment the pause ends. **Resume** ends it earlier. Pauses work for routes defined by annotations too.
+
+## Ignored requests: monitors and health checks
+
+Requests from uptime monitors and health checks shouldn't keep an application awake, nor wake it. The **Ignored requests** card on a route's page lists the rules that apply to it, each with how many requests it matched in the last 24 hours and when it last did — a rule that never matches is probably wrong, one that matches too much probably is too:
+
+- **Its own rules**, one per line, to add, change or remove: a path (exact, or a prefix ending with `*`), a user agent (contains, ignoring case), a client IP or CIDR, a method.
+- **Its workloads' probe paths** (from their Kubernetes probes), when called by something that isn't a browser.
+- **The global rules**: Smart Proxy's Helm values (`ignore.*`) and its list of known monitors.
+
+![A route's ignore rules, each with the requests it matched in the last 24 hours](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-ignored.png)
+
+Rules are also added from **Who keeps it awake** (*Ignore*) and from a recorded request (*Don't count as activity*), for the cases nothing detects by itself. While the application sleeps, matching requests get `200` from Smart Proxy, `503`, or wake it (the route's settings).
+
+## Export, import, restore
+
+- **Export** (above the list of routes, or on a route's page) downloads routes as a JSON file: all of them, or those you tick. Every setting is in it — dependencies, idle timeout, schedule, ignore rules, backends, access settings — but not the people and access tokens of protected routes. Routes defined by annotations are left out: they live in Git already.
+- **Import** reads such a file and first shows what each route would do: *new*, *changed* (and which settings), *unchanged*, or *can't import* (its namespace isn't managed, another route serves the same host and path, invalid settings). Nothing changes until you confirm; imported routes patch their Ingresses/Routes as when they are saved. Protected routes come without people or tokens: until you add some, nobody gets in.
+![Importing routes: what each one would do before anything changes](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/import-preview.png){ width="640" }
+
+- **Recently deleted** keeps deleted routes for 30 days (the latest 50), with all their settings, people and tokens included. **Restore** puts a route back and points its Ingresses/Routes at Smart Proxy again. They are kept in the ConfigMap `<release>-deleted-routes`, removed with Smart Proxy.
+
+![Recently deleted routes, ready to be restored](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/recently-deleted.png){ width="640" }
 
 ## Access: require sign-in or a token
 

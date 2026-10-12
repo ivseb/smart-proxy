@@ -111,7 +111,7 @@ flowchart LR
 
 ## More than sleeping
 
-Three optional tools on each route's page: see what arrives, send some requests to another version, require sign-in.
+Tools on each route's page: see what arrives, send some requests to another version, require sign-in, pause it, back it up and restore it.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-requests.png" alt="Requests recorded for a route" width="820"/>

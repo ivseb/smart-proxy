@@ -1,5 +1,9 @@
 # Upgrading
 
+## From 2.3 to 2.4
+
+A drop-in upgrade with the chart (`helm upgrade … --version 0.6.0 -f my-values.yaml`): no new permission, nothing changes for existing routes. Deleted routes are now kept for 30 days in a new ConfigMap, `<release>-deleted-routes` (removed with Smart Proxy).
+
 ## From 2.2 to 2.3
 
 A drop-in upgrade with the chart (`helm upgrade … --version 0.5.1 -f my-values.yaml`). Nothing changes for existing routes. To know:
