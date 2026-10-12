@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.4.0 — chart 0.6.0
+
+### Added
+- **Pause a route**: for 1 hour, 4 hours, until tomorrow morning, until a date, or until resumed. Smart Proxy then only forwards its requests to the application (woken at once, never put to sleep, no other backends); sign-in still applies. When the pause ends the idle timeout starts from there.
+- **Ignored requests as a list**: a route's ignore rules are listed one per line, to add, edit and remove, each with the requests it matched in the last 24 hours (across replicas) and when it last did; the global rules and the workloads' probe paths are shown too. A recorded request can be turned into a rule (its path, user agent or IP).
+- **Export and import routes**: download some or all routes as a file; importing shows first what each route would do (new, changed settings, unchanged, can't import) and imports the ones you pick.
+- **Recently deleted**: deleted routes are kept for 30 days, people and tokens included, and restored in one click (ConfigMap `<release>-deleted-routes`).
+- **Requests inspector**: search with several words and `-word` to exclude, quick views (without ignored, problems, ignored only, one backend), a scrolling list with a fixed header.
+
+### Fixed
+- In the requests inspector, an open request closed by itself when new requests arrived; the list now holds still while one is open, and counts the new ones.
+- Saving a route from a page opened earlier could bring back a recording that had been stopped meanwhile.
+
 ## 2.3.1 — chart 0.5.1
 
 ### Added
