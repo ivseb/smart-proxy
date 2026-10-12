@@ -4,6 +4,53 @@ entries:
   - annotations:
       artifacthub.io/changes: |
         - kind: added
+          description: Pause a route for a while or until resumed - Smart Proxy then only forwards its requests
+        - kind: added
+          description: Ignore rules as a list, each with the requests it matched in the last 24 hours
+        - kind: added
+          description: Export and import routes with a preview; deleted routes restorable for 30 days
+        - kind: added
+          description: Requests inspector - search with exclusions, quick views, scrolling list
+        - kind: fixed
+          description: An open request in the inspector no longer closes when new requests arrive
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.4.0
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.4.0
+    created: "2026-10-12T15:22:53.726372495Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: 7c9f284e34eecd257e29a05536468893fbba70d5309048bdc8e403bd10119383
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.6.0/smart-proxy-0.6.0.tgz
+    version: 0.6.0
+  - annotations:
+      artifacthub.io/changes: |
+        - kind: added
           description: Dashboard, waking page and sign-in pages in English and Italian, following the browser's language
         - kind: fixed
           description: The waking page no longer loads its styles from a CDN (unstyled without internet access)
@@ -307,4 +354,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-10T09:29:36.859886707Z"
+generated: "2026-10-12T15:22:53.72642361Z"
