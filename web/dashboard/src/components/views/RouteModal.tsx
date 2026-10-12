@@ -154,10 +154,9 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
     };
 
     const hosts = splitHosts(formData.host || "");
-    const toggleHost = (host: string) => {
-        const next = hosts.includes(host) ? hosts.filter(h => h !== host) : [...hosts, host];
-        setFormData(prev => ({ ...prev, host: next.join(", ") }));
-    };
+    const setHosts = (next: string[]) => setFormData(prev => ({ ...prev, host: next.join(", ") }));
+    const toggleHost = (host: string) => setHosts(hosts.includes(host) ? hosts.filter(h => h !== host) : [...hosts, host]);
+    const connectedHosts = [...new Set(connected.map(r => r.host).filter(Boolean))];
 
     const moveDependency = (index: number, direction: -1 | 1) => {
         const deps = [...(formData.dependencies || [])];
@@ -215,12 +214,27 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                         </div>
                     </div>
 
-                    {resolvedInfo && (
+                    {(resolvedInfo || connected.length > 0) && (
                         <div className="bg-blue-900/20 border border-blue-800 text-blue-200 px-4 py-3 rounded-lg text-sm space-y-2">
-                            <p>{t(resolvedInfo.text, resolvedInfo.vars)}</p>
+                            {resolvedInfo && <p>{t(resolvedInfo.text, resolvedInfo.vars)}</p>}
                             {connected.length > 0 && (
                                 <div>
-                                    <p className="text-xs text-blue-300 mb-1.5">{t("Hosts already serving this Service (select to use them):")}</p>
+                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                                        <p className="text-xs text-blue-300">{t("Hosts already serving this Service (select to use them):")}</p>
+                                        <span className="flex items-center gap-1 text-xs">
+                                            <span className="text-blue-300/70 tabular-nums mr-1">{t("{n} of {total} selected", { n: connectedHosts.filter(h => hosts.includes(h)).length, total: connectedHosts.length })}</span>
+                                            <button type="button" onClick={() => setHosts([...new Set([...hosts, ...connectedHosts])])}
+                                                disabled={connectedHosts.every(h => hosts.includes(h))}
+                                                className="px-2 py-0.5 rounded-md text-blue-200 hover:bg-blue-500/20 disabled:opacity-40 disabled:hover:bg-transparent">
+                                                {t("Select all")}
+                                            </button>
+                                            <button type="button" onClick={() => setHosts(hosts.filter(h => !connectedHosts.includes(h)))}
+                                                disabled={!connectedHosts.some(h => hosts.includes(h))}
+                                                className="px-2 py-0.5 rounded-md text-blue-200 hover:bg-blue-500/20 disabled:opacity-40 disabled:hover:bg-transparent">
+                                                {t("Deselect all")}
+                                            </button>
+                                        </span>
+                                    </div>
                                     <ul className="space-y-1">
                                         {connected.map(r => (
                                             <li key={`${r.type}-${r.name}`}>
@@ -234,6 +248,9 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
                                             </li>
                                         ))}
                                     </ul>
+                                    {initialData && (
+                                        <p className="text-xs text-blue-300/70 mt-1.5">{t("Hosts you untick get their Ingress/Route back when you save.")}</p>
+                                    )}
                                 </div>
                             )}
                         </div>
