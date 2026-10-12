@@ -92,7 +92,7 @@ Optional tools on each route's page — routes that don't use them work as befor
 4. **Sleep** → after an idle timeout with no traffic, it scales the deployment back to zero.
 
 <p align="center">
-  <img src="media/waking-page.png" alt="The waking up page a browser sees while a sleeping application starts" width="420"/>
+  <img src="media/waking-page.png" alt="The waking up page a browser sees while a sleeping application and its dependencies start" width="460"/>
 </p>
 
 See the [Architecture overview](docs/architecture.md) for the details.

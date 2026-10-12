@@ -69,7 +69,7 @@ The list shows the route as *Paused until 18:00*. When the pause ends the route 
 
 Requests from uptime monitors and health checks shouldn't keep an application awake, nor wake it. The **Ignored requests** card on a route's page lists the rules that apply to it, each with how many requests it matched in the last 24 hours and when it last did — a rule that never matches is probably wrong, one that matches too much probably is too:
 
-- **Its own rules**, one per line, to add, change or remove: a path (exact, or a prefix ending with `*`), a user agent (contains, ignoring case), a client IP or CIDR, a method.
+- **Its own rules**, one per line, to add, change or remove. A rule has one or more conditions, and a request must meet all of them: a path (exact, or a prefix ending with `*`), methods (any of those chosen), a user agent (contains, ignoring case), a client IP or CIDR. For example *path `/api/status` and methods GET, HEAD* ignores a status page polling that endpoint, while a `POST` to it still counts.
 - **Its workloads' probe paths** (from their Kubernetes probes), when called by something that isn't a browser.
 - **The global rules**: Smart Proxy's Helm values (`ignore.*`) and its list of known monitors.
 
