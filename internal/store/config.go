@@ -54,6 +54,9 @@ type RouteConfig struct {
 	// InspectUntil, while in the future, has the requests to this route recorded for the
 	// dashboard (see package inspect).
 	InspectUntil *time.Time `json:"inspect_until,omitempty"`
+	// Pause, while active, has Smart Proxy forward the route's requests to its application and
+	// nothing else (see Pause).
+	Pause *Pause `json:"pause,omitempty"`
 	// Backends are the Services traffic is balanced across, by weight (from an OpenShift Route's
 	// alternate backends). Empty means the single TargetService. See WeightedBackend.Managed.
 	Backends []WeightedBackend `json:"backends,omitempty"`
@@ -267,8 +270,46 @@ func (r RouteConfig) EffectiveIdleTimeout() time.Duration {
 func (r RouteConfig) AnnotationJSON() string {
 	r.LastActivity = time.Time{}
 	r.InspectUntil = nil // Runtime state, not configuration
+	r.Pause = nil
 	data, _ := json.Marshal(r)
 	return string(data)
+}
+
+// Pause suspends what Smart Proxy does on a route but forwarding requests to its application:
+// nothing is put to sleep, no other backend is chosen, monitors aren't answered for it.
+// Protection still applies. Runtime state, set from the dashboard.
+type Pause struct {
+	Until *time.Time `json:"until,omitempty"` // Nil: until resumed
+	At    time.Time  `json:"at"`
+	By    string     `json:"by,omitempty"`
+}
+
+// Active reports whether the pause is still on.
+func (p *Pause) Active(now time.Time) bool {
+	return p != nil && (p.Until == nil || now.Before(*p.Until))
+}
+
+// Paused reports whether the route is paused.
+func (r RouteConfig) Paused(now time.Time) bool { return r.Pause.Active(now) }
+
+// IdleSince is when the route was last active, for its idle timeout: a pause counts as activity
+// until it ends, so a route doesn't go to sleep the moment its pause expires.
+func (r RouteConfig) IdleSince(now time.Time) time.Time {
+	if r.Pause != nil {
+		if r.Pause.Active(now) {
+			return now
+		}
+		if r.Pause.Until != nil && r.Pause.Until.After(r.LastActivity) {
+			return *r.Pause.Until
+		}
+	}
+	return r.LastActivity
+}
+
+// Idle reports whether the route has been idle longer than its idle timeout (scheduled hours
+// and pauses keep it awake).
+func (r RouteConfig) Idle(now time.Time) bool {
+	return now.Sub(r.IdleSince(now)) > r.EffectiveIdleTimeout() && !r.ScheduledAwake(now)
 }
 
 // Inspecting reports whether the route's requests are being recorded.

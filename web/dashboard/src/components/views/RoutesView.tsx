@@ -1,12 +1,16 @@
 import { useMemo, useState } from "react";
-import { CalendarClock, Circle, FileCode2, Lock, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
-import type { ClusterInfo, RouteStatus, StatsData } from "@/types/api";
+import { ArchiveRestore, CalendarClock, Circle, Download, Upload, FileCode2, Lock, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
+import type { ClusterInfo, DeletedRoute, RouteStatus, StatsData } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
 import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 import { useStoredState } from "@/hooks/useStoredState";
 import { msg, t, tn } from "@/lib/i18n";
+import { pauseActive } from "@/lib/pause";
+import { PauseBadge, PauseButton } from "@/components/views/PauseControl";
+import { ExportDialog, ImportDialog, TrashDialog } from "@/components/views/BackupDialogs";
+import { usePolling } from "@/hooks/usePolling";
 
 type StatusFilter = "all" | "awake" | "asleep" | "issues";
 
@@ -50,9 +54,10 @@ interface RoutesViewProps {
     onStop: (route: RouteStatus) => void;
     onWake: (route: RouteStatus) => void;
     onSelect: (id: string) => void;
+    onChanged: () => void;
 }
 
-export function RoutesView({ routes, stats, info, onNew, onEdit, onDelete, onStop, onWake, onSelect }: RoutesViewProps) {
+export function RoutesView({ routes, stats, info, onNew, onEdit, onDelete, onStop, onWake, onSelect, onChanged }: RoutesViewProps) {
     const [query, setQuery] = useState("");
     const [namespace, setNamespace] = useStoredState("routes.namespace", "");
     const [statusFilter, setStatusFilter] = useStoredState<StatusFilter>("routes.status", "all");
@@ -88,6 +93,9 @@ export function RoutesView({ routes, stats, info, onNew, onEdit, onDelete, onSto
 
     const toggleGroup = (ns: string) =>
         setCollapsed(collapsed.includes(ns) ? collapsed.filter(n => n !== ns) : [...collapsed, ns]);
+
+    const [dialog, setDialog] = useState<"export" | "import" | "trash" | null>(null);
+    const { data: deleted, refetch: refetchDeleted } = usePolling<DeletedRoute[]>("/api/routes/deleted", 60000);
 
     return (
         <div className="space-y-4">
@@ -133,10 +141,26 @@ export function RoutesView({ routes, stats, info, onNew, onEdit, onDelete, onSto
                 </div>
             </div>
 
-            <div className="text-xs text-gray-500">
-                {tn(routes.length, "{n} route", "{n} routes")} · {t("{n} awake", { n: awake })} · {t("{n} asleep", { n: asleep })}
-                {filtered.length !== routes.length && <> · {t("showing {n}", { n: filtered.length })}</>}
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+                <span>
+                    {tn(routes.length, "{n} route", "{n} routes")} · {t("{n} awake", { n: awake })} · {t("{n} asleep", { n: asleep })}
+                    {filtered.length !== routes.length && <> · {t("showing {n}", { n: filtered.length })}</>}
+                </span>
+                <span className="flex items-center gap-1">
+                    <button onClick={() => setDialog("export")} disabled={routes.length === 0} className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/5 hover:text-gray-200 disabled:opacity-40">
+                        <Download size={13} /> {t("Export")}
+                    </button>
+                    <button onClick={() => setDialog("import")} className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/5 hover:text-gray-200">
+                        <Upload size={13} /> {t("Import")}
+                    </button>
+                    <button onClick={() => setDialog("trash")} className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-white/5 hover:text-gray-200">
+                        <ArchiveRestore size={13} /> {t("Recently deleted")}{(deleted?.length || 0) > 0 && <span className="tabular-nums"> ({deleted!.length})</span>}
+                    </button>
+                </span>
             </div>
+            {dialog === "export" && <ExportDialog routes={routes} onClose={() => setDialog(null)} />}
+            {dialog === "import" && <ImportDialog onClose={() => setDialog(null)} onImported={onChanged} />}
+            {dialog === "trash" && <TrashDialog onClose={() => { setDialog(null); refetchDeleted(); }} onRestored={onChanged} />}
 
             {routes.length === 0 ? (
                 <EmptyState onNew={onNew} />
@@ -180,6 +204,7 @@ export function RoutesView({ routes, stats, info, onNew, onEdit, onDelete, onSto
                                                 onDelete={() => onDelete(route)}
                                                 onStop={() => onStop(route)}
                                                 onWake={() => onWake(route)}
+                                                onChanged={onChanged}
                                             />
                                         ))}
                                     </ul>
@@ -203,9 +228,10 @@ interface RouteRowProps {
     onDelete: () => void;
     onStop: () => void;
     onWake: () => void;
+    onChanged: () => void;
 }
 
-function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDelete, onStop, onWake }: RouteRowProps) {
+function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDelete, onStop, onWake, onChanged }: RouteRowProps) {
     const hosts = splitHosts(route.host);
     const asleep = route.status === "Sleep";
     const deps = route.dependencies || [];
@@ -284,7 +310,9 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                     )}
                 </div>
                 <div className="text-gray-500">
-                    {route.always_on ? (
+                    {pauseActive(route.pause, now) ? (
+                        <PauseBadge route={route} now={now} />
+                    ) : route.always_on ? (
                         <span className="inline-flex items-center gap-1"><Pin size={12} /> {t("Always on")}</span>
                     ) : route.schedule_active && route.schedule ? (
                         <span className="inline-flex items-center gap-1" title={t("Kept awake by its schedule")}>
@@ -320,6 +348,7 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
 
             {/* Actions */}
             <div className="flex items-center justify-end gap-1 pl-4 md:pl-0" onClick={e => e.stopPropagation()}>
+                <PauseButton route={route} onChanged={onChanged} compact />
                 {asleep ? (
                     <Button variant="ghost" size="icon" onClick={onWake} title={t("Wake now")} aria-label={t("Wake now")}>
                         <Power className="w-4 h-4 text-green-400" />

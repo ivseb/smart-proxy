@@ -32,6 +32,7 @@ const (
 	activityKey = "activity.json"
 	requestsKey = "requests.json"
 	trafficKey  = "traffic.json"
+	rulesKey    = "rules.json"
 
 	// Traffic sources change with every request; share them less often than activity.
 	trafficEvery = 4
@@ -60,6 +61,8 @@ type Replica struct {
 	LocalRequests func() RequestCounts
 	// LocalTraffic returns who sent requests to each route through this pod.
 	LocalTraffic func() map[string][]traffic.SourceStats
+	// LocalRuleHits returns what each ignore rule of each route matched through this pod.
+	LocalRuleHits func() map[string][]traffic.RuleHit
 
 	// ActivityInterval is how often local activity is published (and others' merged).
 	ActivityInterval time.Duration
@@ -121,7 +124,7 @@ func (r *Replica) exchangeActivity(ctx context.Context) {
 	defer ticker.Stop()
 	var published map[string]time.Time
 	var publishedRequests RequestCounts
-	var sources string
+	var sources, rules string
 	tooLarge := false
 	for tick := 0; ; tick++ {
 		select {
@@ -141,9 +144,16 @@ func (r *Replica) exchangeActivity(ctx context.Context) {
 				}
 				tooLarge = true
 			}
+			if r.LocalRuleHits != nil {
+				if data, err := json.Marshal(r.LocalRuleHits()); err == nil && len(data)+len(sources) <= maxTraffic {
+					rules = string(data)
+				} else {
+					rules = ""
+				}
+			}
 		}
 		if len(local) > 0 && (!reflect.DeepEqual(local, published) || !reflect.DeepEqual(requests, publishedRequests)) {
-			if err := r.publish(ctx, local, requests, sources); err != nil {
+			if err := r.publish(ctx, local, requests, sources, rules); err != nil {
 				logger.Printf("Warning: failed to share request activity: %v", err)
 			} else {
 				published, publishedRequests = local, requests
@@ -185,7 +195,7 @@ func (r *Replica) RequestsByReplica() map[string]RequestCounts {
 	return all
 }
 
-func (r *Replica) publish(ctx context.Context, activity map[string]time.Time, requests RequestCounts, sources string) error {
+func (r *Replica) publish(ctx context.Context, activity map[string]time.Time, requests RequestCounts, sources, rules string) error {
 	data, err := json.Marshal(activity)
 	if err != nil {
 		return err
@@ -201,7 +211,7 @@ func (r *Replica) publish(ctx context.Context, activity map[string]time.Time, re
 			Namespace: r.Namespace,
 			Labels:    map[string]string{store.LabelInstance: r.Instance, store.LabelComponent: store.ComponentActivity},
 		},
-		Data: map[string]string{activityKey: string(data), requestsKey: string(requestData), trafficKey: sources},
+		Data: map[string]string{activityKey: string(data), requestsKey: string(requestData), trafficKey: sources, rulesKey: rules},
 	}
 	if r.PodUID != "" {
 		// Deleted by Kubernetes together with the pod.
@@ -227,6 +237,21 @@ func (r *Replica) ClusterTraffic(routeID string) []traffic.SourceStats {
 		}
 	}
 	return traffic.Merge(lists...)
+}
+
+// ClusterRuleHits merges what the ignore rules of a route matched through this pod and the others.
+func (r *Replica) ClusterRuleHits(routeID string) []traffic.RuleHit {
+	var lists [][]traffic.RuleHit
+	if r.LocalRuleHits != nil {
+		lists = append(lists, r.LocalRuleHits()[routeID])
+	}
+	for _, cm := range r.otherActivityConfigMaps() {
+		var all map[string][]traffic.RuleHit
+		if json.Unmarshal([]byte(cm.Data[rulesKey]), &all) == nil {
+			lists = append(lists, all[routeID])
+		}
+	}
+	return traffic.MergeRuleHits(lists...)
 }
 
 // otherActivityConfigMaps are the activity ConfigMaps of the other replicas.

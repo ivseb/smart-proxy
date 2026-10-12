@@ -67,7 +67,6 @@ export const routeDetail: Record<string, string> = {
     "Stop": "Ferma",
     "Recording duration": "Durata della registrazione",
     "Record": "Registra",
-    "Filter by path, header, IP, status…": "Filtra per path, header, IP, stato…",
     "{n} request": "{n} richiesta",
     "{n} requests": "{n} richieste",
     "from {n} replicas": "da {n} repliche",

@@ -4,6 +4,7 @@ import type { ClusterInfo, RouteConfig, Schedule, TrafficRules, WhenAsleep } fro
 import { Button } from "@/components/ui/Button";
 import { formatDuration, parseDuration, splitHosts, workloadLabel } from "@/lib/format";
 import { msg, t } from "@/lib/i18n";
+import { RulesListEditor } from "@/components/views/IgnoreRules";
 
 const DEFAULT_TIMEOUT = "30m";
 const DAYS: { value: string; label: string }[] = [
@@ -429,23 +430,12 @@ function ScheduleEditor({ schedule, onChange }: { schedule: Schedule | null; onC
     );
 }
 
-const RULE_FIELDS: { key: keyof TrafficRules; label: string; placeholder: string }[] = [
-    { key: "user_agents", label: msg("User agents contain"), placeholder: "MyMonitor, internal-checker" },
-    { key: "paths", label: msg("Paths"), placeholder: "/healthz, /status/*" },
-    { key: "sources", label: msg("Client IPs / CIDRs"), placeholder: "10.20.0.0/16" },
-    { key: "methods", label: msg("Methods"), placeholder: "HEAD" },
-];
-
 function IgnoreEditor({ rules, whenAsleep, defaults, onChange }: {
     rules: TrafficRules;
     whenAsleep: WhenAsleep;
     defaults?: TrafficRules;
     onChange: (rules: TrafficRules, whenAsleep: WhenAsleep) => void;
 }) {
-    const split = (v: string) => v.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
-    // The text as typed (with spaces and trailing commas); the parsed lists go to the form.
-    const [text, setText] = useState<Record<string, string>>(() =>
-        Object.fromEntries(RULE_FIELDS.map(f => [f.key, (rules[f.key] || []).join(", ")])));
     const field = "w-full bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500";
 
     return (
@@ -463,19 +453,7 @@ function IgnoreEditor({ rules, whenAsleep, defaults, onChange }: {
                     .
                 </p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {RULE_FIELDS.map(f => (
-                    <label key={f.key} className="block">
-                        <span className="block text-xs text-gray-400 mb-1">{t(f.label)}</span>
-                        <input type="text" className={field} placeholder={f.placeholder}
-                            value={text[f.key]}
-                            onChange={e => {
-                                setText({ ...text, [f.key]: e.target.value });
-                                onChange({ ...rules, [f.key]: split(e.target.value) }, whenAsleep);
-                            }} />
-                    </label>
-                ))}
-            </div>
+            <RulesListEditor rules={rules} onChange={r => onChange(r, whenAsleep)} />
             <label className="block">
                 <span className="block text-xs text-gray-400 mb-1">{t("While the app sleeps, answer them with")}</span>
                 <select className={field} value={whenAsleep} onChange={e => onChange(rules, e.target.value as WhenAsleep)}>

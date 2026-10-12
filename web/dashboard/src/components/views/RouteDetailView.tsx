@@ -1,18 +1,25 @@
 import { useMemo, useState } from "react";
-import { ArrowLeft, Edit, Globe, Hand, Octagon, Power, Route as RouteIcon, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Edit, Globe, Hand, Octagon, Power, Route as RouteIcon, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import type { Condition, LogEntry, RouteConfig, RouteStatus, StatsData } from "@/types/api";
+import type { Condition, IgnoreKind, LogEntry, RouteConfig, RouteStatus, StatsData } from "@/types/api";
 import { TrafficSources } from "@/components/views/TrafficSources";
 import { RequestsChart } from "@/components/views/RequestsChart";
 import { RequestInspector } from "@/components/views/RequestInspector";
 import { BackendsCard } from "@/components/views/BackendsCard";
 import { BackendsEditor } from "@/components/views/BackendsEditor";
 import { ProtectionCard } from "@/components/views/ProtectionCard";
+import { IgnoreRulesCard } from "@/components/views/IgnoreRules";
+import { addRule } from "@/lib/rules";
+import { exportRoutes } from "@/lib/download";
+import { errorMessage } from "@/lib/api";
+import { toast } from "sonner";
 import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 import { t } from "@/lib/i18n";
+import { pauseActive } from "@/lib/pause";
+import { PauseBadge, PauseButton } from "@/components/views/PauseControl";
 
 interface RouteDetailViewProps {
     route: RouteStatus;
@@ -42,6 +49,12 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
 
     const [sleepsBefore, sleepsAfter] = t("Sleeps {when} without traffic").split("{when}");
 
+    const ignore = async (kind: IgnoreKind, value: string) => {
+        if (await onSave({ ...route, ignore: addRule(route.ignore, kind, value) })) {
+            toast.success(t("Requests matching {rule} no longer count as activity", { rule: value }));
+        }
+    };
+
     return (
         <div className="space-y-6">
             <Button variant="ghost" onClick={onBack} className="gap-2 text-gray-400 hover:text-white -ml-2">
@@ -66,6 +79,7 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                    <PauseButton route={route} onChanged={onChanged} />
                     {asleep ? (
                         <Button variant="secondary" onClick={() => onWake(route)} className="gap-2">
                             <Power className="w-4 h-4 text-green-400" /> {t("Wake now")}
@@ -78,6 +92,12 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                     <Button variant="secondary" onClick={() => onEdit(route)} className="gap-2">
                         <Edit className="w-4 h-4 text-blue-400" /> {t("Edit")}
                     </Button>
+                    {!route.declarative && (
+                        <Button variant="ghost" onClick={() => exportRoutes([route.id]).catch(e => toast.error(t("Failed: {error}", { error: errorMessage(e) })))}
+                            className="gap-2" title={t("Download this route's settings as a file")}>
+                            <Download className="w-4 h-4" /> {t("Export")}
+                        </Button>
+                    )}
                     <Button variant="danger" onClick={() => onDelete(route)} className="gap-2">
                         <Trash2 className="w-4 h-4" /> {t("Delete")}
                     </Button>
@@ -92,7 +112,8 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                             {asleep ? t("0 replicas") : t("{ready}/{total} ready", { ready: route.ready_replicas, total: route.replicas })}
                         </div>
                         <div className="text-sm text-gray-400">
-                            {route.always_on ? t("Always on: never put to sleep")
+                            {pauseActive(route.pause, now) ? <PauseBadge route={route} now={now} />
+                                : route.always_on ? t("Always on: never put to sleep")
                                 : route.schedule_active ? t("Kept awake by its schedule")
                                 : !route.source ? t("Manual route: not put to sleep automatically")
                                     : route.sleeps_at ? <>{sleepsBefore}<span className="text-gray-200">{formatRelative(route.sleeps_at, now)}</span>{sleepsAfter}</>
@@ -177,6 +198,7 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
             <RequestInspector
                 route={route}
                 onChanged={onChanged}
+                onIgnore={route.declarative ? undefined : ignore}
                 headerAction={route.declarative ? undefined : (name, value) => value === "••••••" ? null : (
                     <Button variant="ghost" size="sm" className="text-xs px-2 py-0.5"
                         title={t("Send requests whose {name} is {value} to a backend of your choice", { name, value })}
@@ -187,6 +209,8 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
             />
 
             <TrafficSources route={route} onSave={onSave} />
+
+            <IgnoreRulesCard route={route} onSave={onSave} />
 
             {editor && <BackendsEditor route={route} prefill={editor.prefill} onClose={() => setEditor(null)} onSave={onSave} />}
 

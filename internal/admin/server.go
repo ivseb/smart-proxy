@@ -18,6 +18,7 @@ import (
 	"smart-proxy/internal/proxy"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
+	"smart-proxy/internal/trash"
 	"smart-proxy/internal/vault"
 )
 
@@ -38,6 +39,8 @@ type Server struct {
 	GlobalRules traffic.Rules
 	// Traffic, when set, returns who sends requests to a route (across replicas).
 	Traffic func(routeID string) []traffic.SourceStats
+	// RuleHits, when set, returns what a route's ignore rules matched (across replicas).
+	RuleHits func(routeID string) []traffic.RuleHit
 	// History, when set, holds recent request rates for the charts.
 	History *history.Recorder
 	// Inspect holds this replica's recorded requests; Peers returns the base URLs of the other
@@ -47,6 +50,8 @@ type Server struct {
 	PeerToken func() string
 	// Vault returns Smart Proxy's Secret (nil while unavailable): credentials of protected routes.
 	Vault func() *vault.Vault
+	// Trash keeps deleted routes for a while, to restore them.
+	Trash trash.Bin
 }
 
 // NewServer creates a new instance of the admin Server.
@@ -57,6 +62,7 @@ func NewServer(k8sClient *k8s.Client, store *store.Store, metrics *proxy.Metrics
 		Metrics:     metrics,
 		ServiceName: serviceName,
 		auth:        authn,
+		Trash:       &trash.Memory{},
 	}
 }
 
@@ -70,6 +76,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/info", s.handleInfo)
 	mux.HandleFunc("/api/routes", s.handleRoutes)
 	mux.HandleFunc("/api/routes/traffic", s.handleRouteTraffic)
+	mux.HandleFunc("/api/routes/ignore-rules", s.handleIgnoreRules)
+	mux.HandleFunc("/api/routes/pause", s.handlePause)
+	mux.HandleFunc("/api/routes/export", s.handleExport)
+	mux.HandleFunc("/api/routes/import", s.handleImport)
+	mux.HandleFunc("/api/routes/deleted", s.handleDeleted)
 	mux.HandleFunc("/api/routes/inspect", s.handleInspect)
 	mux.HandleFunc("/api/routes/requests", s.handleRequests)
 	mux.HandleFunc("/api/routes/protection/users", s.handleProtectionUsers)

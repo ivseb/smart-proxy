@@ -2,10 +2,12 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
+	"smart-proxy/internal/auth"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/store"
@@ -100,8 +102,8 @@ func (s *Server) routeStatus(r store.RouteConfig) RouteStatus {
 	rs.ProtectionAvailable = s.vault().Ready()
 	if kind, ns, name, ok := r.Resource(); ok {
 		rs.Source = &ResourceRef{Kind: kind, Namespace: ns, Name: name}
-		if !r.AlwaysOn && !rs.ScheduleActive && rs.Status != StatusSleep {
-			at := r.LastActivity.Add(rs.EffectiveIdleTimeout)
+		if now := time.Now(); !r.AlwaysOn && !rs.ScheduleActive && !r.Paused(now) && rs.Status != StatusSleep {
+			at := r.IdleSince(now).Add(rs.EffectiveIdleTimeout)
 			rs.SleepsAt = &at
 		}
 	}
@@ -130,59 +132,15 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if route.Path == "" {
-			route.Path = "/"
+		// Recording and pauses are runtime state with their own calls: a form saved from a
+		// stale page must not bring an old one back.
+		route.InspectUntil, route.Pause = nil, nil
+		if existing, ok := s.store.GetRoute(route.ID); ok && route.ID != "" {
+			route.InspectUntil, route.Pause = existing.InspectUntil, existing.Pause
 		}
-		if route.Namespace == "" || route.Deployment == "" {
-			http.Error(w, "Missing required fields", http.StatusBadRequest)
+		if status, err := s.saveRoute(&route); err != nil {
+			http.Error(w, err.Error(), status)
 			return
-		}
-		if err := route.Protection.Validate(); err != nil {
-			http.Error(w, "Invalid protection: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		if route.Protection != nil && route.Protection.Enabled && !s.vault().Ready() {
-			http.Error(w, "Routes can't be protected: Smart Proxy's Secret is unavailable (see its RBAC)", http.StatusServiceUnavailable)
-			return
-		}
-		if err := route.ValidateTraffic(); err != nil {
-			http.Error(w, "Invalid traffic settings: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		if route.Schedule != nil {
-			if err := route.Schedule.Validate(); err != nil {
-				http.Error(w, "Invalid schedule: "+err.Error(), http.StatusBadRequest)
-				return
-			}
-		}
-		if s.k8sClient != nil && !s.k8sClient.Watches(route.Namespace) {
-			http.Error(w, "Namespace "+route.Namespace+" is not managed by Smart Proxy", http.StatusForbidden)
-			return
-		}
-		// A new route for a host served by an Ingress/Route in its namespace becomes bound to it.
-		if route.ID == "" && s.k8sClient != nil {
-			route.ID = s.resourceIDForHosts(route.Namespace, route.Host)
-		}
-		// Bound to an OpenShift Route balancing several Services: record them, managing the one
-		// chosen as target and leaving the others alone.
-		if kind, ns, name, ok := route.Resource(); ok && kind == store.KindRoute && len(route.Backends) == 0 && s.k8sClient != nil {
-			if rt, err := s.k8sClient.GetRoute(ns, name); err == nil {
-				route.Backends = s.k8sClient.RouteBackends(rt, []string{route.TargetService})
-			}
-		}
-		if err := route.NormalizeBackends(); err != nil {
-			http.Error(w, "Invalid backends: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if err := s.store.AddRoute(&route); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		// Patch the Ingresses/Routes serving its hosts, and restore those of hosts it no longer has
-		if s.k8sClient != nil {
-			s.autoPatchResourcesForConfig(&route)
-			s.releaseStale(route)
 		}
 		w.WriteHeader(http.StatusCreated)
 
@@ -198,7 +156,7 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 		}
 		// Every resource patched for the route is restored: leaving them pointed at Smart Proxy
 		// without a route would make them answer 404.
-		restored, err := s.deleteRoute(id)
+		restored, err := s.deleteRoute(id, auth.UserFromContext(r.Context()))
 		if err != nil {
 			http.Error(w, err.Error(), httpStatusFor(err))
 			return
@@ -273,4 +231,56 @@ func (s *Server) backendStates(r store.RouteConfig) []BackendState {
 		}
 	}
 	return states
+}
+
+// saveRoute validates and stores a route, then patches the Ingresses/Routes serving its hosts
+// and restores those of hosts it no longer has. It returns the HTTP status to answer.
+func (s *Server) saveRoute(route *store.RouteConfig) (int, error) {
+	if route.Path == "" {
+		route.Path = "/"
+	}
+	if route.Namespace == "" || route.Deployment == "" {
+		return http.StatusBadRequest, errors.New("Missing required fields")
+	}
+	if err := route.Protection.Validate(); err != nil {
+		return http.StatusBadRequest, errors.New("Invalid protection: " + err.Error())
+	}
+	if route.Protection != nil && route.Protection.Enabled && !s.vault().Ready() {
+		return http.StatusServiceUnavailable, errors.New("Routes can't be protected: Smart Proxy's Secret is unavailable (see its RBAC)")
+	}
+	if err := route.ValidateTraffic(); err != nil {
+		return http.StatusBadRequest, errors.New("Invalid traffic settings: " + err.Error())
+	}
+	if route.Schedule != nil {
+		if err := route.Schedule.Validate(); err != nil {
+			return http.StatusBadRequest, errors.New("Invalid schedule: " + err.Error())
+		}
+	}
+	if s.k8sClient != nil && !s.k8sClient.Watches(route.Namespace) {
+		return http.StatusForbidden, errors.New("Namespace " + route.Namespace + " is not managed by Smart Proxy")
+	}
+	// A new route for a host served by an Ingress/Route in its namespace becomes bound to it.
+	if route.ID == "" && s.k8sClient != nil {
+		route.ID = s.resourceIDForHosts(route.Namespace, route.Host)
+	}
+	// Bound to an OpenShift Route balancing several Services: record them, managing the one
+	// chosen as target and leaving the others alone.
+	if kind, ns, name, ok := route.Resource(); ok && kind == store.KindRoute && len(route.Backends) == 0 && s.k8sClient != nil {
+		if rt, err := s.k8sClient.GetRoute(ns, name); err == nil {
+			route.Backends = s.k8sClient.RouteBackends(rt, []string{route.TargetService})
+		}
+	}
+	if err := route.NormalizeBackends(); err != nil {
+		return http.StatusBadRequest, errors.New("Invalid backends: " + err.Error())
+	}
+
+	if err := s.store.AddRoute(route); err != nil {
+		return http.StatusInternalServerError, err
+	}
+	// Patch the Ingresses/Routes serving its hosts, and restore those of hosts it no longer has
+	if s.k8sClient != nil {
+		s.autoPatchResourcesForConfig(route)
+		s.releaseStale(*route)
+	}
+	return http.StatusCreated, nil
 }

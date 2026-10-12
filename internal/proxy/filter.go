@@ -10,20 +10,21 @@ import (
 	"smart-proxy/internal/traffic"
 )
 
-// ignoredReason says why a request doesn't count as activity ("" when it does): it matches the
-// global or the route's rules, or is a monitor calling one of the workloads' Kubernetes probe
-// paths (e.g. /healthz through the ingress). Browsers and the root path always count: many apps
-// probe "/", their home page.
-func (h *Handler) ignoredReason(r *http.Request, client net.IP, route store.RouteConfig) string {
-	rules := h.GlobalRules
+// ignoredReason says why a request doesn't count as activity ("" when it does), and the rule
+// that matched: the route's rules, the global ones, or, for a monitor, one of the workloads'
+// Kubernetes probe paths (e.g. /healthz through the ingress). Browsers and the root path always
+// count: many apps probe "/", their home page.
+func (h *Handler) ignoredReason(r *http.Request, client net.IP, route store.RouteConfig) (string, string) {
 	if route.Ignore != nil {
-		rules = rules.Merge(*route.Ignore)
+		if reason, rule, ok := route.Ignore.MatchRule(r, client); ok {
+			return reason, rule
+		}
 	}
-	if reason, ok := rules.Match(r, client); ok {
-		return reason
+	if reason, rule, ok := h.GlobalRules.MatchRule(r, client); ok {
+		return reason, rule
 	}
 	if r.URL.Path == "/" || traffic.ClientName(r.UserAgent()) == traffic.Browser {
-		return ""
+		return "", ""
 	}
 	for _, workload := range append([]string{route.Deployment}, dependencyNames(route)...) {
 		paths, err := h.k8sClient.GetDeploymentProbePaths(route.Namespace, workload)
@@ -32,11 +33,11 @@ func (h *Handler) ignoredReason(r *http.Request, client net.IP, route store.Rout
 		}
 		for _, p := range paths {
 			if r.URL.Path == p {
-				return traffic.ReasonProbePath
+				return traffic.ReasonProbePath, p
 			}
 		}
 	}
-	return ""
+	return "", ""
 }
 
 func dependencyNames(route store.RouteConfig) []string {

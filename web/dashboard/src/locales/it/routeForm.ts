@@ -57,10 +57,6 @@ export const routeForm: Record<string, string> = {
     "Spans midnight: until {time} the next day.": "Supera la mezzanotte: fino alle {time} del giorno dopo.",
 
     // Monitors & health checks
-    "User agents contain": "User agent contiene",
-    "Paths": "Path",
-    "Client IPs / CIDRs": "IP / CIDR dei client",
-    "Methods": "Metodi",
     "Monitors & health checks": "Monitor e health check",
     "Matching requests don't count as activity and never wake the app. Common monitors are ignored already": "Le richieste corrispondenti non contano come attività e non svegliano mai l'app. I monitor più comuni sono già esclusi",
     "(list)": "(elenco)",

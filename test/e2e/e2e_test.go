@@ -77,6 +77,8 @@ func TestE2E(t *testing.T) {
 	t.Run("InspectorRecordsRequestsOfEveryReplica", testInspector)
 	t.Run("ConditionsSendRequestsToAnotherBackend", testConditions)
 	t.Run("ProtectionRequiresSignInOrToken", testProtection)
+	t.Run("PausedRouteStaysAwake", testPause)
+	t.Run("DeletedRouteIsRestored", testRestore)
 	t.Run("LongStreamKeepsTheAppAwake", testLongStream)
 	t.Run("NewLeaderPutsTheIdleAppToSleep", testFailover)
 	t.Run("UninstallRestoresEverything", testUninstall)
@@ -242,6 +244,58 @@ func testLongStream(t *testing.T) {
 	if events < seconds-2 {
 		t.Fatalf("stream ended after %d of %d events", events, seconds)
 	}
+}
+
+// A paused route wakes its app and keeps it up past the idle timeout; resumed, it is a normal
+// route again.
+func testPause(t *testing.T) {
+	sleepApp(t)
+	until := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	adminJSON(t, "POST", "/api/routes/pause?id="+url.QueryEscape(routeID)+"&until="+until, nil, nil)
+	eventually(t, time.Minute, "pausing didn't wake the app", func() bool { return replicas(t) > 0 })
+	time.Sleep(idleLimit + 30*time.Second)
+	if replicas(t) == 0 {
+		t.Fatal("the paused route's app was put to sleep")
+	}
+	if route := getRoute(t); route["pause"] == nil || route["sleeps_at"] != nil {
+		t.Fatalf("listed as not paused: pause=%v sleeps_at=%v", route["pause"], route["sleeps_at"])
+	}
+	adminJSON(t, "DELETE", "/api/routes/pause?id="+url.QueryEscape(routeID), nil, nil)
+	if route := getRoute(t); route["pause"] != nil || route["sleeps_at"] == nil {
+		t.Fatalf("still paused after resuming: %v", route["pause"])
+	}
+}
+
+// A deleted route goes to the trash: its Ingress gets its own backend back, and restoring the
+// route points the Ingress at Smart Proxy again, with the same settings.
+func testRestore(t *testing.T) {
+	ingressBackend := func() string {
+		ing, err := kube.NetworkingV1().Ingresses(appNS).Get(context.TODO(), "echo", metav1.GetOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ing.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name
+	}
+	adminJSON(t, "DELETE", "/api/routes?id="+url.QueryEscape(routeID), nil, nil)
+	if b := ingressBackend(); b != "echo" {
+		t.Fatalf("deleted route's Ingress points at %q", b)
+	}
+	var deleted []map[string]any
+	adminJSON(t, "GET", "/api/routes/deleted", nil, &deleted)
+	if len(deleted) == 0 || deleted[0]["route_id"] != routeID {
+		t.Fatalf("not in the trash: %v", deleted)
+	}
+	adminJSON(t, "POST", "/api/routes/deleted?id="+url.QueryEscape(deleted[0]["id"].(string)), nil, nil)
+	if b := ingressBackend(); b != service {
+		t.Fatalf("restored route's Ingress points at %q", b)
+	}
+	if route := getRoute(t); time.Duration(route["idle_timeout"].(float64)) != idleLimit {
+		t.Fatalf("settings lost: idle timeout %v", route["idle_timeout"])
+	}
+	eventually(t, time.Minute, "the app isn't reachable through Smart Proxy after the restore", func() bool {
+		resp, _ := get(t, "/echo", "application/json")
+		return resp.StatusCode == 200
+	})
 }
 
 // The leader goes away: another replica takes over and still puts idle apps to sleep.

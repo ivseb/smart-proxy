@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,6 +31,7 @@ const (
 
 // Entry is one recorded request.
 type Entry struct {
+	ID         string            `json:"id"` // Unique: replica and sequence number
 	At         time.Time         `json:"at"`
 	Replica    string            `json:"replica"`
 	Method     string            `json:"method"`
@@ -56,6 +58,7 @@ type Recorder struct {
 	Replica string
 
 	mu     sync.Mutex
+	seq    uint64
 	routes map[string][]Entry // Oldest first
 }
 
@@ -64,6 +67,8 @@ func (r *Recorder) Add(routeID string, e Entry) {
 	e.Replica = r.Replica
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.seq++
+	e.ID = r.Replica + "-" + strconv.FormatUint(r.seq, 10)
 	if r.routes == nil {
 		r.routes = map[string][]Entry{}
 	}

@@ -17,6 +17,30 @@ export interface TrafficRules {
     methods?: string[];
 }
 
+// A pause of a route (see RouteConfig.pause).
+export interface Pause {
+    until?: string; // Absent: until resumed
+    at: string;
+    by?: string;
+}
+
+// One of the lists of TrafficRules.
+export type IgnoreKind = keyof TrafficRules;
+
+// An ignore rule as listed on a route's page, with what it matched over the last 24 hours.
+export interface IgnoreRuleView {
+    kind: IgnoreKind | "probes";
+    rule: string;
+    hits: number;
+    last?: string;
+}
+
+export interface IgnoreRulesView {
+    route: IgnoreRuleView[];
+    global: IgnoreRuleView[]; // Helm values and the built-in monitors
+    probes: IgnoreRuleView[]; // The workloads' Kubernetes probe paths
+}
+
 export type WhenAsleep = "respond" | "unavailable" | "wake";
 
 // A client sending requests to a route.
@@ -39,7 +63,7 @@ export interface TrafficSource {
 export type ConditionField = "header" | "cookie" | "query" | "path" | "client";
 export type ConditionOp = "equals" | "contains" | "prefix" | "exists";
 
-// Sends matching requests to a backend, e.g. header Origin equals https://login.example.com.
+// Sends matching requests to a backend, e.g. header X-App-Version starts with 5.
 export interface Condition {
     field: ConditionField;
     name?: string; // Header, cookie or query parameter name
@@ -82,6 +106,7 @@ export interface RouteConfig {
     when_asleep?: WhenAsleep | ""; // Answer to those requests while asleep ("" = respond)
     backends?: WeightedBackend[] | null; // Balanced Route: the Services and their weights
     inspect_until?: string | null; // Requests are recorded until then
+    pause?: Pause | null; // Only forwarding requests (no sleep, no other backends) while active
     protection?: Protection | null;
 }
 
@@ -174,6 +199,7 @@ export interface StatsData {
 export type RequestOutcome = "proxied" | "woken" | "waking_page" | "asleep" | "unavailable" | "login" | "denied" | "error";
 
 export interface InspectedRequest {
+    id: string; // Unique (replica and sequence number)
     at: string;
     replica: string;
     method: string;
@@ -196,4 +222,34 @@ export interface InspectedRequest {
 export interface InspectedRequests {
     requests: InspectedRequest[];
     replicas: number;
+}
+
+// What importing one route would do (preview), or did (result).
+export interface ImportItem {
+    id: string;
+    host: string;
+    path: string;
+    namespace: string;
+    deployment: string;
+    status: "new" | "changed" | "same" | "invalid";
+    changes?: string[]; // Settings that differ from the current route (JSON field names)
+    problems?: string[];
+    warnings?: string[];
+    result?: string; // "imported", or the error
+}
+
+// A route in the trash.
+export interface DeletedRoute {
+    id: string;
+    route_id: string;
+    host: string;
+    path: string;
+    namespace: string;
+    deployment: string;
+    deleted_at: string;
+    deleted_by?: string;
+    expires_at: string;
+    resources?: string[];
+    credentials?: boolean; // Its people and tokens come back with it
+    conflict?: boolean; // A route with its ID exists again
 }

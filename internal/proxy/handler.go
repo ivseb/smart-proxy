@@ -182,9 +182,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Uptime monitors, health checks and probes don't count as activity, and don't wake
 	// anything: while the route sleeps they get an answer from Smart Proxy (see WhenAsleep).
 	client := h.TrustedProxies.ClientIP(r)
-	reason := h.ignoredReason(r, client, route)
+	reason, rule := h.ignoredReason(r, client, route)
 	if h.Traffic != nil {
 		h.Traffic.Record(route.ID, r, client, reason)
+		h.Traffic.RecordRule(route.ID, reason, rule)
 	}
 	// While the route is inspected, the request is recorded with what happened to it.
 	var rec *recording
@@ -216,7 +217,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// A backend chosen by a condition (or the client pinned to one) gets the request whatever
 	// the weights; from here on the route is seen as that backend alone.
 	why := ""
-	if b, reason := h.explicitBackend(r, client, route); b != nil {
+	paused := route.Paused(time.Now())
+	if paused {
+		// Paused: a plain reverse proxy to the application.
+		if len(route.Backends) > 0 {
+			why = WhyPaused
+		}
+		route.Backends = nil
+	} else if b, reason := h.explicitBackend(r, client, route); b != nil {
 		why = reason
 		if reason == WhyCondition {
 			pin(w, r, route, b.Service, pinFor)
@@ -238,7 +246,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		metrics.Ignored(route.Namespace, route.ID, reason)
 		if h.serving(route) {
 			wake = false
-		} else if h.answerAsleep(w, route) {
+		} else if !paused && h.answerAsleep(w, route) { // Paused: monitors wake it like anyone
 			rec.set(inspect.OutcomeAsleep)
 			return
 		}

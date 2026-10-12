@@ -7,10 +7,12 @@ import (
 	"fmt"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"strings"
+	"time"
 
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/store"
+	"smart-proxy/internal/trash"
 	"smart-proxy/internal/vault"
 )
 
@@ -105,8 +107,9 @@ func (s *Server) unpatch(res ResourceRef) error {
 	}
 }
 
-// deleteRoute removes a route and restores every resource patched for it.
-func (s *Server) deleteRoute(id string) ([]patchedResource, error) {
+// deleteRoute removes a route and restores every resource patched for it. The route goes to the
+// trash, from where it can be restored.
+func (s *Server) deleteRoute(id, by string) ([]patchedResource, error) {
 	route, ok := s.store.GetRoute(id)
 	if !ok {
 		return nil, nil
@@ -141,8 +144,40 @@ func (s *Server) deleteRoute(id string) ([]patchedResource, error) {
 	if err := s.store.RemoveRoute(route.ID); err != nil {
 		return restored, err
 	}
-	s.forgetCredentials(route.ID)
+	s.discard(*route, by, restored)
 	return restored, nil
+}
+
+// discard puts a just removed route in the trash, with its credentials kept aside for a restore.
+func (s *Server) discard(route store.RouteConfig, by string, restored []patchedResource) {
+	var resources []string
+	for _, r := range restored {
+		resources = append(resources, r.Kind+" "+r.Namespace+"/"+r.Name)
+	}
+	entry := trash.NewEntry(route, by, resources, time.Now())
+	if v := s.vault(); v.Ready() {
+		if creds := v.Credentials(route.ID); len(creds.Users) > 0 || len(creds.Tokens) > 0 {
+			s.moveCredentials(route.ID, entry.CredentialsKey())
+			entry.Credentials = true
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	expired, err := s.Trash.Add(ctx, entry)
+	if err != nil {
+		logger.Printf("Warning: route %s deleted, but it couldn't be kept in the trash: %v", route.ID, err)
+		s.forgetCredentials(entry.CredentialsKey())
+	}
+	s.forgetExpired(expired)
+}
+
+// forgetExpired removes the credentials of routes leaving the trash for good.
+func (s *Server) forgetExpired(expired []trash.Entry) {
+	for _, e := range expired {
+		if e.Credentials {
+			s.forgetCredentials(e.CredentialsKey())
+		}
+	}
 }
 
 // forgetCredentials removes the users and tokens of a deleted route.
@@ -200,8 +235,9 @@ func (s *Server) afterUnpatch(owner string, res patchedResource) {
 		}
 	}
 	if len(remaining) == 0 {
-		s.store.RemoveRoute(owner)
-		s.forgetCredentials(owner)
+		if err := s.store.RemoveRoute(owner); err == nil {
+			s.discard(*route, "", []patchedResource{res})
+		}
 		logger.Printf("Route %s removed: its last patched resource was restored", owner)
 		return
 	}

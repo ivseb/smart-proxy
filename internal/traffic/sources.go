@@ -54,6 +54,7 @@ const (
 type Recorder struct {
 	mu     sync.Mutex
 	routes map[string]map[string]*SourceStats
+	rules  map[string]map[string]*RuleHit // Route -> rule -> hits
 }
 
 func NewRecorder() *Recorder {

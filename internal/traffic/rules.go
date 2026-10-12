@@ -80,33 +80,39 @@ const (
 	ReasonProbePath = "probe-path" // The path of one of the workload's Kubernetes probes
 )
 
-// Match reports whether a request matches the rules, and which rule matched.
+// Match reports whether a request matches the rules, and which kind of rule matched.
 func (r Rules) Match(req *http.Request, client net.IP) (string, bool) {
+	reason, _, ok := r.MatchRule(req, client)
+	return reason, ok
+}
+
+// MatchRule is Match, also returning the rule (pattern) that matched.
+func (r Rules) MatchRule(req *http.Request, client net.IP) (reason, rule string, ok bool) {
 	if ua := strings.ToLower(req.UserAgent()); ua != "" {
 		for _, pattern := range r.UserAgents {
 			if p := strings.ToLower(strings.TrimSpace(pattern)); p != "" && strings.Contains(ua, p) {
-				return ReasonUserAgent, true
+				return ReasonUserAgent, pattern, true
 			}
 		}
 	}
 	for _, pattern := range r.Paths {
 		if MatchPath(pattern, req.URL.Path) {
-			return ReasonPath, true
+			return ReasonPath, pattern, true
 		}
 	}
 	if client != nil {
 		for _, s := range r.Sources {
 			if n, err := parseNet(s); err == nil && n.Contains(client) {
-				return ReasonSource, true
+				return ReasonSource, s, true
 			}
 		}
 	}
 	for _, m := range r.Methods {
 		if strings.EqualFold(m, req.Method) {
-			return ReasonMethod, true
+			return ReasonMethod, m, true
 		}
 	}
-	return "", false
+	return "", "", false
 }
 
 // MatchPath matches an exact path, or a prefix when the pattern ends with "*".

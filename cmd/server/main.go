@@ -30,6 +30,7 @@ import (
 	"smart-proxy/internal/restore"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
+	"smart-proxy/internal/trash"
 	"smart-proxy/internal/vault"
 	"smart-proxy/internal/watcher"
 )
@@ -105,6 +106,9 @@ func main() {
 	adminServer.GlobalRules = globalRules
 	adminServer.Traffic = func(routeID string) []traffic.SourceStats {
 		return traffic.Merge(proxyHandler.Traffic.Snapshot()[routeID])
+	}
+	adminServer.RuleHits = func(routeID string) []traffic.RuleHit {
+		return traffic.MergeRuleHits(proxyHandler.Traffic.RuleSnapshot()[routeID])
 	}
 	// Recent request rates for the dashboard's charts, kept in memory.
 	retention, err := time.ParseDuration(getEnv("STATS_RETENTION", "30m"))
@@ -190,6 +194,9 @@ func main() {
 		}
 		// Patched resources outside Smart Proxy's namespace reach it through stand-in Services.
 		k8sClient.EnableStandIns(ctx, serviceName)
+		// Deleted routes, kept for a while to be restored.
+		adminServer.Trash = &trash.ConfigMap{Client: k8sClient.Clientset, Namespace: k8s.OwnNamespace(), Name: serviceName + "-deleted-routes",
+			Labels: map[string]string{store.LabelInstance: serviceName, store.LabelComponent: "deleted-routes"}, Owner: ownDeployment(k8sClient)}
 		// Smart Proxy's own Secret: peer token, login key, route credentials.
 		v := &vault.Vault{Client: k8sClient.Clientset, Namespace: k8s.OwnNamespace(), Name: serviceName + "-state", Owner: ownDeployment(k8sClient)}
 		if err := v.Start(ctx); err != nil {
@@ -201,13 +208,14 @@ func main() {
 			proxyHandler.Guard = &guard.Guard{Vault: v} // Read by requests only once ready (below)
 		}
 		replica := &ha.Replica{
-			Client:       k8sClient.Clientset,
-			Namespace:    k8s.OwnNamespace(),
-			Instance:     serviceName,
-			PodName:      podName,
-			PodUID:       os.Getenv("POD_UID"),
-			Store:        configStore,
-			LocalTraffic: proxyHandler.Traffic.Snapshot,
+			Client:        k8sClient.Clientset,
+			Namespace:     k8s.OwnNamespace(),
+			Instance:      serviceName,
+			PodName:       podName,
+			PodUID:        os.Getenv("POD_UID"),
+			Store:         configStore,
+			LocalTraffic:  proxyHandler.Traffic.Snapshot,
+			LocalRuleHits: proxyHandler.Traffic.RuleSnapshot,
 			LocalRequests: func() ha.RequestCounts {
 				total, routes := proxyHandler.Metrics.Snapshot()
 				return ha.RequestCounts{Total: total, Routes: routes}
@@ -217,6 +225,7 @@ func main() {
 			log.Fatalf("Failed to watch shared configuration: %v", err)
 		}
 		adminServer.Traffic = replica.ClusterTraffic
+		adminServer.RuleHits = replica.ClusterRuleHits
 		adminServer.RequestTotals = func() (int64, map[string]int64) {
 			c := replica.ClusterRequests()
 			return c.Total, c.Routes

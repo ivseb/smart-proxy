@@ -61,6 +61,7 @@ const (
 	WhySticky    = "sticky"    // The client's earlier choice (cookie)
 	WhyCondition = "condition" // The request matched one of the backend's conditions
 	WhyPinned    = "pinned"    // Kept on a backend taking no share of traffic, chosen by a condition or the link
+	WhyPaused    = "paused"    // The route is paused: its main backend only
 )
 
 // pinFor is how long a client stays on a backend chosen by a condition or the link.

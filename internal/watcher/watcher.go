@@ -108,7 +108,7 @@ func (w *Watcher) checkIdleRoutes() {
 		if !w.routedThroughUs(route) {
 			continue
 		}
-		if time.Since(route.LastActivity) <= route.EffectiveIdleTimeout() || route.ScheduledAwake(now) {
+		if !route.Idle(now) {
 			continue
 		}
 
@@ -117,7 +117,7 @@ func (w *Watcher) checkIdleRoutes() {
 		// Only the route's own workloads: backends it doesn't manage are left as they are.
 		// Requests may have arrived since the snapshot (this loop makes API calls): check again
 		// right before scaling anything down.
-		if fresh, ok := w.store.GetRoute(route.ID); !ok || time.Since(fresh.LastActivity) <= fresh.EffectiveIdleTimeout() {
+		if fresh, ok := w.store.GetRoute(route.ID); !ok || !fresh.Idle(time.Now()) {
 			continue
 		}
 		routes = w.store.GetAllRoutes()
@@ -196,7 +196,7 @@ func (w *Watcher) isDeploymentActive(routes []store.RouteConfig, namespace, work
 			continue
 		}
 		_, _, _, patched := r.Resource()
-		active := time.Since(r.LastActivity) <= r.EffectiveIdleTimeout() || r.ScheduledAwake(time.Now())
+		active := !r.Idle(time.Now())
 		if (active || !patched || r.AlwaysOn) && slices.ContainsFunc(r.ManagedWorkloads(), func(x string) bool { return canonical(x) == workload }) {
 			return true
 		}

@@ -61,6 +61,7 @@ type fixture struct {
 	cluster *fakecluster.Cluster
 	store   *store.Store
 	srv     *httptest.Server
+	server  *Server
 }
 
 func newFixture(t *testing.T, objs ...runtime.Object) *fixture {
@@ -71,9 +72,10 @@ func newFixture(t *testing.T, objs ...runtime.Object) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(NewServer(c.Client, st, proxy.NewMetrics(), proxyService, authn).Handler())
+	server := NewServer(c.Client, st, proxy.NewMetrics(), proxyService, authn)
+	srv := httptest.NewServer(server.Handler())
 	t.Cleanup(srv.Close)
-	return &fixture{cluster: c, store: st, srv: srv}
+	return &fixture{cluster: c, store: st, srv: srv, server: server}
 }
 
 func (f *fixture) call(t *testing.T, method, path string, body any) (int, []byte) {

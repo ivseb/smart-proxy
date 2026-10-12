@@ -2,7 +2,8 @@ import { EyeOff } from "lucide-react";
 import { usePolling } from "@/hooks/usePolling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import type { RouteConfig, RouteStatus, TrafficRules, TrafficSource } from "@/types/api";
+import type { RouteConfig, RouteStatus, TrafficSource } from "@/types/api";
+import { addRule } from "@/lib/rules";
 import { formatDuration, formatRelative } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
 import { msg, t, tn } from "@/lib/i18n";
@@ -27,12 +28,9 @@ export function TrafficSources({ route, onSave }: TrafficSourcesProps) {
     const now = useNow(5000);
 
     const ignore = async (src: TrafficSource) => {
-        const rules: TrafficRules = { ...(route.ignore || {}) };
-        if (src.client === "Browser" || src.client === "(no user agent)") {
-            rules.paths = [...(rules.paths || []), src.path];
-        } else {
-            rules.user_agents = [...(rules.user_agents || []), src.client];
-        }
+        const rules = src.client === "Browser" || src.client === "(no user agent)"
+            ? addRule(route.ignore, "paths", src.path)
+            : addRule(route.ignore, "user_agents", src.client);
         if (await onSave({ ...route, ignore: rules })) refetch();
     };
 

@@ -88,7 +88,7 @@ export function Dashboard() {
         }
         if (route.resources.length > 0) {
             setRouteToDelete(route);
-        } else if (confirm(t("Delete the route for {name}?", { name: route.host || route.deployment }))) {
+        } else if (confirm(t("Delete the route for {name}? It stays in Recently deleted for 30 days.", { name: route.host || route.deployment }))) {
             deleteRoute(route);
         }
     };
@@ -227,6 +227,7 @@ export function Dashboard() {
                                     onStop={stopRoute}
                                     onWake={wakeRoute}
                                     onSelect={setSelectedRouteId}
+                                    onChanged={refetch}
                                 />
                             )}
                             {activeTab === "patching" && <PatchingView info={info} onChanged={refetch} />}
@@ -258,6 +259,7 @@ export function Dashboard() {
                                 </li>
                             ))}
                         </ul>
+                        <p className="text-gray-400 mb-6 -mt-3 text-sm">{t("The route stays in Recently deleted for 30 days: restoring it points them at Smart Proxy again.")}</p>
                         <div className="flex flex-col gap-3">
                             <Button variant="danger" onClick={() => deleteRoute(routeToDelete)} className="w-full">
                                 {routeToDelete.resources.length === 1
