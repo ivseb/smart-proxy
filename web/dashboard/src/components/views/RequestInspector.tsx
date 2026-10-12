@@ -38,6 +38,7 @@ const IGNORED: Record<string, string> = {
     source: msg("ignored source IP"),
     method: msg("ignored method"),
     "probe-path": msg("health check path"),
+    rule: msg("ignore rule"),
 };
 
 // Quick views of the recorded requests.

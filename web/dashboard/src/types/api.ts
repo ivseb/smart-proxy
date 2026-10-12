@@ -15,6 +15,15 @@ export interface TrafficRules {
     paths?: string[]; // Exact, or prefix ending with "*"
     sources?: string[]; // Client IPs or CIDRs
     methods?: string[];
+    rules?: RuleSpec[]; // Several conditions at once
+}
+
+// An ignore rule with several conditions: a request must meet all those set (any of the methods).
+export interface RuleSpec {
+    path?: string;
+    methods?: string[];
+    user_agent?: string;
+    source?: string;
 }
 
 // A pause of a route (see RouteConfig.pause).
@@ -24,12 +33,12 @@ export interface Pause {
     by?: string;
 }
 
-// One of the lists of TrafficRules.
-export type IgnoreKind = keyof TrafficRules;
+// One of the single-condition lists of TrafficRules.
+export type IgnoreKind = "user_agents" | "paths" | "sources" | "methods";
 
 // An ignore rule as listed on a route's page, with what it matched over the last 24 hours.
 export interface IgnoreRuleView {
-    kind: IgnoreKind | "probes";
+    kind: IgnoreKind | "rules" | "probes";
     rule: string;
     hits: number;
     last?: string;

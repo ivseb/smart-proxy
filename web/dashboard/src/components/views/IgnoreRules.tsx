@@ -6,10 +6,10 @@ import { usePolling } from "@/hooks/usePolling";
 import { useNow } from "@/hooks/useNow";
 import { formatRelative } from "@/lib/format";
 import { t, tn } from "@/lib/i18n";
-import { RULE_KINDS, addRule, kindLabel, removeRule, replaceRule, ruleError, ruleList } from "@/lib/rules";
-import type { IgnoreKind, IgnoreRuleView, IgnoreRulesView, RouteConfig, RouteStatus, TrafficRules } from "@/types/api";
+import { METHODS, kindLabel, specError, specKey, specsOf, toTrafficRules } from "@/lib/rules";
+import type { IgnoreRuleView, IgnoreRulesView, RouteConfig, RouteStatus, RuleSpec, TrafficRules } from "@/types/api";
 
-const inputClass = "bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-sm text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500";
+const inputClass = "w-full bg-gray-900 border border-gray-700 rounded-lg px-2.5 py-1.5 text-sm text-gray-100 font-mono placeholder:font-sans placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500";
 
 const ruleKey = (kind: string, rule: string) => `${kind} ${rule}`;
 
@@ -25,7 +25,94 @@ function Hits({ view, now }: { view?: IgnoreRuleView; now: number }) {
     );
 }
 
-// RulesListEditor edits a route's ignore rules as a list: add, change, remove, one rule per row.
+// Conditions shows a rule's conditions as "Path /api/* · Method GET, POST".
+function Conditions({ spec }: { spec: RuleSpec }) {
+    const parts: [string, string][] = [];
+    if (spec.path) parts.push([t("Path"), spec.path]);
+    if (spec.methods?.length) parts.push([spec.methods.length > 1 ? t("Methods") : t("Method"), spec.methods.join(", ")]);
+    if (spec.user_agent) parts.push([t("User agent contains"), spec.user_agent]);
+    if (spec.source) parts.push([t("Client IP or CIDR"), spec.source]);
+    return (
+        <span className="flex flex-wrap items-center gap-1.5 min-w-0 flex-1">
+            {parts.map(([label, value], i) => (
+                <span key={label} className="inline-flex items-center gap-1.5 min-w-0">
+                    {i > 0 && <span className="text-[11px] text-gray-500">{t("and")}</span>}
+                    <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 whitespace-nowrap">{label}</span>
+                    <span className="font-mono text-sm text-gray-100 break-all">{value}</span>
+                </span>
+            ))}
+        </span>
+    );
+}
+
+// RuleForm edits one rule: the conditions a request must all meet.
+function RuleForm({ initial, submitLabel, onSubmit, onCancel }: {
+    initial?: RuleSpec;
+    submitLabel: string;
+    onSubmit: (spec: RuleSpec) => void | Promise<unknown>;
+    onCancel?: () => void;
+}) {
+    const [spec, setSpec] = useState<RuleSpec>(initial || {});
+    const [touched, setTouched] = useState(false);
+    const error = specError(spec);
+    const set = (patch: Partial<RuleSpec>) => { setSpec(prev => ({ ...prev, ...patch })); setTouched(true); };
+    const toggleMethod = (m: string) => {
+        const methods = spec.methods || [];
+        set({ methods: methods.includes(m) ? methods.filter(x => x !== m) : [...methods, m] });
+    };
+    const submit = async () => {
+        if (error) return;
+        await onSubmit(spec);
+        if (!initial) { setSpec({}); setTouched(false); }
+    };
+    const onKey = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter") { e.preventDefault(); submit(); }
+        if (e.key === "Escape" && onCancel) { e.preventDefault(); onCancel(); }
+    };
+
+    return (
+        <div className="space-y-2 rounded-lg border border-gray-700/60 bg-gray-900/40 p-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <label className="space-y-1">
+                    <span className="block text-xs text-gray-400">{t("Path")}</span>
+                    <input className={inputClass} value={spec.path || ""} placeholder="/healthz, /api/*" onChange={e => set({ path: e.target.value })} onKeyDown={onKey} />
+                </label>
+                <label className="space-y-1">
+                    <span className="block text-xs text-gray-400">{t("User agent contains")}</span>
+                    <input className={inputClass} value={spec.user_agent || ""} placeholder="MyMonitor" onChange={e => set({ user_agent: e.target.value })} onKeyDown={onKey} />
+                </label>
+                <label className="space-y-1">
+                    <span className="block text-xs text-gray-400">{t("Client IP or CIDR")}</span>
+                    <input className={inputClass} value={spec.source || ""} placeholder="10.20.0.0/16" onChange={e => set({ source: e.target.value })} onKeyDown={onKey} />
+                </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-gray-400 mr-1">{t("Methods")}</span>
+                {METHODS.map(m => {
+                    const on = spec.methods?.includes(m);
+                    return (
+                        <button key={m} type="button" onClick={() => toggleMethod(m)} aria-pressed={on}
+                            className={`font-mono text-xs px-2 py-1 rounded-md border transition-colors ${on ? "border-blue-500 bg-blue-500/20 text-blue-100" : "border-gray-700 text-gray-400 hover:text-white hover:border-gray-500"}`}>
+                            {m}
+                        </button>
+                    );
+                })}
+                <span className="text-xs text-gray-500 ml-1">{spec.methods?.length ? "" : t("(any)")}</span>
+                <span className="flex items-center gap-1 ml-auto">
+                    {onCancel && <Button type="button" variant="ghost" size="sm" className="gap-1" onClick={onCancel}><X size={14} /> {t("Cancel")}</Button>}
+                    <Button type="button" size="sm" variant="secondary" className="gap-1.5" onClick={submit} disabled={!!error}>
+                        {initial ? <Check size={14} /> : <Plus size={14} />} {submitLabel}
+                    </Button>
+                </span>
+            </div>
+            <p className={`text-xs ${touched && error ? "text-orange-300" : "text-gray-500"}`}>
+                {touched && error ? error : t("A request is ignored when it meets every condition filled in (any of the chosen methods). Paths: exact, or a prefix ending with *.")}
+            </p>
+        </div>
+    );
+}
+
+// RulesListEditor edits a route's ignore rules as a list, one rule per row: add, change, remove.
 // With hits, each rule shows what it matched over the last 24 hours.
 export function RulesListEditor({ rules, onChange, hits, readOnly }: {
     rules: TrafficRules | null | undefined;
@@ -34,84 +121,42 @@ export function RulesListEditor({ rules, onChange, hits, readOnly }: {
     readOnly?: boolean;
 }) {
     const now = useNow(10000);
-    const [kind, setKind] = useState<IgnoreKind>("paths");
-    const [value, setValue] = useState("");
-    const [editing, setEditing] = useState<{ kind: IgnoreKind; rule: string; value: string } | null>(null);
-    const rows = ruleList(rules);
-    const error = value.trim() ? ruleError(kind, value) : null;
-    const duplicate = rows.some(r => r.kind === kind && r.rule === value.trim());
+    const [editing, setEditing] = useState<number | null>(null);
+    const specs = specsOf(rules);
 
-    const add = async () => {
-        if (!value.trim() || error || duplicate) return;
-        await onChange(addRule(rules, kind, value));
-        setValue("");
-    };
-    const saveEdit = async () => {
-        if (!editing || ruleError(editing.kind, editing.value)) return;
-        await onChange(replaceRule(rules, editing.kind, editing.rule, editing.value));
-        setEditing(null);
+    const replace = (i: number, spec: RuleSpec | null) => {
+        const next = [...specs];
+        if (spec) next[i] = spec; else next.splice(i, 1);
+        return onChange(toTrafficRules(next));
     };
 
     return (
         <div className="space-y-2">
-            {rows.length === 0 ? (
+            {specs.length === 0 ? (
                 <p className="text-sm text-gray-500 italic">{t("No rules of its own yet.")}</p>
             ) : (
                 <ul className="divide-y divide-gray-700/60 rounded-lg border border-gray-700/60">
-                    {rows.map(r => {
-                        const isEditing = editing?.kind === r.kind && editing.rule === r.rule;
-                        const editError = isEditing ? ruleError(editing.kind, editing.value) : null;
-                        return (
-                            <li key={ruleKey(r.kind, r.rule)} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
-                                <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-300 whitespace-nowrap">{kindLabel(r.kind)}</span>
-                                {isEditing ? (
-                                    <input autoFocus className={`${inputClass} flex-1 min-w-[10rem] font-mono py-1`} value={editing.value}
-                                        aria-label={t("Rule")} title={editError || undefined}
-                                        onChange={e => setEditing({ ...editing, value: e.target.value })}
-                                        onKeyDown={e => {
-                                            if (e.key === "Enter") { e.preventDefault(); saveEdit(); }
-                                            if (e.key === "Escape") { e.preventDefault(); setEditing(null); }
-                                        }} />
-                                ) : (
-                                    <span className="flex-1 min-w-0 font-mono text-sm text-gray-100 break-all">{r.rule}</span>
-                                )}
-                                <Hits view={hits?.get(ruleKey(r.kind, r.rule))} now={now} />
-                                {!readOnly && (
-                                    <span className="flex items-center gap-1 ml-auto">
-                                        {isEditing ? (
-                                            <>
-                                                <Button type="button" variant="ghost" size="icon" className="p-1" onClick={saveEdit} disabled={!!editError} aria-label={t("Save")}><Check size={14} /></Button>
-                                                <Button type="button" variant="ghost" size="icon" className="p-1" onClick={() => setEditing(null)} aria-label={t("Cancel")}><X size={14} /></Button>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Button type="button" variant="ghost" size="icon" className="p-1" onClick={() => setEditing({ ...r, value: r.rule })} aria-label={t("Edit {rule}", { rule: r.rule })}><Pencil size={14} /></Button>
-                                                <Button type="button" variant="ghost" size="icon" className="p-1 text-gray-400 hover:text-red-300" onClick={() => onChange(removeRule(rules, r.kind, r.rule))} aria-label={t("Remove {rule}", { rule: r.rule })}><Trash2 size={14} /></Button>
-                                            </>
-                                        )}
-                                    </span>
-                                )}
-                            </li>
-                        );
-                    })}
+                    {specs.map((spec, i) => editing === i ? (
+                        <li key={specKey(spec)} className="p-2">
+                            <RuleForm initial={spec} submitLabel={t("Save")} onCancel={() => setEditing(null)}
+                                onSubmit={async s => { await replace(i, s); setEditing(null); }} />
+                        </li>
+                    ) : (
+                        <li key={specKey(spec)} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+                            <Conditions spec={spec} />
+                            <Hits view={hits?.get(specKey(spec))} now={now} />
+                            {!readOnly && (
+                                <span className="flex items-center gap-1 ml-auto">
+                                    <Button type="button" variant="ghost" size="icon" className="p-1" onClick={() => setEditing(i)} aria-label={t("Edit {rule}", { rule: specKey(spec) })}><Pencil size={14} /></Button>
+                                    <Button type="button" variant="ghost" size="icon" className="p-1 text-gray-400 hover:text-red-300" onClick={() => replace(i, null)} aria-label={t("Remove {rule}", { rule: specKey(spec) })}><Trash2 size={14} /></Button>
+                                </span>
+                            )}
+                        </li>
+                    ))}
                 </ul>
             )}
-            {!readOnly && (
-                <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <select className={inputClass} value={kind} onChange={e => setKind(e.target.value as IgnoreKind)} aria-label={t("Kind of rule")}>
-                            {RULE_KINDS.map(k => <option key={k.kind} value={k.kind}>{t(k.label)}</option>)}
-                        </select>
-                        <input className={`${inputClass} flex-1 min-w-[10rem] font-mono`} value={value} placeholder={RULE_KINDS.find(k => k.kind === kind)?.placeholder}
-                            aria-label={t("Rule")} onChange={e => setValue(e.target.value)}
-                            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
-                        <Button type="button" size="sm" variant="secondary" className="gap-1.5" onClick={add} disabled={!value.trim() || !!error || duplicate}>
-                            <Plus size={14} /> {t("Add")}
-                        </Button>
-                    </div>
-                    {(error || duplicate) && <p className="text-xs text-orange-300">{error || t("Already in the list")}</p>}
-                    {kind === "paths" && !error && <p className="text-xs text-gray-500">{t("Exact path, or a prefix ending with * (e.g. /health*).")}</p>}
-                </div>
+            {!readOnly && editing === null && (
+                <RuleForm submitLabel={t("Add rule")} onSubmit={spec => onChange(toTrafficRules([...specs, spec]))} />
             )}
         </div>
     );

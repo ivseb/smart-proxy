@@ -205,17 +205,22 @@ func TestIgnoreRulesShowWhatTheyMatched(t *testing.T) {
 	f := newFixture(t, app("team-a", "web", 1)...)
 	id := patchWeb(t, f)
 	route, _ := f.store.GetRoute(id)
-	route.Ignore = &traffic.Rules{Paths: []string{"/health*"}, UserAgents: []string{"kube-probe"}}
-	f.call(t, "POST", "/api/routes", route)
+	route.Ignore = &traffic.Rules{Paths: []string{"/health*"}, UserAgents: []string{"kube-probe"},
+		Combined: []traffic.Rule{{Path: "/api/*", Methods: []string{"POST", "GET"}}}}
+	if code, body := f.call(t, "POST", "/api/routes", route); code != http.StatusCreated {
+		t.Fatalf("save: %d %s", code, body)
+	}
 	f.server.GlobalRules = traffic.Rules{UserAgents: []string{"Pingdom"}}
 	hour := time.Now().Unix() / 3600
 	f.server.RuleHits = func(string) []traffic.RuleHit {
-		return []traffic.RuleHit{{Reason: traffic.ReasonPath, Rule: "/health*", Hours: map[int64]int64{hour: 12}, Last: time.Now()}}
+		return []traffic.RuleHit{{Reason: traffic.ReasonPath, Rule: "/health*", Hours: map[int64]int64{hour: 12}, Last: time.Now()},
+			{Reason: traffic.ReasonRule, Rule: "path=/api/* method=GET,POST", Hours: map[int64]int64{hour: 3}, Last: time.Now()}}
 	}
 	var rules IgnoreRules
 	_, body := f.call(t, "GET", "/api/routes/ignore-rules?id="+url.QueryEscape(id), nil)
 	json.Unmarshal(body, &rules)
-	if len(rules.Route) != 2 || rules.Route[0].Rule != "/health*" || rules.Route[0].Hits != 12 || rules.Route[1].Hits != 0 {
+	if len(rules.Route) != 3 || rules.Route[0].Kind != "rules" || rules.Route[0].Rule != "path=/api/* method=GET,POST" || rules.Route[0].Hits != 3 ||
+		rules.Route[1].Rule != "/health*" || rules.Route[1].Hits != 12 || rules.Route[2].Hits != 0 {
 		t.Fatalf("route rules: %s", body)
 	}
 	if len(rules.Global) != 1 || rules.Global[0].Rule != "Pingdom" {

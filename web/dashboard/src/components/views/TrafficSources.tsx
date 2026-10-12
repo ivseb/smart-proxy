@@ -14,6 +14,7 @@ const REASONS: Record<string, string> = {
     source: msg("source IP"),
     method: msg("method"),
     "probe-path": msg("probe path"),
+    rule: msg("ignore rule"),
 };
 
 interface TrafficSourcesProps {

@@ -61,3 +61,33 @@ func TestRuleHitsBounded(t *testing.T) {
 		t.Fatalf("%d rules kept", n)
 	}
 }
+
+func TestCombinedRulesNeedEveryCondition(t *testing.T) {
+	rules := Rules{Combined: []Rule{{Path: "/api/*", Methods: []string{"get", "POST"}}, {UserAgent: "Zabbix", Source: "10.1.0.0/16"}}}
+	if err := rules.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		method, path, ua, client string
+		rule                     string
+	}{
+		{"GET", "/api/orders", "curl", "1.2.3.4", "path=/api/* method=GET,POST"},
+		{"POST", "/api/orders", "curl", "1.2.3.4", "path=/api/* method=GET,POST"},
+		{"DELETE", "/api/orders", "curl", "1.2.3.4", ""}, // Method not listed
+		{"GET", "/web", "curl", "1.2.3.4", ""},           // Path doesn't match
+		{"GET", "/web", "Zabbix 7", "10.1.2.3", "ua=Zabbix ip=10.1.0.0/16"},
+		{"GET", "/web", "Zabbix 7", "8.8.8.8", ""}, // Not from that network
+	} {
+		r := httptest.NewRequest(tc.method, "http://x"+tc.path, nil)
+		r.Header.Set("User-Agent", tc.ua)
+		reason, rule, ok := rules.MatchRule(r, net.ParseIP(tc.client))
+		if rule != tc.rule || ok != (tc.rule != "") || (ok && reason != ReasonRule) {
+			t.Errorf("%+v: got %q %q %v", tc, reason, rule, ok)
+		}
+	}
+	for _, bad := range []Rule{{}, {Path: "api"}, {Source: "nope"}, {Methods: []string{"G ET"}}} {
+		if (Rules{Combined: []Rule{bad}}).Validate() == nil {
+			t.Errorf("%+v accepted", bad)
+		}
+	}
+}

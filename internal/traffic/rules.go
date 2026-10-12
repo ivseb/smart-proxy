@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 )
 
@@ -34,11 +35,94 @@ type Rules struct {
 	Sources []string `json:"sources,omitempty"`
 	// Methods are HTTP methods, e.g. HEAD.
 	Methods []string `json:"methods,omitempty"`
+	// Combined rules match requests meeting several conditions at once, e.g. a path with
+	// some methods only.
+	Combined []Rule `json:"rules,omitempty"`
+}
+
+// Rule matches requests meeting every condition it sets: e.g. path /api/* with method GET or
+// POST. Within a condition, any value is enough (GET or POST).
+type Rule struct {
+	Path      string   `json:"path,omitempty"`       // Exact, or a prefix ending with "*"
+	Methods   []string `json:"methods,omitempty"`    // Any of them
+	UserAgent string   `json:"user_agent,omitempty"` // Case-insensitive substring
+	Source    string   `json:"source,omitempty"`     // Client IP or CIDR
+}
+
+// String identifies a rule, the same way the dashboard does: "path=/api/* method=GET,POST".
+func (r Rule) String() string {
+	var parts []string
+	if r.Path != "" {
+		parts = append(parts, "path="+r.Path)
+	}
+	if len(r.Methods) > 0 {
+		methods := make([]string, len(r.Methods))
+		for i, m := range r.Methods {
+			methods[i] = strings.ToUpper(m)
+		}
+		sort.Strings(methods)
+		parts = append(parts, "method="+strings.Join(methods, ","))
+	}
+	if r.UserAgent != "" {
+		parts = append(parts, "ua="+r.UserAgent)
+	}
+	if r.Source != "" {
+		parts = append(parts, "ip="+r.Source)
+	}
+	return strings.Join(parts, " ")
+}
+
+func (r Rule) validate() error {
+	if r.Path == "" && len(r.Methods) == 0 && r.UserAgent == "" && r.Source == "" {
+		return fmt.Errorf("a rule needs at least one condition")
+	}
+	if r.Path != "" && !strings.HasPrefix(r.Path, "/") {
+		return fmt.Errorf("path %q must start with /", r.Path)
+	}
+	if r.Source != "" {
+		if _, err := parseNet(r.Source); err != nil {
+			return err
+		}
+	}
+	for _, m := range r.Methods {
+		if m == "" || strings.ContainsAny(m, " /") {
+			return fmt.Errorf("invalid method %q", m)
+		}
+	}
+	return nil
+}
+
+func (r Rule) match(req *http.Request, client net.IP) bool {
+	if r.Path != "" && !MatchPath(r.Path, req.URL.Path) {
+		return false
+	}
+	if len(r.Methods) > 0 && !containsFold(r.Methods, req.Method) {
+		return false
+	}
+	if r.UserAgent != "" && !strings.Contains(strings.ToLower(req.UserAgent()), strings.ToLower(strings.TrimSpace(r.UserAgent))) {
+		return false
+	}
+	if r.Source != "" {
+		n, err := parseNet(r.Source)
+		if err != nil || client == nil || !n.Contains(client) {
+			return false
+		}
+	}
+	return true
+}
+
+func containsFold(list []string, s string) bool {
+	for _, v := range list {
+		if strings.EqualFold(v, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsZero reports whether no rule is set.
 func (r Rules) IsZero() bool {
-	return len(r.UserAgents)+len(r.Paths)+len(r.Sources)+len(r.Methods) == 0
+	return len(r.UserAgents)+len(r.Paths)+len(r.Sources)+len(r.Methods)+len(r.Combined) == 0
 }
 
 // Validate reports malformed rules.
@@ -58,6 +142,11 @@ func (r Rules) Validate() error {
 			return fmt.Errorf("invalid method %q", m)
 		}
 	}
+	for _, c := range r.Combined {
+		if err := c.validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -68,6 +157,7 @@ func (r Rules) Merge(other Rules) Rules {
 		Paths:      append(append([]string{}, r.Paths...), other.Paths...),
 		Sources:    append(append([]string{}, r.Sources...), other.Sources...),
 		Methods:    append(append([]string{}, r.Methods...), other.Methods...),
+		Combined:   append(append([]Rule{}, r.Combined...), other.Combined...),
 	}
 }
 
@@ -77,6 +167,7 @@ const (
 	ReasonPath      = "path"
 	ReasonSource    = "source"
 	ReasonMethod    = "method"
+	ReasonRule      = "rule"       // A combined rule (see Rule)
 	ReasonProbePath = "probe-path" // The path of one of the workload's Kubernetes probes
 )
 
@@ -88,6 +179,11 @@ func (r Rules) Match(req *http.Request, client net.IP) (string, bool) {
 
 // MatchRule is Match, also returning the rule (pattern) that matched.
 func (r Rules) MatchRule(req *http.Request, client net.IP) (reason, rule string, ok bool) {
+	for _, c := range r.Combined {
+		if c.match(req, client) {
+			return ReasonRule, c.String(), true
+		}
+	}
 	if ua := strings.ToLower(req.UserAgent()); ua != "" {
 		for _, pattern := range r.UserAgents {
 			if p := strings.ToLower(strings.TrimSpace(pattern)); p != "" && strings.Contains(ua, p) {

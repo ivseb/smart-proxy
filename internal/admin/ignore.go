@@ -32,10 +32,15 @@ var kinds = map[string]string{
 	traffic.ReasonSource:    "sources",
 	traffic.ReasonMethod:    "methods",
 	traffic.ReasonProbePath: "probes",
+	traffic.ReasonRule:      "rules",
 }
 
 func ruleLists(r traffic.Rules) map[string][]string {
-	return map[string][]string{"user_agents": r.UserAgents, "paths": r.Paths, "sources": r.Sources, "methods": r.Methods}
+	var combined []string
+	for _, c := range r.Combined {
+		combined = append(combined, c.String())
+	}
+	return map[string][]string{"user_agents": r.UserAgents, "paths": r.Paths, "sources": r.Sources, "methods": r.Methods, "rules": combined}
 }
 
 // handleIgnoreRules lists the ignore rules of a route with how often each matched.
@@ -62,7 +67,7 @@ func (s *Server) handleIgnoreRules(w http.ResponseWriter, r *http.Request) {
 		return v
 	}
 	out := IgnoreRules{Route: []IgnoreRule{}, Global: []IgnoreRule{}, Probes: []IgnoreRule{}}
-	order := []string{"paths", "user_agents", "sources", "methods"}
+	order := []string{"rules", "paths", "user_agents", "sources", "methods"}
 	if route.Ignore != nil {
 		lists := ruleLists(*route.Ignore)
 		for _, kind := range order {
