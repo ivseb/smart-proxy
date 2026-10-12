@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.4.1 — chart 0.6.1
+
+### Added
+- **Ignore rules with several conditions**: a rule can combine a path, methods, a user agent and a client IP; a request must meet all of them (any of the methods). E.g. *path `/api/status` and methods GET, HEAD*. Rules with one condition are still stored as before (`ignore.paths`, …), combined ones in `ignore.rules`.
+
+### Fixed
+- The README showed the application's page instead of the "waking up" page.
+
 ## 2.4.0 — chart 0.6.0
 
 ### Added

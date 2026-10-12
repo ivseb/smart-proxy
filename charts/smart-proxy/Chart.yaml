@@ -3,9 +3,9 @@ name: smart-proxy
 description: Intelligent request handling for Kubernetes Ingresses and OpenShift Routes — auto-sleep, dependency chains and unified route patching.
 type: application
 # Chart version. Bump on every change to the chart itself.
-version: 0.6.0
+version: 0.6.1
 # Version of the Smart Proxy application shipped by default.
-appVersion: "2.4.0"
+appVersion: "2.4.1"
 home: https://ivseb.github.io/smart-proxy/
 icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
 sources:
@@ -27,18 +27,10 @@ annotations:
       url: https://ivseb.github.io/smart-proxy/
   artifacthub.io/images: |
     - name: smart-proxy
-      image: docker.io/isebben/smart-proxy:2.4.0
+      image: docker.io/isebben/smart-proxy:2.4.1
   artifacthub.io/maintainers: |
     - name: ivseb
       email: ivan.sebben.dati@gmail.com
   artifacthub.io/changes: |
     - kind: added
-      description: Pause a route for a while or until resumed - Smart Proxy then only forwards its requests
-    - kind: added
-      description: Ignore rules as a list, each with the requests it matched in the last 24 hours
-    - kind: added
-      description: Export and import routes with a preview; deleted routes restorable for 30 days
-    - kind: added
-      description: Requests inspector - search with exclusions, quick views, scrolling list
-    - kind: fixed
-      description: An open request in the inspector no longer closes when new requests arrive
+      description: Ignore rules with several conditions (path, methods, user agent, client IP), all of which must match
