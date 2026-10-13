@@ -64,9 +64,14 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      # The Node version the dashboard is built with in the image (the Dockerfile's node image).
+      - name: Node version
+        id: node
+        run: echo "version=$(sed -n 's/^FROM node:\([0-9.]*\)-alpine.*/\1/p' Dockerfile)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: ${{ steps.node.outputs.version }}
           cache: npm
           cache-dependency-path: web/dashboard/package-lock.json
 

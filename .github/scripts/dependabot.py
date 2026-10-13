@@ -15,6 +15,9 @@ import sys
 from pathlib import Path
 
 DEPS_COMMIT = re.compile(r"^(build|chore|deps)(\(deps(-dev)?\))?: |^Bump ", re.I)
+# Paths that don't end up in the image or the chart: changing them is no reason to hold back an
+# automatic release.
+NOT_SHIPPED = (".github/", "docs/", "media/", "README.md", "mkdocs.yml")
 # Files whose change ends up in the image.
 RUNTIME = ("go.mod", "go.sum", "Dockerfile", "web/dashboard/package.json", "web/dashboard/package-lock.json")
 VERSIONS = re.compile(r"from `?v?(\d[\w.\-+]*)`? to `?v?(\d[\w.\-+]*)")
@@ -65,17 +68,24 @@ def last_tag():
     return run("git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*")
 
 
+def shipped(sha):
+    """Whether a commit changes something that ends up in the image or the chart."""
+    files = run("git", "show", "--name-only", "--format=", sha).splitlines()
+    return any(not f.startswith(NOT_SHIPPED) for f in files if f)
+
+
 def decide():
     run("git", "fetch", "--quiet", "--tags", "origin", "main")
     sha = run("git", "rev-parse", "origin/main")
     tag = last_tag()
-    subjects = run("git", "log", "--format=%s", f"{tag}..origin/main").splitlines()
+    commits = run("git", "log", "--format=%H %s", f"{tag}..origin/main").splitlines()
     files = run("git", "diff", "--name-only", f"{tag}..origin/main").splitlines()
+    manual = [c.split(" ", 1)[1] for c in commits if not DEPS_COMMIT.search(c.split(" ", 1)[1]) and shipped(c.split(" ", 1)[0])]
     release = "false"
-    if not subjects:
+    if not commits:
         print(f"Nothing since {tag}.", file=sys.stderr)
-    elif not all(DEPS_COMMIT.search(s) for s in subjects):
-        print(f"Changes other than dependency updates since {tag}: release by hand.", file=sys.stderr)
+    elif manual:
+        print(f"Changes other than dependency updates since {tag} ({'; '.join(manual)}): release by hand.", file=sys.stderr)
     elif not any(f in RUNTIME for f in files):
         print("Only build tooling changed (e.g. GitHub Actions): no release needed.", file=sys.stderr)
     else:
@@ -88,7 +98,7 @@ def bump(notes_file):
     tag = last_tag()
     major_, minor, patch = (int(x) for x in tag.lstrip("v").split("."))
     version = f"{major_}.{minor}.{patch + 1}"
-    subjects = [re.sub(r"\s*\(#\d+\)$", "", s) for s in run("git", "log", "--format=%s", f"{tag}..HEAD").splitlines()]
+    subjects = [re.sub(r"\s*\(#\d+\)$", "", s) for s in run("git", "log", "--format=%s", f"{tag}..HEAD").splitlines() if DEPS_COMMIT.search(s)]
     updates = [re.sub(DEPS_COMMIT, "", s).strip() for s in subjects]
     updates = [u[0].upper() + u[1:] for u in updates if u]
 
