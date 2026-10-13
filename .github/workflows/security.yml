@@ -31,7 +31,7 @@ jobs:
         id: go
         run: echo "version=$(sed -n 's/^FROM golang:\([0-9.]*\)-alpine.*/\1/p' Dockerfile)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ steps.go.outputs.version }}
       - name: govulncheck
