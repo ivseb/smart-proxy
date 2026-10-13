@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.5.2 — chart 0.7.2
+
+Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
+
+- Bump golang from 1.26.9-alpine to 1.27.2-alpine
+- Bump the go-modules group across 1 directory with 2 updates
+- Bump node from 22-alpine to 26-alpine
+- Bump actions/setup-node from 4 to 7
+- Bump docker/setup-buildx-action from 3 to 4
+- Bump docker/metadata-action from 5 to 6
+- Bump actions/setup-python from 5 to 7
+- Bump actions/checkout from 4 to 7
+
 ## 2.5.1 — chart 0.7.1
 
 ### Security

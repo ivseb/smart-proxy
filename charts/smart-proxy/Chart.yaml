@@ -3,9 +3,9 @@ name: smart-proxy
 description: Intelligent request handling for Kubernetes Ingresses and OpenShift Routes — auto-sleep, dependency chains and unified route patching.
 type: application
 # Chart version. Bump on every change to the chart itself.
-version: 0.7.1
+version: 0.7.2
 # Version of the Smart Proxy application shipped by default.
-appVersion: "2.5.1"
+appVersion: "2.5.2"
 home: https://ivseb.github.io/smart-proxy/
 icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
 sources:
@@ -27,12 +27,24 @@ annotations:
       url: https://ivseb.github.io/smart-proxy/
   artifacthub.io/images: |
     - name: smart-proxy
-      image: docker.io/isebben/smart-proxy:2.5.1
+      image: docker.io/isebben/smart-proxy:2.5.2
   artifacthub.io/maintainers: |
     - name: ivseb
       email: ivan.sebben.dati@gmail.com
   artifacthub.io/changes: |
     - kind: security
-      description: Dashboard packages updated, every npm advisory fixed
-    - kind: added
-      description: Dependency fixes released automatically after tests, end-to-end and vulnerability scan
+      description: Bump golang from 1.26.9-alpine to 1.27.2-alpine
+    - kind: security
+      description: Bump the go-modules group across 1 directory with 2 updates
+    - kind: security
+      description: Bump node from 22-alpine to 26-alpine
+    - kind: security
+      description: Bump actions/setup-node from 4 to 7
+    - kind: security
+      description: Bump docker/setup-buildx-action from 3 to 4
+    - kind: security
+      description: Bump docker/metadata-action from 5 to 6
+    - kind: security
+      description: Bump actions/setup-python from 5 to 7
+    - kind: security
+      description: Bump actions/checkout from 4 to 7
