@@ -1,22 +1,38 @@
-# Weekly updates of what ends up in the image (Go modules, base images) and of the build tools,
-# so security fixes arrive as pull requests instead of CVE reports.
+# Updates of what ends up in the image (Go modules, the Go version, the dashboard's packages) and
+# of the build tools, so security fixes arrive as pull requests instead of CVE reports. Those with
+# green checks are merged and released by .github/workflows/auto-release.yml (not major ones).
 version: 2
 updates:
-  # Daily for what is in the image: Go modules and the Go version (golang image), so fixes are
-  # released (.github/workflows/auto-release.yml) within a day.
+  # Daily for what is in the image, so fixes are released within a day.
   - package-ecosystem: gomod
     directory: /
     schedule: { interval: daily }
     groups:
-      go-modules: { patterns: ["*"] }
+      # The Kubernetes libraries move together (client-go needs the api of its version).
+      kubernetes:
+        patterns: ["k8s.io/*", "sigs.k8s.io/*"]
+      go-modules:
+        patterns: ["*"]
+        exclude-patterns: ["k8s.io/*", "sigs.k8s.io/*"]
+      go-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # The golang image is the Go version the image is built with, and CI tests with.
   - package-ecosystem: docker
     directory: /
     schedule: { interval: daily }
+
   - package-ecosystem: npm
     directory: /web/dashboard
     schedule: { interval: weekly }
     groups:
-      dashboard: { patterns: ["*"] }
+      dashboard:
+        patterns: ["*"]
+      dashboard-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule: { interval: weekly }
