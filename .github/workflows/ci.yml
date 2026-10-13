@@ -33,6 +33,12 @@ jobs:
       - name: go test
         run: go test -race ./...
 
+      # Known vulnerabilities in the Go version or the modules used: none allowed.
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck -show verbose ./...
+
   dashboard:
     name: Dashboard
     runs-on: ubuntu-latest

@@ -1,0 +1,20 @@
+# Weekly updates of what ends up in the image (Go modules, base images) and of the build tools,
+# so security fixes arrive as pull requests instead of CVE reports.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      go-modules: { patterns: ["*"] }
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /web/dashboard
+    schedule: { interval: weekly }
+    groups:
+      dashboard: { patterns: ["*"] }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }

@@ -65,6 +65,21 @@ jobs:
             type=ref,event=branch
             type=sha
 
+      # Scan the image before publishing it: no vulnerability of any severity is allowed.
+      - name: Build the image to scan
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: smart-proxy:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan for vulnerabilities (Trivy)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.63.0 \
+            image --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 smart-proxy:scan
+
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image
