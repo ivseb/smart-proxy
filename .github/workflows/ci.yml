@@ -15,7 +15,39 @@ on:
 permissions:
   contents: read
 
+# A newer push to the same branch or pull request replaces the run in progress. The automatic
+# release's run (on its own commit) is never cancelled by a push.
+concurrency:
+  group: ci-${{ github.ref }}-${{ inputs.ref || 'push' }}
+  cancel-in-progress: true
+
 jobs:
+  # The end-to-end tests (about 9 minutes) only when something they exercise changed: not for the
+  # dashboard alone, the docs or the other workflows. The automatic release always runs them.
+  changes:
+    name: What changed
+    runs-on: ubuntu-latest
+    outputs:
+      e2e: ${{ steps.diff.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Paths changed
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          e2e=true
+          if { [ "$EVENT" = push ] || [ "$EVENT" = pull_request ]; } && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            git diff --name-only "$BASE" HEAD
+            git diff --name-only "$BASE" HEAD | grep -qE '^(cmd/|internal/|test/e2e/|charts/|Dockerfile$|go\.(mod|sum)$|\.github/workflows/ci\.yml$)' || e2e=false
+          fi
+          echo "e2e=$e2e" | tee -a "$GITHUB_OUTPUT"
+
   go:
     name: Go
     runs-on: ubuntu-latest
@@ -111,6 +143,8 @@ jobs:
 
   e2e:
     name: End-to-end (kind)
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

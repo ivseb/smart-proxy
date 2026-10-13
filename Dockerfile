@@ -6,7 +6,7 @@ RUN npm ci
 COPY web/dashboard/ .
 RUN npm run build
 
-# Build Stage for Backend. The Go version is pinned (and in go.mod's toolchain line): security
+# Build Stage for Backend. The Go version is pinned (Dependabot keeps it current): security
 # fixes of the standard library arrive with patch releases.
 FROM golang:1.27.2-alpine AS backend-builder
 WORKDIR /app

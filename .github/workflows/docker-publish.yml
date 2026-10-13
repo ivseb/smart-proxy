@@ -10,6 +10,11 @@ on:
   # workflow's token doesn't start workflows by itself).
   workflow_dispatch:
 
+# A newer push to the same branch or pull request replaces the build in progress (never a tag's).
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: docker.io

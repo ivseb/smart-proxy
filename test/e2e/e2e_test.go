@@ -43,7 +43,7 @@ const (
 	proxyNS   = "smart-proxy"
 	release   = "e2e"
 	routeID   = "ing-e2e/echo"
-	idleLimit = 60 * time.Second
+	idleLimit = 30 * time.Second
 )
 
 var kube kubernetes.Interface
