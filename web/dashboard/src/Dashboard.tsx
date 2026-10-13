@@ -238,6 +238,7 @@ export function Dashboard() {
             </div>
 
             <RouteModal
+                key={isModalOpen ? editingRoute?.id || "new" : "closed"}
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 onSubmit={saveRoute}

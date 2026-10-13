@@ -28,25 +28,26 @@ interface PatchingViewProps {
 
 export function PatchingView({ info, onChanged }: PatchingViewProps) {
     const [resources, setResources] = useState<PatchableResource[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const routesEnabled = info?.routes_enabled;
     const [busy, setBusy] = useState<string | null>(null);
     const [query, setQuery] = useState("");
     const [namespace, setNamespace] = useStoredState("patching.namespace", "");
     const [filter, setFilter] = useStoredState<PatchFilter>("patching.filter", "all");
 
-    const fetchResources = useCallback(async () => {
+    // State is set when the answers arrive (callbacks), never right away.
+    const fetchResources = useCallback(() => {
+        const requests: Promise<PatchableResource[]>[] = [apiRequest("/api/k8s/ingresses").then(r => r.json())];
+        if (routesEnabled) requests.push(apiRequest("/api/k8s/routes").then(r => r.json()));
+        return Promise.all(requests)
+            .then(lists => setResources(lists.flat()))
+            .catch(e => toast.error(t("Failed to load Ingresses/Routes: {error}", { error: errorMessage(e) })))
+            .finally(() => setLoading(false));
+    }, [routesEnabled]);
+    const refresh = () => {
         setLoading(true);
-        try {
-            const requests = [apiRequest("/api/k8s/ingresses").then(r => r.json())];
-            if (info?.routes_enabled) requests.push(apiRequest("/api/k8s/routes").then(r => r.json()));
-            const lists: PatchableResource[][] = await Promise.all(requests);
-            setResources(lists.flat());
-        } catch (e) {
-            toast.error(t("Failed to load Ingresses/Routes: {error}", { error: errorMessage(e) }));
-        } finally {
-            setLoading(false);
-        }
-    }, [info?.routes_enabled]);
+        fetchResources();
+    };
 
     useEffect(() => {
         // Fetch on mount and when Routes become available.
@@ -130,7 +131,7 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
                             </button>
                         ))}
                     </div>
-                    <Button variant="ghost" size="icon" onClick={fetchResources} disabled={loading} title={t("Refresh")} aria-label={t("Refresh")}>
+                    <Button variant="ghost" size="icon" onClick={refresh} disabled={loading} title={t("Refresh")} aria-label={t("Refresh")}>
                         <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                     </Button>
                 </div>

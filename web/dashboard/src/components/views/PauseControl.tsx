@@ -81,7 +81,7 @@ function PauseDialog({ route, onClose, onDone }: { route: RouteStatus; onClose: 
             default: return null;
         }
     };
-    const customInvalid = choice === "custom" && (!custom || new Date(custom).getTime() <= Date.now());
+    const customInvalid = choice === "custom" && (!custom || new Date(custom).getTime() <= now);
 
     const submit = async () => {
         const end = until();

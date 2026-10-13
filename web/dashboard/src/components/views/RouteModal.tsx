@@ -60,8 +60,9 @@ async function getJSON<T>(url: string): Promise<T> {
 }
 
 export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: RouteModalProps) {
-    const [formData, setFormData] = useState<Partial<RouteConfig>>(emptyRoute(""));
-    const [timeoutInput, setTimeoutInput] = useState(DEFAULT_TIMEOUT);
+    // Mounted afresh each time it opens (see Dashboard): the form starts from the route edited.
+    const [formData, setFormData] = useState<Partial<RouteConfig>>(() => initialData || emptyRoute(info?.default || info?.namespaces[0] || ""));
+    const [timeoutInput, setTimeoutInput] = useState(() => initialData?.idle_timeout ? formatDuration(initialData.idle_timeout) : DEFAULT_TIMEOUT);
     const [deployments, setDeployments] = useState<string[]>([]);
     const [selectedDepToAdd, setSelectedDepToAdd] = useState("");
     // Kept untranslated (text and its values) so it follows a language change.
@@ -74,43 +75,26 @@ export function RouteModal({ isOpen, onClose, onSubmit, initialData, info }: Rou
     const boundToResource = !!initialData && /^(ing|route)-/.test(initialData.id);
     const timeoutValid = parseDuration(timeoutInput) !== null;
 
-    const loadDeployments = async (ns: string) => {
+    // State is set when the answers arrive (callbacks), never right away.
+    const loadDeployments = (ns: string) => {
         if (!ns) return;
-        try {
-            setDeployments(await getJSON<string[]>(`/api/k8s/deployments?${new URLSearchParams({ namespace: ns })}`));
-        } catch {
-            setDeployments([]);
-        }
+        getJSON<string[]>(`/api/k8s/deployments?${new URLSearchParams({ namespace: ns })}`)
+            .then(setDeployments, () => setDeployments([]));
     };
 
-    const loadConnected = async (ns: string, service: string) => {
-        try {
-            setConnected(await getJSON<ConnectedResource[]>(`/api/k8s/service-routes?${new URLSearchParams({ namespace: ns, service })}`));
-        } catch {
-            setConnected([]);
-        }
+    const loadConnected = (ns: string, service: string) => {
+        getJSON<ConnectedResource[]>(`/api/k8s/service-routes?${new URLSearchParams({ namespace: ns, service })}`)
+            .then(setConnected, () => setConnected([]));
     };
 
-    // Reset the form when the modal opens.
+    // Load the workloads of its namespace, and the hosts serving its Service, once.
     useEffect(() => {
         if (!isOpen) return;
-        setResolvedInfo(null);
-        setConnected([]);
-        setSelectedDepToAdd("");
-        if (initialData) {
-            setFormData(initialData);
-            setTimeoutInput(initialData.idle_timeout ? formatDuration(initialData.idle_timeout) : DEFAULT_TIMEOUT);
-            loadDeployments(initialData.namespace);
-            if (initialData.target_service) loadConnected(initialData.namespace, initialData.target_service);
-        } else {
-            const ns = info?.default || namespaces[0] || "";
-            setFormData(emptyRoute(ns));
-            setTimeoutInput(DEFAULT_TIMEOUT);
-            loadDeployments(ns);
-        }
-        // Only when the modal opens or switches route, not on every poll of the cluster info.
+        loadDeployments(formData.namespace || "");
+        if (initialData?.target_service) loadConnected(initialData.namespace, initialData.target_service);
+        // Only when it opens: later changes load what they need themselves.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen, initialData]);
+    }, []);
 
     if (!isOpen) return null;
 
