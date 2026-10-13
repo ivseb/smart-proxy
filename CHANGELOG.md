@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.5.1 — chart 0.7.1
+
+### Security
+- The dashboard's packages are updated: the 32 advisories GitHub reported on its build tools (vite, rollup, postcss, esbuild, eslint's dependencies) are fixed. They weren't in the image (Trivy: 0), now they aren't in the repository either.
+- **Fixes are released automatically**: Dependabot (alerts and security updates on) proposes updates of the Go modules and the Go version daily; a daily workflow merges those whose checks all passed — tests, end-to-end on kind, Trivy — except major version changes, then tests the result again and publishes a patch release. See [the installation guide](docs/installation.md#whats-in-it-and-vulnerabilities).
+- CI tests with the Go version the image is built with.
+
 ## 2.5.0 — chart 0.7.0
 
 ### Security
