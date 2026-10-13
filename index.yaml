@@ -3,6 +3,49 @@ entries:
   smart-proxy:
   - annotations:
       artifacthub.io/changes: |
+        - kind: security
+          description: Image built FROM scratch with no known vulnerability (Trivy, any severity); Go 1.26.9, golang.org/x/net 0.61.0
+        - kind: changed
+          description: The image has no shell anymore - use a debug container to troubleshoot
+        - kind: added
+          description: Copy buttons for shortened hosts, paths and user agents; full URLs of recorded requests
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.5.0
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.5.0
+    created: "2026-10-13T16:43:45.46194227Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: f165627a4840df49d68b72721ae1674b12973643c471040564b9f6e92a41a42c
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.7.0/smart-proxy-0.7.0.tgz
+    version: 0.7.0
+  - annotations:
+      artifacthub.io/changes: |
         - kind: added
           description: Select all / Deselect all for the hosts serving a route's Service
         - kind: fixed
@@ -434,4 +477,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-12T18:52:03.863743205Z"
+generated: "2026-10-13T16:43:45.461991241Z"
