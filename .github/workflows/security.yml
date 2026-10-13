@@ -24,7 +24,7 @@ jobs:
     name: Go code on main
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # The Go version is the one the image is built with (the Dockerfile's golang image, kept up
       # to date by Dependabot).
       - name: Go version
