@@ -1,5 +1,9 @@
 # Upgrading
 
+## From 2.5 to 2.6
+
+A drop-in upgrade with the chart (`helm upgrade … --version 0.8.0 -f my-values.yaml`), or just the new image: no new permission, nothing changes for existing routes. The uptime history starts at the upgrade; it is kept in a new ConfigMap, `<release>-uptime` (removed with Smart Proxy).
+
 ## From 2.4 to 2.5
 
 A drop-in upgrade with the chart (`helm upgrade … --version 0.7.0 -f my-values.yaml`). The image is now built `FROM scratch` and has no shell: anything that `exec`s into the Smart Proxy container (scripts, probes you added) must use a debug container instead (`oc debug deployment/<release>`, `kubectl debug`). The chart's probes and the uninstall Job don't need one.

@@ -12,6 +12,7 @@ import (
 	"smart-proxy/internal/k8s/fakecluster"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
+	"smart-proxy/internal/uptime"
 	"smart-proxy/internal/vault"
 )
 
@@ -225,5 +226,40 @@ func TestIgnoreRulesShowWhatTheyMatched(t *testing.T) {
 	}
 	if len(rules.Global) != 1 || rules.Global[0].Rule != "Pingdom" {
 		t.Fatalf("global rules: %s", body)
+	}
+}
+
+func TestUptimeReportsManagedWorkloads(t *testing.T) {
+	f := newFixture(t, app("team-a", "web", 1)...)
+	id := patchWeb(t, f)
+	f.server.Uptime = uptime.NewRecorder()
+	now := time.Now()
+	f.server.Uptime.Sample(now.Add(-2*time.Minute), []uptime.State{{Namespace: "team-a", Workload: "web", Replicas: 0}, {Namespace: "team-b", Workload: "gone", Replicas: 1}})
+	f.server.Uptime.Sample(now.Add(-time.Minute), []uptime.State{{Namespace: "team-a", Workload: "web", Replicas: 3}})
+
+	var rep UptimeReport
+	if code, body := f.call(t, "GET", "/api/uptime?days=7&tz=Europe/Rome", nil); code != 200 || json.Unmarshal([]byte(body), &rep) != nil {
+		t.Fatalf("uptime: %d %s", code, body)
+	}
+	if rep.Days != 7 || rep.Timezone != "Europe/Rome" || len(rep.Workloads) != 2 || rep.Since == nil {
+		t.Fatalf("report %+v", rep)
+	}
+	web := rep.Workloads[0]
+	if web.Workload != "web" || web.Observed != 2 || web.Up != 1 || web.Replicas != 3 || web.Wakes != 1 || len(web.Routes) != 1 || web.Routes[0].ID != id || len(web.Days) != 7 || web.Hours != nil {
+		t.Fatalf("web %+v", web)
+	}
+	if gone := rep.Workloads[1]; gone.Workload != "gone" || len(gone.Routes) != 0 {
+		t.Fatalf("a workload no longer managed keeps its history, without routes: %+v", gone)
+	}
+
+	rep = UptimeReport{}
+	if code, body := f.call(t, "GET", "/api/uptime?route="+url.QueryEscape(id), nil); code != 200 || json.Unmarshal([]byte(body), &rep) != nil {
+		t.Fatalf("uptime of a route: %d %s", code, body)
+	}
+	if rep.Days != uptime.Days || len(rep.Workloads) != 1 || len(rep.Workloads[0].Hours) == 0 {
+		t.Fatalf("route report %+v", rep)
+	}
+	if code, _ := f.call(t, "GET", "/api/uptime?route=nope", nil); code != http.StatusNotFound {
+		t.Fatalf("unknown route: %d", code)
 	}
 }

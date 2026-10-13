@@ -19,6 +19,7 @@ import (
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
 	"smart-proxy/internal/trash"
+	"smart-proxy/internal/uptime"
 	"smart-proxy/internal/vault"
 )
 
@@ -52,6 +53,8 @@ type Server struct {
 	Vault func() *vault.Vault
 	// Trash keeps deleted routes for a while, to restore them.
 	Trash trash.Bin
+	// Uptime holds how long the managed workloads were up (nil without Kubernetes).
+	Uptime *uptime.Recorder
 }
 
 // NewServer creates a new instance of the admin Server.
@@ -81,6 +84,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/routes/export", s.handleExport)
 	mux.HandleFunc("/api/routes/import", s.handleImport)
 	mux.HandleFunc("/api/routes/deleted", s.handleDeleted)
+	mux.HandleFunc("/api/uptime", s.handleUptime)
 	mux.HandleFunc("/api/routes/inspect", s.handleInspect)
 	mux.HandleFunc("/api/routes/requests", s.handleRequests)
 	mux.HandleFunc("/api/routes/protection/users", s.handleProtectionUsers)

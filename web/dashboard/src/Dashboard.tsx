@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity as ActivityIcon, Languages, Layers, LayoutDashboard, LogOut, ScrollText, Shield, User } from "lucide-react";
+import { Activity as ActivityIcon, CalendarClock, Languages, Layers, LayoutDashboard, LogOut, ScrollText, Shield, User } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { usePolling } from "@/hooks/usePolling";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,14 +11,15 @@ import { PatchingView } from "@/components/views/PatchingView";
 import { RouteModal } from "@/components/views/RouteModal";
 import { RouteDetailView } from "@/components/views/RouteDetailView";
 import { StatsView } from "@/components/views/StatsView";
+import { UptimeView } from "@/components/views/UptimeView";
 import { Button } from "@/components/ui/Button";
 import { apiRequest, errorMessage } from "@/lib/api";
 import { LANGS, setLang, t, tn, useLang } from "@/lib/i18n";
 
-type Tab = "stats" | "routes" | "patching" | "logs";
+type Tab = "stats" | "routes" | "uptime" | "patching" | "logs";
 
-// Tabs can be linked to: #overview, #routes, #patching, #logs.
-const TAB_HASH: Record<Tab, string> = { stats: "overview", routes: "routes", patching: "patching", logs: "logs" };
+// Tabs can be linked to: #overview, #routes, #report, #patching, #logs.
+const TAB_HASH: Record<Tab, string> = { stats: "overview", routes: "routes", uptime: "report", patching: "patching", logs: "logs" };
 
 function tabFromHash(): Tab | null {
     const hash = window.location.hash.replace(/^#/, "");
@@ -168,6 +169,7 @@ export function Dashboard() {
                     <nav className="order-last w-full md:order-none md:w-auto flex gap-1 bg-gray-800 p-1 rounded-lg border border-gray-700 overflow-x-auto">
                         <TabButton active={activeTab === "stats" && !selectedRouteId} onClick={() => goTo("stats")} icon={<ActivityIcon size={18} />} label={t("Overview")} />
                         <TabButton active={activeTab === "routes" || !!selectedRouteId} onClick={() => goTo("routes")} icon={<LayoutDashboard size={18} />} label={t("Routes")} />
+                        <TabButton active={activeTab === "uptime" && !selectedRouteId} onClick={() => goTo("uptime")} icon={<CalendarClock size={18} />} label={t("Report")} />
                         <TabButton active={activeTab === "patching" && !selectedRouteId} onClick={() => goTo("patching")} icon={<Shield size={18} />} label={t("Patching")} />
                         <TabButton active={activeTab === "logs" && !selectedRouteId} onClick={() => goTo("logs")} icon={<ScrollText size={18} />} label={t("Logs")} />
                     </nav>
@@ -230,6 +232,7 @@ export function Dashboard() {
                                     onChanged={refetch}
                                 />
                             )}
+                            {activeTab === "uptime" && <UptimeView onSelect={setSelectedRouteId} />}
                             {activeTab === "patching" && <PatchingView info={info} onChanged={refetch} />}
                             {activeTab === "logs" && <LogsView replica={info?.replica} />}
                         </>

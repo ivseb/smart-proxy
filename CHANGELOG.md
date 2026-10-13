@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.0 — chart 0.8.0
+
+### Added
+- **Uptime over the last 30 days.** Smart Proxy records every minute whether each workload it manages (the routes' workloads, their backends and dependencies) has at least one replica. A route's page shows its workloads over the last 7 or 30 days, day by day: hours up and down, the share of time up, replica-hours and wake-ups. The new **Report** tab gathers every managed workload by namespace, with totals, sorting, a filter and a CSV download. Kept in the ConfigMap `<release>-uptime`; no new permission. See [Uptime](docs/routes.md#uptime-the-last-30-days).
+
+### Changed
+- CI: a newer push cancels the run in progress; the end-to-end tests run only when what they exercise changes (Go code, chart, Dockerfile, modules, the tests), and take a couple of minutes less.
+
 ## 2.5.2 — chart 0.7.2
 
 Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:

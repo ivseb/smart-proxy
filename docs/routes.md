@@ -87,6 +87,21 @@ Rules are also added from **Who keeps it awake** (*Ignore*) and from a recorded 
 
 ![Recently deleted routes, ready to be restored](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/recently-deleted.png){ width="640" }
 
+## Uptime: the last 30 days
+
+Smart Proxy records, every minute, whether each workload it manages (the routes' workloads and their dependencies) has at least one replica. A route's page shows its workloads over the last 7 or 30 days, day by day: hours **up** and **down**, the share of time up, **replica-hours** (a replica running for an hour counts one, three replicas for an hour count three) and how many times it was woken.
+
+![A route's workloads over the last 30 days: the route's own, its other backend and its dependencies](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-uptime.png)
+
+The **Report** tab gathers every managed workload by namespace, with totals, sorting and a filter; **CSV** downloads it, with the hours up of each day, for a spreadsheet.
+
+![The Report tab: hours up and down, replica-hours and wake-ups of every managed workload over the last 30 days](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/uptime-report.png)
+
+- Days are counted in the browser's time zone.
+- Minutes without data don't count, neither up nor down: before Smart Proxy was installed or upgraded, while it wasn't running, before a workload was managed. The page says from when the history starts.
+- A workload no longer managed keeps its history until it is older than 30 days.
+- The history is kept in the ConfigMap `<release>-uptime` (compressed, a few kilobytes per workload), written by the leader every 5 minutes and removed with Smart Proxy. `GET /api/uptime?days=30&tz=Europe/Rome` (`&route=<id>` for one route, hour by hour too) answers it as JSON.
+
 ## Access: require sign-in or a token
 
 **Require sign-in** on a route's page puts the application behind:

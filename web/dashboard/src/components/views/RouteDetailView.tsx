@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { Condition, IgnoreKind, LogEntry, RouteConfig, RouteStatus, StatsData } from "@/types/api";
 import { TrafficSources } from "@/components/views/TrafficSources";
 import { RequestsChart } from "@/components/views/RequestsChart";
+import { UptimeCard } from "@/components/views/UptimeCard";
 import { RequestInspector } from "@/components/views/RequestInspector";
 import { BackendsCard } from "@/components/views/BackendsCard";
 import { BackendsEditor } from "@/components/views/BackendsEditor";
@@ -190,6 +191,8 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                     <RequestsChart routeId={route.id} height={180} />
                 </CardContent>
             </Card>
+
+            <UptimeCard route={route} />
 
             <BackendsCard route={route} onEdit={() => setEditor({ prefill: null })} />
 

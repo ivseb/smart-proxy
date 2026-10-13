@@ -263,3 +263,38 @@ export interface DeletedRoute {
     credentials?: boolean; // Its people and tokens come back with it
     conflict?: boolean; // A route with its ID exists again
 }
+
+// Minutes of a period: observed (Smart Proxy was sampling), up (at least one replica), replica
+// minutes (a minute with 3 replicas counts 3) and wake-ups.
+export interface UptimeTotals {
+    observed_minutes: number;
+    up_minutes: number;
+    replica_minutes: number;
+    wakes: number;
+}
+
+export interface UptimeDay extends UptimeTotals {
+    date: string; // YYYY-MM-DD, in the time zone asked
+}
+
+export interface UptimeHour extends UptimeTotals {
+    at: string;
+}
+
+// A managed workload's history over the period, with the routes it serves now (none: no longer
+// managed).
+export interface WorkloadUptime extends UptimeTotals {
+    namespace: string;
+    workload: string;
+    since?: string;
+    days: UptimeDay[];
+    hours?: UptimeHour[];
+    routes: { id: string; host: string; path: string }[];
+}
+
+export interface UptimeReport {
+    days: number;
+    timezone: string;
+    since?: string; // First hour recorded in the period
+    workloads: WorkloadUptime[];
+}

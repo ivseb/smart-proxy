@@ -4,6 +4,7 @@ import { routeForm } from "./routeForm";
 import { routeDetail } from "./routeDetail";
 import { features } from "./features";
 import { operations } from "./operations";
+import { uptime } from "./uptime";
 
 // Italian texts, by the English text they translate. Split by area of the dashboard.
-export const it: Record<string, string> = { ...common, ...routes, ...routeForm, ...routeDetail, ...features, ...operations };
+export const it: Record<string, string> = { ...common, ...routes, ...routeForm, ...routeDetail, ...features, ...operations, ...uptime };

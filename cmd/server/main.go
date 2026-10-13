@@ -31,6 +31,7 @@ import (
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
 	"smart-proxy/internal/trash"
+	"smart-proxy/internal/uptime"
 	"smart-proxy/internal/vault"
 	"smart-proxy/internal/watcher"
 )
@@ -242,13 +243,27 @@ func main() {
 
 		// Only the leader puts deployments to sleep and heals patches; every replica proxies and wakes.
 		w := watcher.NewWatcher(k8sClient, configStore, serviceName)
+		var leading atomic.Bool
 		go replica.RunLeaderElection(ctx, func(leadCtx context.Context) {
 			metrics.SetLeader(true)
 			defer metrics.SetLeader(false)
 			k8sClient.SetLeading(true)
 			defer k8sClient.SetLeading(false)
+			leading.Store(true)
+			defer leading.Store(false)
 			w.Start(leadCtx)
 		})
+
+		// How long each managed workload is up, over 30 days: sampled by the leader every minute.
+		adminServer.Uptime = uptime.NewRecorder()
+		keeper := &uptime.Keeper{
+			Recorder: adminServer.Uptime,
+			Store: &uptime.Store{Client: k8sClient.Clientset, Namespace: k8s.OwnNamespace(), Name: serviceName + "-uptime",
+				Labels: map[string]string{store.LabelInstance: serviceName, store.LabelComponent: "uptime"}, Owner: ownDeployment(k8sClient)},
+			Leading: leading.Load,
+			Sample:  func() []uptime.State { return sampleWorkloads(k8sClient, configStore) },
+		}
+		go keeper.Run(ctx)
 		metrics.RegisterSleeping(func() (map[string]int, map[string]int) {
 			sleeping, _ := k8sClient.SleepingDeployments()
 			namespaces, recorded := make([]string, len(sleeping)), make([]string, len(sleeping))
@@ -427,4 +442,33 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// sampleWorkloads returns the replicas of every workload the routes manage (their own workloads
+// and dependencies), once each.
+func sampleWorkloads(client *k8s.Client, configStore *store.Store) []uptime.State {
+	seen := map[string]bool{}
+	var states []uptime.State
+	for _, r := range configStore.GetAllRoutes() {
+		if !client.Watches(r.Namespace) {
+			continue
+		}
+		refs := r.ManagedWorkloads()
+		for _, d := range r.Dependencies {
+			refs = append(refs, d.Name)
+		}
+		for _, ref := range refs {
+			name := uptime.Canonical(ref)
+			if seen[r.Namespace+"/"+name] {
+				continue
+			}
+			seen[r.Namespace+"/"+name] = true
+			replicas, _, err := client.GetDeploymentStatus(r.Namespace, ref)
+			if err != nil {
+				continue // Not there (yet): not counted as down
+			}
+			states = append(states, uptime.State{Namespace: r.Namespace, Workload: name, Replicas: replicas})
+		}
+	}
+	return states
 }

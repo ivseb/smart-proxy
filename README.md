@@ -84,6 +84,10 @@ Optional tools on each route's page — routes that don't use them work as befor
   <img src="media/pause-dialog.png" alt="Pausing a route for a while" width="250"/>
 </p>
 
+**How long was it up?** Every managed workload's last 30 days, day by day: hours up and down, replica-hours and wake-ups — on each route's page, and for all of them in the **Report** tab, by namespace, downloadable as CSV.
+
+<img src="media/uptime-report.png" alt="The Report tab: hours up and down, replica-hours and wake-ups of every managed workload over the last 30 days, by namespace" width="820"/>
+
 ## 🎬 How it works
 
 1. **Patch** a route from the dashboard → Smart Proxy points the Ingress/Route to itself (originals saved in annotations).
