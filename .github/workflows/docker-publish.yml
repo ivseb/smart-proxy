@@ -6,6 +6,9 @@ on:
     tags: [ "v*" ]
   pull_request:
     branches: [ "main" ]
+  # Run on a release tag by the automatic release of dependency updates (a tag pushed with the
+  # workflow's token doesn't start workflows by itself).
+  workflow_dispatch:
 
 env:
   # Use docker.io for Docker Hub if empty

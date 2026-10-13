@@ -25,9 +25,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The Go version is the one the image is built with (the Dockerfile's golang image, kept up
+      # to date by Dependabot).
+      - name: Go version
+        id: go
+        run: echo "version=$(sed -n 's/^FROM golang:\([0-9.]*\)-alpine.*/\1/p' Dockerfile)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: ${{ steps.go.outputs.version }}
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest

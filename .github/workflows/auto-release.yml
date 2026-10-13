@@ -1,0 +1,123 @@
+name: Auto-release dependency updates
+
+# Every day: merge Dependabot's pull requests whose checks all passed (not major version changes,
+# left for a person), then, if everything since the latest release is dependency updates touching
+# the image, test the result again (CI, end-to-end, vulnerability scan) and publish a patch
+# release. Anything else since the latest release (a feature, a fix) means a release by hand.
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Merge updates, decide
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+      sha: ${{ steps.decide.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge Dependabot pull requests with every check green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/dependabot.py merge
+
+      - name: Anything to release?
+        id: decide
+        run: python3 .github/scripts/dependabot.py decide >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Test
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.prepare.outputs.sha }}
+
+  scan:
+    name: Vulnerability scan
+    needs: prepare
+    if: needs.prepare.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Build the image
+        run: docker build -t smart-proxy:scan .
+
+      - name: Scan it (Trivy, any severity)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.63.0 \
+            image --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 smart-proxy:scan
+
+  release:
+    name: Release
+    needs: [prepare, verify, scan]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Still the tested commit?
+        run: |
+          if [ "$(git rev-parse HEAD)" != "${{ needs.prepare.outputs.sha }}" ]; then
+            echo "main moved since it was tested: the next run releases it"; exit 1
+          fi
+
+      - name: Prepare the release (Chart.yaml, CHANGELOG.md)
+        id: bump
+        run: python3 .github/scripts/dependabot.py bump "$RUNNER_TEMP/notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and tag
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          CHART: ${{ steps.bump.outputs.chart }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "release: ${VERSION} (chart ${CHART})" -m "Dependency updates, released automatically."
+          git tag -a "v${VERSION}" -m "Smart Proxy ${VERSION}"
+          git push origin HEAD:main "v${VERSION}"
+
+      # A tag pushed with the workflow's token doesn't start workflows: start them, image first.
+      - name: Publish the image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          gh workflow run docker-publish.yml --ref "v${VERSION}"
+          for _ in $(seq 1 30); do
+            id=$(gh run list --workflow docker-publish.yml --branch "v${VERSION}" --limit 1 --json databaseId --jq '.[0].databaseId')
+            [ -n "$id" ] && break
+            sleep 10
+          done
+          gh run watch "$id" --exit-status
+
+      - name: Publish the chart, docs and release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          gh workflow run pages.yml --ref main
+          gh release create "v${VERSION}" --verify-tag --title "Smart Proxy ${VERSION}" --notes-file "$RUNNER_TEMP/notes.md"

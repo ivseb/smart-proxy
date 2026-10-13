@@ -5,6 +5,12 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  # Also run by the automatic release of dependency updates, on the commit to release.
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -15,10 +21,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      # The Go version is the one the image is built with (the Dockerfile's golang image, kept up
+      # to date by Dependabot).
+      - name: Go version
+        id: go
+        run: echo "version=$(sed -n 's/^FROM golang:\([0-9.]*\)-alpine.*/\1/p' Dockerfile)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: ${{ steps.go.outputs.version }}
 
       - name: gofmt
         run: |
@@ -47,6 +61,8 @@ jobs:
         working-directory: web/dashboard
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: actions/setup-node@v4
         with:
@@ -63,6 +79,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: azure/setup-helm@v4
 
@@ -92,10 +110,18 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      # The Go version is the one the image is built with (the Dockerfile's golang image, kept up
+      # to date by Dependabot).
+      - name: Go version
+        id: go
+        run: echo "version=$(sed -n 's/^FROM golang:\([0-9.]*\)-alpine.*/\1/p' Dockerfile)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: ${{ steps.go.outputs.version }}
 
       - uses: azure/setup-helm@v4
 
