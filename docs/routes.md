@@ -89,18 +89,24 @@ Rules are also added from **Who keeps it awake** (*Ignore*) and from a recorded 
 
 ## Uptime: the last 30 days
 
-Smart Proxy records, every minute, whether each workload it manages (the routes' workloads and their dependencies) has at least one replica. A route's page shows its workloads over the last 7 or 30 days, day by day: hours **up** and **down**, the share of time up, **replica-hours** (a replica running for an hour counts one, three replicas for an hour count three) and how many times it was woken.
+Smart Proxy records, every minute, whether each workload it manages (the routes' workloads, their backends and dependencies) has at least one replica, and the minute its replicas change. For any period of the last 30 days — the last 24 hours, 7 or 30 days, or **from… to…** down to the hour — a route's page shows its workloads:
 
-![A route's workloads over the last 30 days: the route's own, its other backend and its dependencies](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-uptime.png)
+- hours **up** and **down**, the share of time up, **replica-hours** (a replica running for an hour counts one, three replicas for an hour count three) and how many times each was woken;
+- for periods up to 3 days, a **timeline to the minute** and the list of changes: *woken at 03:12 (2 replicas), put to sleep at 03:41*. Whether an application stayed asleep all night is the absence of changes between the evening and the morning;
+- for longer periods, a bar per day and a **map of every hour** (a column per day, midnight at the top): a night asleep is a dark band, a wake-up at 3 a bright cell. Picking a day opens its timeline and changes.
 
-The **Report** tab gathers every managed workload by namespace, with totals, sorting and a filter; **CSV** downloads it, with the hours up of each day, for a spreadsheet.
+![A route's workloads over the last 24 hours, to the minute](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-uptime.png)
+
+The **Report** tab gathers every managed workload by namespace for the same periods, with totals, sorting and a filter; picking a workload opens its detail (map of the hours, changes). **CSV** downloads it, with the hours up of each day — or, for periods up to 3 days, the minutes up of each hour.
 
 ![The Report tab: hours up and down, replica-hours and wake-ups of every managed workload over the last 30 days](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/uptime-report.png)
 
-- Days are counted in the browser's time zone.
-- Minutes without data don't count, neither up nor down: before Smart Proxy was installed or upgraded, while it wasn't running, before a workload was managed. The page says from when the history starts.
+![One workload's hours over the last 30 days](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/uptime-hours.png)
+
+- Days and hours are in the browser's time zone.
+- Minutes without data don't count, neither up nor down: before Smart Proxy was installed or upgraded, while it wasn't running, before a workload was managed. They show as hatched; the page says from when the history starts. The times of the changes are recorded from 2.7 on: earlier days show hour by hour.
 - A workload no longer managed keeps its history until it is older than 30 days.
-- The history is kept in the ConfigMap `<release>-uptime` (compressed, a few kilobytes per workload), written by the leader every 5 minutes and removed with Smart Proxy. `GET /api/uptime?days=30&tz=Europe/Rome` (`&route=<id>` for one route, hour by hour too) answers it as JSON.
+- The history is kept in the ConfigMap `<release>-uptime` (compressed, a few kilobytes per workload), written by the leader every 5 minutes and removed with Smart Proxy. `GET /api/uptime` answers it as JSON: `days=7` or `from=…&to=…` (RFC 3339), `tz=Europe/Rome`, `route=<id>` or `workload=<namespace>/<name>`, `hours=1` and `changes=1` for the hours and the changes.
 
 ## Access: require sign-in or a token
 

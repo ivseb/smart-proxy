@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.7.0 — chart 0.9.0
+
+### Added
+- **Uptime, in detail.** Any period of the last 30 days: the last 24 hours, 7 or 30 days, or from… to… down to the hour — on a route's page and in the Report tab.
+  - **To the minute**: Smart Proxy now records the minute a workload's replicas change. Periods up to 3 days show a timeline and the list of changes (*woken at 03:12, 2 replicas — put to sleep at 03:41*), with the state at the start of the period: whether an application stayed asleep all night is answered exactly.
+  - **Map of the hours**: longer periods show every hour, a column per day, midnight at the top; a night asleep is a dark band. Picking a day opens its timeline and changes.
+  - In the Report tab, picking a workload opens its detail; the CSV of a short period has the minutes up of each hour.
+  - Restarts of Smart Proxy show as hatched (no data) instead of guessed.
+- `/api/uptime` takes `from`/`to`, `workload`, `hours` and `changes`.
+
 ## 2.6.0 — chart 0.8.0
 
 ### Added

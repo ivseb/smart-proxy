@@ -26,7 +26,27 @@ type Series struct {
 	Wakes     []uint16 `json:"wakes"`   // Times it went from no replica to some
 	LastUp    bool     `json:"last_up"` // State at the latest sample, to see wake-ups
 	Sampled   bool     `json:"sampled"` // Sampled at least once
+	// Changes are the minutes its replicas changed, to the minute (since 2.7).
+	Changes []Change `json:"changes,omitempty"`
+	LastAt  int64    `json:"last_at,omitempty"` // Unix time of the latest sample
+	LastN   int32    `json:"last_n,omitempty"`  // Replicas at the latest sample
 }
+
+// Change is a sample where a workload's replicas differ from the one before: woken, put to
+// sleep, scaled. Gap marks the first sample after a time without samples (Smart Proxy not
+// running): the state is unknown since the sample before (GapFrom, 0 for the first sample ever).
+type Change struct {
+	At       int64 `json:"t"` // Unix time
+	Replicas int32 `json:"n"`
+	Gap      bool  `json:"gap,omitempty"`
+	GapFrom  int64 `json:"gap_from,omitempty"`
+}
+
+// maxChanges bounds the changes kept for one workload (an autoscaler can change replicas often).
+const maxChanges = 5000
+
+// gapAfter is how long without samples makes the state unknown.
+const gapAfter = 150 // Seconds
 
 func key(namespace, workload string) string { return namespace + "/" + workload }
 
@@ -48,8 +68,24 @@ func (s *Series) at(hour int64) int {
 	if drop := len(s.Seen) - window; drop > 0 {
 		s.Seen, s.Up, s.Replicas, s.Wakes = s.Seen[drop:], s.Up[drop:], s.Replicas[drop:], s.Wakes[drop:]
 		s.Start += int64(drop)
+		s.trimChanges()
 	}
 	return int(hour - s.Start)
+}
+
+// trimChanges drops the changes before the window, keeping the latest one before it (the state
+// at the start of the window).
+func (s *Series) trimChanges() {
+	first := 0
+	for first+1 < len(s.Changes) && s.Changes[first+1].At < s.Start*3600 {
+		first++
+	}
+	if extra := len(s.Changes) - first - maxChanges; extra > 0 {
+		first += extra
+	}
+	if first > 0 {
+		s.Changes = append([]Change(nil), s.Changes[first:]...)
+	}
 }
 
 // State is a workload's replicas at a sample.
@@ -96,7 +132,19 @@ func (r *Recorder) Sample(now time.Time, states []State) {
 				s.Wakes[i]++
 			}
 		}
-		s.LastUp, s.Sampled = up, true
+		at := now.Unix()
+		gap := !s.Sampled || s.LastAt == 0 || at-s.LastAt > gapAfter
+		if gap || st.Replicas != s.LastN {
+			c := Change{At: at, Replicas: st.Replicas, Gap: gap}
+			if gap && s.Sampled {
+				c.GapFrom = s.LastAt
+			}
+			s.Changes = append(s.Changes, c)
+			if len(s.Changes) > maxChanges+100 {
+				s.trimChanges()
+			}
+		}
+		s.LastUp, s.Sampled, s.LastAt, s.LastN = up, true, at, st.Replicas
 	}
 	r.dirty = true
 }
@@ -117,6 +165,7 @@ func (r *Recorder) Snapshot(now time.Time) []Series {
 		c.Up = append([]byte(nil), s.Up...)
 		c.Replicas = append([]uint32(nil), s.Replicas...)
 		c.Wakes = append([]uint16(nil), s.Wakes...)
+		c.Changes = append([]Change(nil), s.Changes...)
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -178,45 +227,67 @@ type Report struct {
 	Namespace string `json:"namespace"`
 	Workload  string `json:"workload"`
 	Totals
-	Since *time.Time `json:"since,omitempty"` // First hour recorded in the period
-	Days  []Day      `json:"days"`
-	Hours []Hour     `json:"hours,omitempty"`
+	Since   *time.Time `json:"since,omitempty"` // First hour recorded in the period
+	Days    []Day      `json:"days"`            // Every calendar day the period touches
+	Hours   []Hour     `json:"hours,omitempty"` // Every hour of the period recorded (asked for)
+	Changes []Change   `json:"changes,omitempty"`
+	// Before is the latest change before the period: the state at its start.
+	Before *Change `json:"before,omitempty"`
 }
 
-// Summarize sums a series over the days (in loc) ending today: totals, each day and, with
-// hourly, each hour.
-func Summarize(s Series, now time.Time, days int, loc *time.Location, hourly bool) Report {
-	now = now.In(loc)
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	first := today.AddDate(0, 0, -(days - 1))
-	rep := Report{Namespace: s.Namespace, Workload: s.Workload, Days: make([]Day, days)}
-	for d := range rep.Days {
-		rep.Days[d].Date = first.AddDate(0, 0, d).Format("2006-01-02")
-	}
+// Options say what a report includes besides the totals and the days.
+type Options struct {
+	Hours, Changes bool
+}
+
+// Summarize sums a series over the hours from..to (whole hours: from rounded down to the hour):
+// totals, each calendar day (in loc) and, as asked, each hour and the changes (to the second).
+func Summarize(s Series, from, to time.Time, loc *time.Location, opt Options) Report {
+	exact := from
+	from, to = from.In(loc).Truncate(time.Hour), to.In(loc)
+	rep := Report{Namespace: s.Namespace, Workload: s.Workload, Days: []Day{}}
 	index := map[string]int{}
-	for d, day := range rep.Days {
-		index[day.Date] = d
+	for d := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, loc); d.Before(to); d = d.AddDate(0, 0, 1) {
+		date := d.Format("2006-01-02")
+		index[date] = len(rep.Days)
+		rep.Days = append(rep.Days, Day{Date: date})
 	}
 	for i := range s.Seen {
 		at := time.Unix((s.Start+int64(i))*3600, 0).In(loc)
-		if at.Before(first) || at.After(now) {
-			continue
-		}
-		d, ok := index[at.Format("2006-01-02")]
-		if !ok {
+		if at.Before(from) || !at.Before(to) {
 			continue
 		}
 		if rep.Since == nil && s.Seen[i] > 0 {
 			since := at
 			rep.Since = &since
 		}
-		rep.Days[d].add(s, i)
+		if d, ok := index[at.Format("2006-01-02")]; ok {
+			rep.Days[d].add(s, i)
+		}
 		rep.Totals.add(s, i)
-		if hourly {
+		if opt.Hours {
 			h := Hour{At: at}
 			h.add(s, i)
 			rep.Hours = append(rep.Hours, h)
 		}
 	}
+	if opt.Changes {
+		for i, c := range s.Changes {
+			if c.At < exact.Unix() {
+				rep.Before = &s.Changes[i]
+				continue
+			}
+			if c.At >= to.Unix() {
+				break
+			}
+			rep.Changes = append(rep.Changes, c)
+		}
+	}
 	return rep
+}
+
+// LastDays is the period of the last n calendar days in loc, today included.
+func LastDays(now time.Time, n int, loc *time.Location) (time.Time, time.Time) {
+	now = now.In(loc)
+	return time.Date(now.Year(), now.Month(), now.Day()-(n-1), 0, 0, 0, 0, loc), now
 }

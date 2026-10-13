@@ -281,6 +281,15 @@ export interface UptimeHour extends UptimeTotals {
     at: string;
 }
 
+// A minute a workload's replicas changed (woken, put to sleep, scaled). gap: first sample after
+// a time Smart Proxy wasn't sampling, the state before it is unknown.
+export interface UptimeChange {
+    t: number; // Unix time (seconds)
+    n: number; // Replicas
+    gap?: boolean;
+    gap_from?: number; // Unix time of the sample before the gap
+}
+
 // A managed workload's history over the period, with the routes it serves now (none: no longer
 // managed).
 export interface WorkloadUptime extends UptimeTotals {
@@ -289,11 +298,15 @@ export interface WorkloadUptime extends UptimeTotals {
     since?: string;
     days: UptimeDay[];
     hours?: UptimeHour[];
+    changes?: UptimeChange[];
+    before?: UptimeChange; // The latest change before the period: the state at its start
     routes: { id: string; host: string; path: string }[];
 }
 
 export interface UptimeReport {
     days: number;
+    from: string;
+    to: string;
     timezone: string;
     since?: string; // First hour recorded in the period
     workloads: WorkloadUptime[];

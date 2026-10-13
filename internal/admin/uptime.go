@@ -26,7 +26,9 @@ type WorkloadUptime struct {
 
 // UptimeReport is what /api/uptime answers.
 type UptimeReport struct {
-	Days      int              `json:"days"`
+	Days      int              `json:"days"` // Calendar days the period touches
+	From      time.Time        `json:"from"`
+	To        time.Time        `json:"to"`
 	Timezone  string           `json:"timezone"`
 	Since     *time.Time       `json:"since,omitempty"` // First hour recorded, in the period
 	Workloads []WorkloadUptime `json:"workloads"`
@@ -52,25 +54,48 @@ func managedWorkloads(routes []store.RouteConfig) map[string][]RouteRef {
 	return out
 }
 
-// handleUptime reports how long each managed workload was up over the last days (days=1..30,
-// tz=IANA time zone for the days, route=<id> for one route's workloads, hour by hour too).
+// handleUptime reports how long each managed workload was up over a period: the last days
+// (days=1..30, today included) or from=..&to=.. (RFC 3339, within the last 30 days), with days in
+// tz (an IANA time zone). route=<id> or workload=<namespace>/<workload> narrow it down; hours=1
+// adds each hour, changes=1 the minutes the replicas changed (both on by default for one route or
+// workload).
 func (s *Server) handleUptime(w http.ResponseWriter, r *http.Request) {
 	if s.Uptime == nil {
 		http.Error(w, "No history without Kubernetes", http.StatusServiceUnavailable)
 		return
 	}
-	days, err := strconv.Atoi(r.URL.Query().Get("days"))
-	if err != nil || days < 1 || days > uptime.Days {
-		days = uptime.Days
-	}
-	loc, err := time.LoadLocation(r.URL.Query().Get("tz"))
+	q := r.URL.Query()
+	loc, err := time.LoadLocation(q.Get("tz"))
 	if err != nil {
 		loc = time.UTC
 	}
-	routeID := r.URL.Query().Get("route")
+	now := time.Now()
+	from, to := uptime.LastDays(now, uptime.Days, loc)
+	if days, err := strconv.Atoi(q.Get("days")); err == nil && days >= 1 && days <= uptime.Days {
+		from, to = uptime.LastDays(now, days, loc)
+	}
+	if q.Get("from") != "" || q.Get("to") != "" {
+		f, errF := time.Parse(time.RFC3339, q.Get("from"))
+		t, errT := time.Parse(time.RFC3339, q.Get("to"))
+		if q.Get("to") == "" {
+			t, errT = now, nil
+		}
+		if errF != nil || errT != nil || !t.After(f) {
+			http.Error(w, "from and to must be RFC 3339 times, from before to", http.StatusBadRequest)
+			return
+		}
+		if oldest := now.Add(-uptime.Days * 24 * time.Hour).Truncate(time.Hour); f.Before(oldest) {
+			f = oldest
+		}
+		if t.After(now) {
+			t = now
+		}
+		from, to = f, t
+	}
+
 	managed := managedWorkloads(s.store.GetAllRoutes())
 	var only map[string]bool
-	if routeID != "" {
+	if routeID := q.Get("route"); routeID != "" {
 		route, ok := s.store.GetRoute(routeID)
 		if !ok {
 			http.Error(w, "Route not found", http.StatusNotFound)
@@ -81,19 +106,29 @@ func (s *Server) handleUptime(w http.ResponseWriter, r *http.Request) {
 			only[k] = true
 		}
 	}
+	if workload := q.Get("workload"); workload != "" {
+		only = map[string]bool{workload: true}
+	}
+	opt := uptime.Options{Hours: only != nil, Changes: only != nil}
+	if v := q.Get("hours"); v != "" {
+		opt.Hours = v == "1" || v == "true"
+	}
+	if v := q.Get("changes"); v != "" {
+		opt.Changes = v == "1" || v == "true"
+	}
 
-	now := time.Now()
-	out := UptimeReport{Days: days, Timezone: loc.String(), Workloads: []WorkloadUptime{}}
+	out := UptimeReport{From: from.In(loc), To: to.In(loc), Timezone: loc.String(), Workloads: []WorkloadUptime{}}
 	for _, series := range s.Uptime.Snapshot(now) {
 		k := series.Namespace + "/" + series.Workload
 		if only != nil && !only[k] {
 			continue
 		}
-		rep := uptime.Summarize(series, now, days, loc, only != nil)
-		if rep.Observed == 0 {
+		rep := uptime.Summarize(series, from, to, loc, opt)
+		out.Days = len(rep.Days)
+		if rep.Observed == 0 && len(rep.Changes) == 0 {
 			continue
 		}
-		if out.Since == nil || rep.Since.Before(*out.Since) {
+		if rep.Since != nil && (out.Since == nil || rep.Since.Before(*out.Since)) {
 			out.Since = rep.Since
 		}
 		routes := managed[k]

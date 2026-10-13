@@ -1,5 +1,9 @@
 # Upgrading
 
+## From 2.6 to 2.7
+
+A drop-in upgrade (`helm upgrade … --version 0.9.0 -f my-values.yaml`, or just the new image): no new permission. The history recorded by 2.6 is kept; the exact times of the changes start at the upgrade (earlier days show hour by hour).
+
 ## From 2.5 to 2.6
 
 A drop-in upgrade with the chart (`helm upgrade … --version 0.8.0 -f my-values.yaml`), or just the new image: no new permission, nothing changes for existing routes. The uptime history starts at the upgrade; it is kept in a new ConfigMap, `<release>-uptime` (removed with Smart Proxy).

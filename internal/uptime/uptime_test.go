@@ -59,7 +59,8 @@ func TestSummarizeByDayInATimeZone(t *testing.T) {
 		r.Sample(at.Add(time.Duration(i)*time.Minute), []State{{Namespace: "shop", Workload: "web", Replicas: 1}})
 	}
 	now := time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC)
-	rep := Summarize(r.Snapshot(now)[0], now, 7, rome, true)
+	from, to := LastDays(now, 7, rome)
+	rep := Summarize(r.Snapshot(now)[0], from, to, rome, Options{Hours: true})
 	if len(rep.Days) != 7 || rep.Days[6].Date != "2026-10-03" {
 		t.Fatalf("days %+v", rep.Days)
 	}
@@ -69,7 +70,8 @@ func TestSummarizeByDayInATimeZone(t *testing.T) {
 	if len(rep.Hours) != 2 || rep.Since == nil || !rep.Since.Equal(time.Date(2026, 10, 1, 23, 0, 0, 0, time.UTC)) {
 		t.Fatalf("hours %+v since %v", rep.Hours, rep.Since)
 	}
-	if short := Summarize(r.Snapshot(now)[0], now, 1, rome, false); short.Observed != 0 || short.Hours != nil {
+	from, to = LastDays(now, 1, rome)
+	if short := Summarize(r.Snapshot(now)[0], from, to, rome, Options{}); short.Observed != 0 || short.Hours != nil {
 		t.Fatalf("today only: %+v", short)
 	}
 }
@@ -94,5 +96,63 @@ func TestCanonical(t *testing.T) {
 		if got := Canonical(in); got != want {
 			t.Errorf("%s: %s, want %s", in, got, want)
 		}
+	}
+}
+
+func TestChangesAreKeptToTheMinute(t *testing.T) {
+	r := NewRecorder()
+	night := time.Date(2026, 10, 1, 20, 0, 0, 0, time.UTC) // 22:00 in Rome
+	sample := func(minute int, n int32) {
+		r.Sample(night.Add(time.Duration(minute)*time.Minute), []State{{Namespace: "shop", Workload: "web", Replicas: n}})
+	}
+	for m := 0; m < 10; m++ {
+		sample(m, 1) // Up until 22:10
+	}
+	for m := 10; m < 60*9; m++ {
+		n := int32(0)
+		if m >= 312 && m < 341 { // Woken at 03:12, asleep again at 03:41
+			n = 2
+		}
+		if m >= 100 && m < 103 { // Smart Proxy not running for 3 minutes, 23:40-23:43
+			continue
+		}
+		sample(m, n)
+	}
+	s := r.Snapshot(night)[0]
+	want := []Change{{At: night.Unix(), Replicas: 1, Gap: true}, {At: night.Add(10 * time.Minute).Unix()},
+		{At: night.Add(103 * time.Minute).Unix(), Gap: true, GapFrom: night.Add(99 * time.Minute).Unix()}, {At: night.Add(312 * time.Minute).Unix(), Replicas: 2}, {At: night.Add(341 * time.Minute).Unix()}}
+	if len(s.Changes) != len(want) {
+		t.Fatalf("changes %+v", s.Changes)
+	}
+	for i := range want {
+		if s.Changes[i] != want[i] {
+			t.Fatalf("change %d: %+v, want %+v", i, s.Changes[i], want[i])
+		}
+	}
+
+	// The night from 23:00 to 07:00 in Rome: asleep at its start, woken once.
+	rome, _ := time.LoadLocation("Europe/Rome")
+	from := time.Date(2026, 10, 1, 23, 0, 0, 0, rome)
+	rep := Summarize(s, from, from.Add(8*time.Hour), rome, Options{Hours: true, Changes: true})
+	if rep.Before == nil || rep.Before.Replicas != 0 || len(rep.Changes) != 3 || rep.Changes[1].Replicas != 2 {
+		t.Fatalf("before %+v changes %+v", rep.Before, rep.Changes)
+	}
+	if rep.Up != 29 || rep.Wakes != 1 || len(rep.Hours) != 8 || len(rep.Days) != 2 {
+		t.Fatalf("up %d wakes %d hours %d days %+v", rep.Up, rep.Wakes, len(rep.Hours), rep.Days)
+	}
+}
+
+func TestChangesBeyondTheWindowAreDropped(t *testing.T) {
+	r := NewRecorder()
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	for d := 0; d < 40; d++ {
+		at := start.Add(time.Duration(d) * 24 * time.Hour)
+		r.Sample(at, []State{{Namespace: "shop", Workload: "web", Replicas: int32(d % 2)}})
+		r.Sample(at.Add(time.Minute), []State{{Namespace: "shop", Workload: "web", Replicas: int32(d % 2)}})
+	}
+	s := r.Snapshot(start.Add(40 * 24 * time.Hour))[0]
+	// The latest change before the window is kept: the state at its start.
+	if len(s.Changes) < 30 || len(s.Changes) > 32 || s.Changes[1].At < s.Start*3600 || s.Changes[0].At >= s.Start*3600 {
+		t.Fatalf("%d changes, first %v, window from %v", len(s.Changes), time.Unix(s.Changes[0].At, 0), time.Unix(s.Start*3600, 0))
 	}
 }

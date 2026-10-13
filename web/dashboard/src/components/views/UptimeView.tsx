@@ -1,14 +1,14 @@
-import { useState } from "react";
-import { ArrowDown, ArrowUp, Download, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Download, Search, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { UptimeBars } from "@/components/views/UptimeBars";
-import { PeriodToggle } from "@/components/views/UptimeCard";
+import { Bars, PeriodPicker } from "@/components/views/UptimeParts";
+import { UptimeHistory } from "@/components/views/UptimeHistory";
 import { useStoredState } from "@/hooks/useStoredState";
 import { usePolling } from "@/hooks/usePolling";
 import { workloadLabel } from "@/lib/format";
 import { t, tn } from "@/lib/i18n";
-import { downMinutes, hours, percent, saveText, sinceNote, sum, upShare, uptimeCSV, uptimeURL } from "@/lib/uptime";
+import { dayItems, downMinutes, hourItems, hours, isShort, percent, periodTitle, saveText, sinceNote, sum, upShare, uptimeCSV, uptimeURL, type Period } from "@/lib/uptime";
 import type { UptimeReport, UptimeTotals, WorkloadUptime } from "@/types/api";
 
 type SortKey = "name" | "up" | "down" | "share" | "replicas" | "wakes";
@@ -21,13 +21,15 @@ const sortValue: Record<Exclude<SortKey, "name">, (x: UptimeTotals) => number> =
     wakes: x => x.wakes,
 };
 
-// UptimeView reports, for every managed workload, how long it was up over the last 7 or 30 days,
-// by namespace, with totals; downloadable as CSV.
+// UptimeView reports, for every managed workload, how long it was up over a period, by namespace,
+// with totals; downloadable as CSV. A workload picked opens its detail.
 export function UptimeView({ onSelect }: { onSelect: (routeId: string) => void }) {
-    const [days, setDays] = useStoredState<number>("uptime.days", 30);
+    const [period, setPeriod] = useStoredState<Period>("uptime.period", { kind: "30d" });
     const [sort, setSort] = useStoredState<{ key: SortKey; desc: boolean }>("uptime.sort", { key: "name", desc: false });
     const [search, setSearch] = useState("");
-    const { data, error } = usePolling<UptimeReport>(uptimeURL(days), 300_000);
+    const [detail, setDetail] = useState<WorkloadUptime | null>(null);
+    const short = isShort(period);
+    const { data, error } = usePolling<UptimeReport>(uptimeURL(period, short ? { hours: "1" } : {}), 120_000);
 
     if (!data) {
         return <div className="text-gray-500 text-sm py-12 text-center">{error ? t("No history: Smart Proxy isn't connected to a cluster.") : t("Loading…")}</div>;
@@ -55,7 +57,7 @@ export function UptimeView({ onSelect }: { onSelect: (routeId: string) => void }
     const note = sinceNote(data);
 
     const toggleSort = (key: SortKey) => setSort(sort.key === key ? { key, desc: !sort.desc } : { key, desc: key !== "name" });
-    const exportCSV = () => saveText(uptimeCSV({ ...data, workloads: shown }), `smart-proxy-uptime-${days}d-${new Date().toISOString().slice(0, 10)}.csv`, "text/csv");
+    const exportCSV = () => saveText(uptimeCSV({ ...data, workloads: shown }, short), `smart-proxy-uptime-${data.from.slice(0, 13)}-${data.to.slice(0, 13)}.csv`.replace(/:/g, ""), "text/csv");
 
     return (
         <div className="space-y-6">
@@ -64,25 +66,27 @@ export function UptimeView({ onSelect }: { onSelect: (routeId: string) => void }
                 <Summary label={t("Up")} value={`${hours(total.up_minutes)} h`} hint={t("{percent} of the time", { percent: percent(upShare(total)) })} valueClass="text-green-300" />
                 <Summary label={t("Asleep")} value={`${hours(downMinutes(total))} h`} hint={t("with no replica")} />
                 <Summary label={t("Replica-hours")} value={hours(total.replica_minutes)} hint={t("what the replicas ran for")} />
-                <Summary label={t("Wake-ups")} value={String(total.wakes)} hint={tn(days, "over the last day", "over the last {n} days")} />
+                <Summary label={t("Wake-ups")} value={String(total.wakes)} hint={periodTitle(period, data)} />
             </div>
 
             <Card>
-                <CardHeader className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <CardTitle>{t("Uptime of the managed workloads")}</CardTitle>
+                <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="max-w-2xl">
+                        <CardTitle>{t("Uptime of the managed workloads")} · {periodTitle(period, data)}</CardTitle>
                         <p className="text-gray-400 text-sm">{t("Up means at least one replica. Days in {zone}; minutes without data (Smart Proxy not running, workload not managed yet) don't count.", { zone: data.timezone })}</p>
                     </div>
+                    <div className="flex flex-col items-end gap-2">
+                    <PeriodPicker value={period} onChange={setPeriod} />
                     <div className="flex flex-wrap items-center gap-2">
                         <label className="relative">
                             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
                             <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("Filter…")} aria-label={t("Filter")}
                                 className="bg-gray-900 border border-gray-700 rounded-md pl-8 pr-2 py-1.5 text-sm text-gray-100 w-48" />
                         </label>
-                        <PeriodToggle days={days} onChange={setDays} />
                         <Button variant="secondary" size="sm" onClick={exportCSV} disabled={shown.length === 0} className="gap-1.5">
                             <Download size={14} /> CSV
                         </Button>
+                    </div>
                     </div>
                 </CardHeader>
                 <CardContent className="p-0 overflow-x-auto">
@@ -93,7 +97,7 @@ export function UptimeView({ onSelect }: { onSelect: (routeId: string) => void }
                             <thead className="text-xs text-gray-400 border-b border-gray-700">
                                 <tr>
                                     <Th label={t("Workload")} k="name" sort={sort} onSort={toggleSort} align="left" />
-                                    <th className="px-3 py-2 font-medium text-left hidden md:table-cell w-[30%]">{tn(days, "Last day", "Last {n} days")}</th>
+                                    <th className="px-3 py-2 font-medium text-left hidden md:table-cell w-[30%]">{short ? t("Hour by hour") : t("Day by day")}</th>
                                     <Th label={t("Up (h)")} k="up" sort={sort} onSort={toggleSort} />
                                     <Th label={t("Down (h)")} k="down" sort={sort} onSort={toggleSort} />
                                     <Th label={t("% up")} k="share" sort={sort} onSort={toggleSort} />
@@ -110,7 +114,8 @@ export function UptimeView({ onSelect }: { onSelect: (routeId: string) => void }
                                     {list.map(w => (
                                         <tr key={w.workload} className="border-t border-gray-800 hover:bg-white/[0.02]">
                                             <td className="px-4 py-2 min-w-[12rem]">
-                                                <div className="font-mono text-gray-100">{workloadLabel(w.workload)}</div>
+                                                <button className="font-mono text-gray-100 hover:text-blue-300 hover:underline text-left" onClick={() => setDetail(w)}
+                                                    title={t("When exactly it was up")}>{workloadLabel(w.workload)}</button>
                                                 <div className="text-xs text-gray-500 truncate max-w-[20rem]">
                                                     {w.routes.length === 0 ? <span className="italic">{t("no longer managed")}</span> : w.routes.map((r, i) => (
                                                         <span key={r.id}>
@@ -120,7 +125,7 @@ export function UptimeView({ onSelect }: { onSelect: (routeId: string) => void }
                                                     ))}
                                                 </div>
                                             </td>
-                                            <td className="px-3 py-2 hidden md:table-cell"><UptimeBars days={w.days} height={24} /></td>
+                                            <td className="px-3 py-2 hidden md:table-cell"><Bars items={short ? hourItems(w.hours) : dayItems(w.days)} height={24} /></td>
                                             <Numbers x={w} />
                                         </tr>
                                     ))}
@@ -131,6 +136,35 @@ export function UptimeView({ onSelect }: { onSelect: (routeId: string) => void }
                 </CardContent>
             </Card>
             {note && <p className="text-xs text-gray-500">{note}</p>}
+            {detail && <WorkloadDialog w={detail} period={period} onClose={() => setDetail(null)} />}
+        </div>
+    );
+}
+
+// WorkloadDialog shows one workload over the period, to the minute.
+function WorkloadDialog({ w, period, onClose }: { w: WorkloadUptime; period: Period; onClose: () => void }) {
+    const { data } = usePolling<UptimeReport>(uptimeURL(period, { workload: `${w.namespace}/${w.workload}` }), 120_000);
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
+    return (
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm overflow-y-auto" role="dialog" aria-modal="true" onClick={onClose}>
+            <div className="bg-gray-800 rounded-xl border border-gray-700 shadow-2xl w-full max-w-4xl" onClick={e => e.stopPropagation()}>
+                <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-start gap-3">
+                    <div className="min-w-0">
+                        <h2 className="text-lg font-bold text-white truncate">{w.namespace} / {workloadLabel(w.workload)}</h2>
+                        <p className="text-sm text-gray-400">{periodTitle(period, data)}</p>
+                    </div>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white" aria-label={t("Close")}><X className="w-6 h-6" /></button>
+                </div>
+                <div className="p-6">
+                    {!data ? <div className="text-sm text-gray-500">{t("Loading…")}</div>
+                        : data.workloads.length === 0 ? <div className="text-sm text-gray-500 italic">{t("No data in this period")}</div>
+                        : <UptimeHistory report={data} period={period} />}
+                </div>
+            </div>
         </div>
     );
 }

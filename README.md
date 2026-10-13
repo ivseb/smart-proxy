@@ -84,7 +84,7 @@ Optional tools on each route's page — routes that don't use them work as befor
   <img src="media/pause-dialog.png" alt="Pausing a route for a while" width="250"/>
 </p>
 
-**How long was it up?** Every managed workload's last 30 days, day by day: hours up and down, replica-hours and wake-ups — on each route's page, and for all of them in the **Report** tab, by namespace, downloadable as CSV.
+**How long was it up — and when?** Any period of the last 30 days, for every managed workload: hours up and down, replica-hours and wake-ups, a map of every hour (a night asleep is a dark band) and, to the minute, when it was woken and put to sleep — on each route's page, and for all of them in the **Report** tab, by namespace, downloadable as CSV.
 
 <img src="media/uptime-report.png" alt="The Report tab: hours up and down, replica-hours and wake-ups of every managed workload over the last 30 days, by namespace" width="820"/>
 

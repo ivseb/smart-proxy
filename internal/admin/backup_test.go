@@ -262,4 +262,19 @@ func TestUptimeReportsManagedWorkloads(t *testing.T) {
 	if code, _ := f.call(t, "GET", "/api/uptime?route=nope", nil); code != http.StatusNotFound {
 		t.Fatalf("unknown route: %d", code)
 	}
+
+	// A period of a few minutes, one workload: its hours and the minutes its replicas changed.
+	period := url.Values{"from": {now.Add(-90 * time.Second).UTC().Format(time.RFC3339)}, "to": {now.UTC().Format(time.RFC3339)}, "workload": {"team-a/web"}}
+	rep = UptimeReport{}
+	if code, body := f.call(t, "GET", "/api/uptime?"+period.Encode(), nil); code != 200 || json.Unmarshal([]byte(body), &rep) != nil {
+		t.Fatalf("uptime of a period: %d %s", code, body)
+	}
+	if len(rep.Workloads) != 1 || len(rep.Workloads[0].Hours) == 0 || len(rep.Workloads[0].Changes) != 1 || rep.Workloads[0].Changes[0].Replicas != 3 || rep.Workloads[0].Before == nil {
+		t.Fatalf("period report %+v", rep)
+	}
+	for _, bad := range []string{"from=yesterday", "from=" + url.QueryEscape(now.UTC().Format(time.RFC3339)) + "&to=" + url.QueryEscape(now.Add(-time.Hour).UTC().Format(time.RFC3339))} {
+		if code, _ := f.call(t, "GET", "/api/uptime?"+bad, nil); code != http.StatusBadRequest {
+			t.Fatalf("%s: %d", bad, code)
+		}
+	}
 }
