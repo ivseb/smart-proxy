@@ -1,5 +1,9 @@
 # Upgrading
 
+## From 2.4 to 2.5
+
+A drop-in upgrade with the chart (`helm upgrade … --version 0.7.0 -f my-values.yaml`). The image is now built `FROM scratch` and has no shell: anything that `exec`s into the Smart Proxy container (scripts, probes you added) must use a debug container instead (`oc debug deployment/<release>`, `kubectl debug`). The chart's probes and the uninstall Job don't need one.
+
 ## From 2.3 to 2.4
 
 A drop-in upgrade with the chart (`helm upgrade … --version 0.6.0 -f my-values.yaml`): no new permission, nothing changes for existing routes. Deleted routes are now kept for 30 days in a new ConfigMap, `<release>-deleted-routes` (removed with Smart Proxy).

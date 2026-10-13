@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.5.0 — chart 0.7.0
+
+### Security
+- **The image has no known vulnerability** (Trivy: 0, any severity). It is now built `FROM scratch`: the static binary, the dashboard and the CA certificates only — no operating system, shell or package manager. Go 1.26.9 (pinned in `go.mod` and the Dockerfile), `golang.org/x/net` 0.61.0 (HTTP/2 denial-of-service fixes), `github.com/klauspost/compress` 1.20.3 and the other `golang.org/x` modules updated.
+- CI now fails on any vulnerability: Trivy scans the image before it is published, `govulncheck` the code. A weekly workflow scans the published image again; Dependabot proposes dependency updates.
+- **No shell in the image**: to troubleshoot, attach a debug container (`oc debug`, `kubectl debug`) — see [the installation guide](docs/installation.md#whats-in-it-and-vulnerabilities).
+
+### Added
+- **Copy what is cut short**: hosts, paths and user agents shortened in the dashboard show in full on hover and have a copy button. Copying also works when the dashboard isn't served over HTTPS.
+- Recorded requests show the **full URL**, ready to copy, with their query parameter values (credentials masked: `access_token`, `api_key`, `code`, `sig`…). Text in the list can be selected without opening the request.
+
 ## 2.4.2 — chart 0.6.2
 
 ### Added

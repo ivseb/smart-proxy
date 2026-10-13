@@ -6,7 +6,7 @@ Tools on each route's page in the dashboard. A route that doesn't use them works
 
 **Record** on a route's page records its requests for 5, 15 or 60 minutes, then stops by itself. Each request shows:
 
-- what was sent: method, path, query parameter names, headers (credentials such as `Authorization`, cookies, tokens and API keys are masked), cookie names, client IP and user agent. Bodies are never recorded.
+- what was sent: the full URL, ready to copy, with its query parameters (values of credentials such as `access_token`, `api_key`, `code` or `sig` are masked), headers (credentials such as `Authorization`, cookies, tokens and API keys are masked), cookie names, client IP and user agent. Bodies are never recorded.
 - what Smart Proxy did with it: answered by the application, woke it up first, showed the waking page, answered for it while asleep (an ignored monitor), refused it (no login), or couldn't reach it; which backend got it and why.
 
 ![Requests recorded for a route, one expanded with its headers](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/route-requests.png)

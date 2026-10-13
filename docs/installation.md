@@ -122,3 +122,17 @@ docker pull isebben/smart-proxy:latest
 ```
 
 <https://hub.docker.com/r/isebben/smart-proxy>
+
+### What's in it, and vulnerabilities
+
+The image is built `FROM scratch`: Smart Proxy's static binary, its dashboard and the CA certificates, nothing else — no operating system, no shell, no package manager, so no OS packages to have CVEs. It runs as a non-root user and works with OpenShift's random UIDs.
+
+- **Every build is scanned** with Trivy before it is published: any known vulnerability, of any severity, fails the build. `govulncheck` checks the Go code and modules in CI.
+- **Every week** the published `latest` image and the code are scanned again, so a CVE found after a release shows up as a failed run; Dependabot proposes the dependency updates.
+- **No shell** to `exec` into: to troubleshoot from inside the pod's network, attach a debug container, e.g. `oc debug deployment/smart-proxy` (OpenShift) or `kubectl debug -it <pod> --image=busybox --target=smart-proxy`.
+
+Scan it yourself:
+
+```bash
+trivy image --scanners vuln docker.io/isebben/smart-proxy:<tag>
+```
