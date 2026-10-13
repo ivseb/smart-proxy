@@ -215,6 +215,7 @@ export interface InspectedRequest {
     host: string;
     path: string;
     query?: string[]; // Parameter names
+    query_string?: string; // Names and values, credentials masked
     status: number;
     duration_ms: number;
     outcome: RequestOutcome;

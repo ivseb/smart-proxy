@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ArchiveRestore, CalendarClock, Circle, Download, Upload, FileCode2, Lock, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
 import type { ClusterInfo, DeletedRoute, RouteStatus, StatsData } from "@/types/api";
 import { Button } from "@/components/ui/Button";
+import { Copyable } from "@/components/ui/Copyable";
 import { StatusBadge, StatusDot } from "@/components/ui/StatusBadge";
 import { formatDuration, formatRelative, formatSchedule, splitHosts, workloadLabel } from "@/lib/format";
 import { useNow } from "@/hooks/useNow";
@@ -245,10 +246,8 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
             <div className="min-w-0 space-y-1">
                 <div className="flex items-center gap-2 min-w-0">
                     <StatusDot status={route.status} />
-                    <span className="font-medium text-white truncate" title={hosts.join(", ")}>
-                        {hosts[0] || <span className="italic text-gray-500">{t("any host")}</span>}
-                    </span>
-                    {route.path && route.path !== "/" && <span className="font-mono text-sm text-blue-300 truncate">{route.path}</span>}
+                    {hosts[0] ? <Copyable value={hosts[0]} className="font-medium text-white" /> : <span className="italic text-gray-500">{t("any host")}</span>}
+                    {route.path && route.path !== "/" && <Copyable value={route.path} className="font-mono text-sm text-blue-300" />}
                     {hosts.length > 1 && (
                         <span className="shrink-0 px-1.5 py-0.5 text-[11px] rounded bg-gray-700 text-gray-300" title={hosts.slice(1).join("\n")}>
                             +{hosts.length - 1}

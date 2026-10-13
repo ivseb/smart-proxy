@@ -88,5 +88,7 @@ export const routeDetail: Record<string, string> = {
     "Served by": "Servita da",
     "Cookies (names only)": "Cookie (solo i nomi)",
     "Query parameters (names only)": "Parametri query (solo i nomi)",
+    "URL": "URL",
+    "Query parameters": "Parametri query",
     "Headers": "Header",
 };

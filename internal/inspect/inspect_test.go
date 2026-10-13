@@ -108,3 +108,12 @@ func TestStatusIgnoresEarlyHints(t *testing.T) {
 		t.Fatalf("status = %d", w.Status)
 	}
 }
+
+func TestQueryStringMasksCredentials(t *testing.T) {
+	r := httptest.NewRequest("GET", "http://app.example.com/search?q=red+shoes&page=2&access_token=abc&api_key=k&sig=x", nil)
+	e := Describe(r, nil)
+	want := "access_token=" + Masked + "&api_key=" + Masked + "&page=2&q=red+shoes&sig=" + Masked
+	if e.RawQuery != want {
+		t.Fatalf("query = %q, want %q", e.RawQuery, want)
+	}
+}

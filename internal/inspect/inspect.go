@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -37,7 +38,8 @@ type Entry struct {
 	Method     string            `json:"method"`
 	Host       string            `json:"host"`
 	Path       string            `json:"path"`
-	Query      []string          `json:"query,omitempty"` // Parameter names
+	Query      []string          `json:"query,omitempty"`        // Parameter names
+	RawQuery   string            `json:"query_string,omitempty"` // Names and values, credentials masked
 	Status     int               `json:"status"`
 	DurationMs float64           `json:"duration_ms"`
 	Outcome    string            `json:"outcome"`
@@ -149,6 +151,7 @@ func Describe(r *http.Request, client net.IP) Entry {
 		}
 	}
 	sort.Strings(e.Query)
+	e.RawQuery = describeQuery(r.URL.Query())
 	for name, values := range r.Header {
 		if len(e.Headers) >= maxNames {
 			break
@@ -171,6 +174,42 @@ func Describe(r *http.Request, client net.IP) Entry {
 	sort.Strings(e.Cookies)
 	return e
 }
+
+// describeQuery writes a query string to show and copy: values of parameters whose name says
+// they hold a credential (token, key, password, signature…) are masked.
+func describeQuery(q url.Values) string {
+	names := make([]string, 0, len(q))
+	for name := range q {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	for _, name := range names {
+		for _, v := range q[name] {
+			if b.Len() > maxQuery {
+				b.WriteString("&…")
+				return b.String()
+			}
+			if b.Len() > 0 {
+				b.WriteByte('&')
+			}
+			b.WriteString(url.QueryEscape(truncate(name, 100)))
+			b.WriteByte('=')
+			if sensitive.MatchString(name) || sensitiveParam.MatchString(name) {
+				b.WriteString(Masked)
+			} else {
+				b.WriteString(url.QueryEscape(truncate(v, 300)))
+			}
+		}
+	}
+	return b.String()
+}
+
+const maxQuery = 2000
+
+// sensitiveParam matches short query parameter names that carry credentials (OAuth codes,
+// signatures, one-time passwords…), on top of the header patterns.
+var sensitiveParam = regexp.MustCompile(`(?i)^(sig|code|pwd|pass|otp|ticket|hash|hmac)$`)
 
 func truncate(s string, n int) string {
 	if len(s) <= n {

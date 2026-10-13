@@ -2,6 +2,7 @@ import { EyeOff } from "lucide-react";
 import { usePolling } from "@/hooks/usePolling";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Copyable } from "@/components/ui/Copyable";
 import type { RouteConfig, RouteStatus, TrafficSource } from "@/types/api";
 import { addRule } from "@/lib/rules";
 import { formatDuration, formatRelative } from "@/lib/format";
@@ -73,9 +74,10 @@ export function TrafficSources({ route, onSave }: TrafficSourcesProps) {
                                                     </span>
                                                 )}
                                             </div>
-                                            <div className="text-xs text-gray-500 truncate" title={src.user_agent}>
-                                                {src.method !== "*" && <span className="font-mono">{src.method} {src.path} · </span>}
-                                                {src.user_agent || t("no user agent")}{src.last_ip ? ` · ${src.last_ip}` : ""}
+                                            <div className="flex items-center gap-1 min-w-0 text-xs text-gray-500">
+                                                {src.method !== "*" && <><span className="font-mono shrink-0">{src.method}</span><Copyable value={src.path} className="font-mono shrink" /><span className="shrink-0">·</span></>}
+                                                {src.user_agent ? <Copyable value={src.user_agent} /> : <span>{t("no user agent")}</span>}
+                                                {src.last_ip && <span className="shrink-0">· {src.last_ip}</span>}
                                             </div>
                                         </div>
                                         <div className="text-xs text-gray-400 tabular-nums">

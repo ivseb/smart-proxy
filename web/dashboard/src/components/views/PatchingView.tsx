@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Globe, RefreshCw, Route as RouteIcon, Search, Shield, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/Button";
+import { Copyable } from "@/components/ui/Copyable";
 import { StatusDot } from "@/components/ui/StatusBadge";
 import { apiRequest, errorMessage } from "@/lib/api";
 import { workloadLabel } from "@/lib/format";
@@ -163,10 +164,10 @@ export function PatchingView({ info, onChanged }: PatchingViewProps) {
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="text-xs text-gray-400 truncate pl-6">
+                                        <div className="flex items-center gap-1 min-w-0 text-xs text-gray-400 pl-6">
                                             <span className="font-mono">{res.namespace}</span>
                                             <span className="text-gray-600"> · </span>
-                                            <span title={res.host}>{res.host || t("any host")}{res.path !== "/" ? res.path : ""}</span>
+                                            {res.host ? <Copyable value={`${res.host}${res.path !== "/" ? res.path : ""}`} /> : <span>{t("any host")}</span>}
                                         </div>
                                     </div>
                                     <div className="min-w-0 text-sm pl-6 md:pl-0">

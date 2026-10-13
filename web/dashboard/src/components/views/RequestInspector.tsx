@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { ArrowUp, ChevronDown, ChevronRight, Circle, EyeOff, Pause, Play, Search, Square } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Copyable } from "@/components/ui/Copyable";
 import { usePolling } from "@/hooks/usePolling";
 import { useNow } from "@/hooks/useNow";
 import { useStoredState } from "@/hooks/useStoredState";
@@ -152,6 +153,7 @@ export function RequestInspector({ route, onChanged, headerAction, onIgnore }: R
     };
 
     const toggle = (id: string) => {
+        if (window.getSelection()?.toString()) return; // Selecting text to copy it, not opening the row
         if (open === id) {
             setOpen(null);
             if (!paused) setHeld(null);
@@ -310,8 +312,8 @@ export function RequestInspector({ route, onChanged, headerAction, onIgnore }: R
                                                 <td className="px-2 py-2 max-w-[28rem]">
                                                     <div className="flex items-center gap-2 min-w-0">
                                                         <span className="shrink-0 font-mono text-xs px-1.5 py-0.5 rounded bg-gray-700 text-gray-200">{r.method}</span>
-                                                        <span className="font-mono text-gray-100 truncate" title={r.path}>{r.path}</span>
-                                                        {(r.query?.length || 0) > 0 && <span className="shrink-0 text-xs text-gray-500">?{r.query!.join("&")}</span>}
+                                                        <Copyable value={r.path} className="font-mono text-gray-100 shrink-[1] min-w-[6rem]" />
+                                                        {(r.query?.length || 0) > 0 && <span className="shrink-[3] min-w-0 truncate text-xs text-gray-500" title={r.query_string || r.query!.join("&")}>?{r.query!.join("&")}</span>}
                                                     </div>
                                                 </td>
                                                 <td className={`px-2 py-2 tabular-nums font-medium ${statusClass(r.status)}`}>{r.status || "—"}</td>
@@ -360,22 +362,29 @@ function RequestDetails({ request: r, headerAction, onIgnore, onExclude }: {
         [t("Served by"), r.replica],
     ];
     const headers = Object.entries(r.headers).sort(([a], [b]) => a.localeCompare(b));
+    const scheme = Object.entries(r.headers).find(([k]) => k.toLowerCase() === "x-forwarded-proto")?.[1]?.split(",")[0].trim() || "http";
+    const url = `${scheme}://${r.host}${r.path}${r.query_string ? `?${r.query_string}` : ""}`;
+    const params = r.query_string ? [...new URLSearchParams(r.query_string)] : null;
     const agent = userAgentToken(r.user_agent);
-    const chip = "px-2 py-1 rounded-md bg-gray-800 border border-gray-700 hover:border-gray-500 hover:text-white transition-colors";
+    const chip = "inline-flex items-center gap-1.5 max-w-[22rem] min-w-0 px-2 py-1 rounded-md bg-gray-800 border border-gray-700 hover:border-gray-500 hover:text-white transition-colors";
     return (
         <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
-                <button className={`${chip} flex items-center gap-1.5`} onClick={() => onExclude(r.path)} title={t("Hide the requests to this path from the list (not from the app)")}>
-                    <EyeOff size={12} /> {t("Hide {path} here", { path: r.path })}
+                <button className={chip} onClick={() => onExclude(r.path)} title={t("Hide the requests to this path from the list (not from the app)")}>
+                    <EyeOff size={12} className="shrink-0" /> <span className="truncate">{t("Hide {path} here", { path: r.path })}</span>
                 </button>
                 {onIgnore && !r.ignored && (
                     <>
                         <span className="ml-2">{t("Don't count as activity:")}</span>
-                        <button className={chip} onClick={() => onIgnore("paths", r.path)}>{t("path {value}", { value: r.path })}</button>
+                        <button className={chip} onClick={() => onIgnore("paths", r.path)} title={r.path}><span className="truncate">{t("path {value}", { value: r.path })}</span></button>
                         {agent && <button className={chip} onClick={() => onIgnore("user_agents", agent)}>{t("user agent {value}", { value: agent })}</button>}
                         {r.client && <button className={chip} onClick={() => onIgnore("sources", r.client)}>{t("IP {value}", { value: r.client })}</button>}
                     </>
                 )}
+            </div>
+            <div className="flex items-start gap-2 text-sm">
+                <span className="shrink-0 text-gray-500 w-[6.5rem]">{t("URL")}</span>
+                <Copyable value={url} wrap className="font-mono text-gray-100 items-start" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6 text-sm">
                 <div className="space-y-3">
@@ -395,7 +404,14 @@ function RequestDetails({ request: r, headerAction, onIgnore, onExclude }: {
                             </div>
                         </div>
                     )}
-                    {(r.query?.length || 0) > 0 && (
+                    {params && params.length > 0 ? (
+                        <div>
+                            <p className="text-xs text-gray-500 mb-1">{t("Query parameters")}</p>
+                            <div className="flex flex-wrap gap-1">
+                                {params.map(([k, v], i) => <span key={`${k}-${i}`} className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 break-all">{k}={v}</span>)}
+                            </div>
+                        </div>
+                    ) : (r.query?.length || 0) > 0 && (
                         <div>
                             <p className="text-xs text-gray-500 mb-1">{t("Query parameters (names only)")}</p>
                             <div className="flex flex-wrap gap-1">
@@ -411,7 +427,7 @@ function RequestDetails({ request: r, headerAction, onIgnore, onExclude }: {
                             {headers.map(([name, value]) => (
                                 <tr key={name} className="align-top group">
                                     <td className="py-1 pr-3 font-mono text-gray-400 whitespace-nowrap">{name}</td>
-                                    <td className="py-1 font-mono text-gray-200 break-all">{value}</td>
+                                    <td className="py-1"><Copyable value={value} wrap className="font-mono text-gray-200 items-start" /></td>
                                     {headerAction && (
                                         <td className="py-1 pl-2 text-right whitespace-nowrap opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                                             {!PER_REQUEST.has(name.toLowerCase()) && headerAction(name, value)}
