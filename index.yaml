@@ -4,6 +4,59 @@ entries:
   - annotations:
       artifacthub.io/changes: |
         - kind: security
+          description: Bump golang from 1.26.9-alpine to 1.27.2-alpine
+        - kind: security
+          description: Bump the go-modules group across 1 directory with 2 updates
+        - kind: security
+          description: Bump node from 22-alpine to 26-alpine
+        - kind: security
+          description: Bump actions/setup-node from 4 to 7
+        - kind: security
+          description: Bump docker/setup-buildx-action from 3 to 4
+        - kind: security
+          description: Bump docker/metadata-action from 5 to 6
+        - kind: security
+          description: Bump actions/setup-python from 5 to 7
+        - kind: security
+          description: Bump actions/checkout from 4 to 7
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.6.0
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.6.0
+    created: "2026-10-13T19:39:36.902621291Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: 8b75616af6d2df66f0aad5539dd3b79ffa6a4560cdea2b7f87ac51c19fd1a689
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.8.0/smart-proxy-0.8.0.tgz
+    version: 0.8.0
+  - annotations:
+      artifacthub.io/changes: |
+        - kind: security
           description: Dashboard packages updated, every npm advisory fixed
         - kind: added
           description: Dependency fixes released automatically after tests, end-to-end and vulnerability scan
@@ -518,4 +571,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-13T18:52:16.987456495Z"
+generated: "2026-10-13T19:39:36.90272802Z"
