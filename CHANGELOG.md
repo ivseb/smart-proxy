@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.7.2 — chart 0.9.2
+
+Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
+
+- Bump the kubernetes group with 2 updates
+
 ## 2.7.1 — chart 0.9.1
 
 Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
