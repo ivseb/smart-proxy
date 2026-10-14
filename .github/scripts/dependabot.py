@@ -12,6 +12,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 DEPS_COMMIT = re.compile(r"^(build|chore|deps)(\(deps(-dev)?\))?: |^Bump ", re.I)
@@ -57,8 +58,14 @@ def merge():
         if failed:
             print(f"#{n} skipped: failed checks {failed} ({title})")
             continue
-        if pr["mergeable"] != "MERGEABLE":
-            print(f"#{n} skipped: {pr['mergeable']} ({title})")
+        mergeable = pr["mergeable"]
+        for _ in range(6):  # GitHub computes it lazily, e.g. right after another merge
+            if mergeable != "UNKNOWN":
+                break
+            time.sleep(10)
+            mergeable = run("gh", "pr", "view", str(n), "--json", "mergeable", "--jq", ".mergeable")
+        if mergeable != "MERGEABLE":
+            print(f"#{n} skipped: {mergeable} ({title})")
             continue
         result = subprocess.run(["gh", "pr", "merge", str(n), "--squash", "--delete-branch"], capture_output=True, text=True)
         print(f"#{n} merged ({title})" if result.returncode == 0 else f"#{n} not merged: {result.stderr.strip()}")
