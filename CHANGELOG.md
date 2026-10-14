@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.7.1 — chart 0.9.1
+
+Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
+
+- Bump the dashboard group in /web/dashboard with 9 updates
+- Bump docker/setup-qemu-action from 3 to 4
+- Bump docker/login-action from 3 to 4
+- Bump docker/build-push-action from 6 to 7
+- Bump actions/setup-go from 5 to 7
+- Bump azure/setup-helm from 4 to 5
+
 ## 2.7.0 — chart 0.9.0
 
 ### Added
