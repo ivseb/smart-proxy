@@ -130,6 +130,11 @@ jobs:
           render() { helm template ci charts/smart-proxy "$@" > /dev/null; }
           for mode in none basic token header; do render --set auth.mode=$mode; done
           render --set auth.mode=openshift --set route.enabled=true --set route.host=admin.example.com
+          # OpenShift sign-in is built in: one container, no oauth-proxy sidecar.
+          printf '%s\n' 'auth: {mode: openshift, openshift: {caConfigMap: ingress-ca, sar: "{\"verb\":\"get\",\"resource\":\"pods\"}"}}' \
+            'ingress: {enabled: true, host: admin.example.com}' > "$RUNNER_TEMP/openshift.yaml"
+          containers=$(helm template ci charts/smart-proxy -f "$RUNNER_TEMP/openshift.yaml" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers | length')
+          if [ "$containers" != 1 ]; then echo "openshift mode renders $containers containers"; exit 1; fi
           render --set auth.mode=oidc --set ingress.enabled=true --set ingress.host=admin.example.com \
             --set auth.oidc.issuerURL=https://idp.example.com --set auth.oidc.clientID=sp \
             --set auth.oidc.clientSecret=secret --set 'auth.oidc.allowedDomains={example.com}'

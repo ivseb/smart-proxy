@@ -105,4 +105,5 @@ var italian = map[string]string{
 	"Invalid token":                  "Token non valido",
 	"Sign-in failed or not allowed.": "Accesso non riuscito o non consentito.",
 	"You have been signed out.":      "Sei uscito.",
+	"Signed in as {user}, but Smart Proxy's dashboard requires the permission to {permission} in the namespace {namespace}. Ask one of its administrators.": "Accesso eseguito come {user}, ma la dashboard di Smart Proxy richiede il permesso di {permission} nel namespace {namespace}. Chiedilo a uno dei suoi amministratori.",
 }

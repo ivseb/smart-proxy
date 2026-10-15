@@ -1,5 +1,13 @@
 # Upgrading
 
+## Next release: OpenShift sign-in without the sidecar
+
+With `auth.mode: openshift`, a drop-in upgrade: no values to change, no new permission. After the upgrade the pod has one container instead of two (the oauth-proxy sidecar is gone) and the dashboard's Route points at Smart Proxy directly.
+
+- Users sign in again once (the session cookie changes). The required permission stays the one in `auth.openshift.sar`.
+- The generated `<release>-auth` Secret keeps working (its `cookie-secret` now signs the sessions); so does an `existingSecret` made for the sidecar. `auth.openshift.image` and `auth.openshift.resources` are ignored and can be removed.
+- If sign-in fails with a certificate error in Smart Proxy's log, see [Authentication → OpenShift](authentication.md#openshift) (`auth.openshift.caConfigMap`).
+
 ## From 2.6 to 2.7
 
 A drop-in upgrade (`helm upgrade … --version 0.9.0 -f my-values.yaml`, or just the new image): no new permission. The history recorded by 2.6 is kept; the exact times of the changes start at the upgrade (earlier days show hour by hour).

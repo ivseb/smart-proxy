@@ -40,10 +40,8 @@ spec:
             - name: metrics
               containerPort: {{ .Values.metrics.port }}
             {{- end }}
-            {{- if ne $authMode "openshift" }}
             - name: admin
               containerPort: {{ .Values.config.adminPort }}
-            {{- end }}
           env:
             {{- include "smart-proxy.scopeEnv" . | nindent 12 }}
             - name: IGNORE_DEFAULT_USER_AGENTS
@@ -93,10 +91,9 @@ spec:
             - name: STATS_RETENTION
               value: {{ .Values.config.statsRetention | default "30m" | quote }}
             - name: ADMIN_ADDR
-              {{- /* Behind the oauth-proxy sidecar, listen on localhost only so it can't be bypassed. */}}
-              value: {{ printf "%s:%v" (ternary "127.0.0.1" "" (eq $authMode "openshift")) .Values.config.adminPort | quote }}
+              value: {{ printf ":%v" .Values.config.adminPort | quote }}
             - name: AUTH_MODE
-              value: {{ ternary "header" $authMode (eq $authMode "openshift") | quote }}
+              value: {{ $authMode | quote }}
             - name: AUTH_SESSION_TTL
               value: {{ .Values.auth.sessionTTL | quote }}
             {{- if eq $authMode "basic" }}
@@ -115,12 +112,19 @@ spec:
                   name: {{ $authSecret }}
                   key: token
             {{- end }}
-            {{- if or (eq $authMode "token") (eq $authMode "oidc") }}
+            {{- if or (eq $authMode "token") (eq $authMode "oidc") (eq $authMode "openshift") }}
+            {{- $sessionKey := "session-secret" }}
+            {{- /* An existing Secret made for the oauth-proxy sidecar has a cookie-secret: it signs sessions now. */}}
+            {{- with and .Values.auth.existingSecret (lookup "v1" "Secret" .Release.Namespace .Values.auth.existingSecret) }}
+            {{- if and (not (hasKey (.data | default dict) "session-secret")) (hasKey (.data | default dict) "cookie-secret") }}
+            {{- $sessionKey = "cookie-secret" }}
+            {{- end }}
+            {{- end }}
             - name: AUTH_SESSION_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ $authSecret }}
-                  key: session-secret
+                  key: {{ $sessionKey }}
                   optional: true
             {{- end }}
             {{- if eq $authMode "oidc" }}
@@ -158,10 +162,23 @@ spec:
               value: {{ .Values.auth.header.logoutURL | quote }}
             {{- end }}
             {{- if eq $authMode "openshift" }}
-            - name: AUTH_HEADER_USER
-              value: X-Forwarded-User
-            - name: AUTH_HEADER_LOGOUT_URL
-              value: /oauth/sign_out
+            {{- $os := .Values.auth.openshift }}
+            - name: AUTH_OPENSHIFT_SERVICE_ACCOUNT
+              value: {{ include "smart-proxy.serviceAccountName" . | quote }}
+            - name: AUTH_OPENSHIFT_REDIRECT_URL
+              value: {{ printf "%s/auth/callback" (include "smart-proxy.adminURL" .) | quote }}
+            {{- with $os.sar }}
+            - name: AUTH_OPENSHIFT_SAR
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $os.oauthURL }}
+            - name: AUTH_OPENSHIFT_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with $os.caConfigMap }}
+            - name: AUTH_OPENSHIFT_CA_FILE
+              value: /etc/smart-proxy/openshift-ca/{{ $os.caKey | default "ca.crt" }}
+            {{- end }}
             {{- end }}
           livenessProbe:
             httpGet:
@@ -180,41 +197,17 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /data
-        {{- if eq $authMode "openshift" }}
-        - name: oauth-proxy
-          image: {{ .Values.auth.openshift.image | quote }}
-          args:
-            - --provider=openshift
-            - --http-address=:4180
-            - --https-address=
-            - --upstream=http://127.0.0.1:{{ .Values.config.adminPort }}
-            - --openshift-service-account={{ include "smart-proxy.serviceAccountName" . }}
-            {{- $sar := .Values.auth.openshift.sar | default (printf `{"namespace":"%s","resource":"services","verb":"update"}` .Release.Namespace) }}
-            - {{ printf "--openshift-sar=%s" $sar | quote }}
-            - --cookie-secret=$(COOKIE_SECRET)
-            - --email-domain=*
-            - --skip-provider-button
-          env:
-            - name: COOKIE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $authSecret }}
-                  key: cookie-secret
-          ports:
-            - name: admin
-              containerPort: 4180
-          readinessProbe:
-            httpGet:
-              path: /oauth/healthz
-              port: admin
-          livenessProbe:
-            httpGet:
-              path: /oauth/healthz
-              port: admin
-          resources:
-            {{- toYaml .Values.auth.openshift.resources | nindent 12 }}
-        {{- end }}
+            {{- if and (eq $authMode "openshift") .Values.auth.openshift.caConfigMap }}
+            - name: openshift-ca
+              mountPath: /etc/smart-proxy/openshift-ca
+              readOnly: true
+            {{- end }}
       volumes:
+        {{- if and (eq $authMode "openshift") .Values.auth.openshift.caConfigMap }}
+        - name: openshift-ca
+          configMap:
+            name: {{ .Values.auth.openshift.caConfigMap | quote }}
+        {{- end }}
         - name: data
         {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:

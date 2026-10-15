@@ -76,14 +76,14 @@ service:
 #   basic     - username/password prompt (default; password generated if empty)
 #   token     - shared access token on a login page, or "Authorization: Bearer" for scripts
 #   oidc      - single sign-on via OpenID Connect (Keycloak, Entra ID, Google, Okta, Dex...)
-#   openshift - OpenShift login through an oauth-proxy sidecar (requires route or ingress)
+#   openshift - OpenShift login, built in: no sidecar, no cluster-wide permission (requires route or ingress)
 #   header    - trust a user header from your own auth proxy (oauth2-proxy, Authelia...)
 #   none      - no authentication; only if the dashboard is never exposed
 # Generated secrets are stored in the "<release>-auth" Secret and kept across upgrades.
 auth:
   mode: basic
   # Use your own Secret instead of the generated one. Keys read, depending on mode:
-  # basic-password, token, oidc-client-secret, session-secret, cookie-secret.
+  # basic-password, token, oidc-client-secret, session-secret.
   existingSecret: ""
   # How long a token/OIDC login lasts.
   sessionTTL: 12h
@@ -124,18 +124,24 @@ auth:
     # WARNING: anyone who can reach the admin port directly can forge this header.
     # Restrict it with a NetworkPolicy so only your auth proxy can connect.
 
+  # Users sign in with their OpenShift account. Smart Proxy's ServiceAccount is the OAuth client
+  # (the chart annotates it with the dashboard's Route or Ingress), and who gets in is checked
+  # with the user's own token (SelfSubjectAccessReview): no sidecar, no cluster-wide permission.
+  # (Until 2.7 an oauth-proxy sidecar did this; its image and resources settings are ignored.)
   openshift:
-    image: quay.io/openshift/origin-oauth-proxy:4.16
-    # SubjectAccessReview a user must pass to get in. Empty = users who can update
-    # Services in the release namespace (e.g. "edit" or "admin" role holders).
+    # Access review a user must pass to get in, in oauth-proxy's --openshift-sar format; a JSON
+    # array for several (all required). Empty = users who can update Services in the release
+    # namespace (holders of the "edit" or "admin" role there). For example:
+    #   '{"namespace":"tools","resource":"deployments","resourceAPIGroup":"apps","verb":"patch"}'
     sar: ""
-    resources:
-      requests:
-        cpu: 10m
-        memory: 32Mi
-      limits:
-        cpu: 100m
-        memory: 64Mi
+    # The cluster's OAuth server (https://oauth-openshift.apps.<cluster>). Empty = discovered
+    # from the API server.
+    oauthURL: ""
+    # A ConfigMap of this namespace with more CA certificates to trust (PEM), when the OAuth
+    # server's certificate isn't signed by a CA the pod already trusts (public CAs and the
+    # ServiceAccount's ones). caKey is the key holding them.
+    caConfigMap: ""
+    caKey: ca.crt
 
 # Requests that never count as activity, for every route: uptime monitors, health checks…
 # They don't keep applications awake and don't wake them; while an application sleeps they get

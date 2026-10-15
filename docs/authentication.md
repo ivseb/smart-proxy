@@ -7,7 +7,7 @@ The admin dashboard can patch Ingresses/Routes and scale Deployments, so it shou
 | `basic` *(Helm default)* | Small teams, quick setups | Browser username/password prompt |
 | `token` | Shared access and automation | Login page with an access token, or `Authorization: Bearer` for scripts |
 | `oidc` | Company single sign-on | Keycloak, Microsoft Entra ID, Google, Okta, Dex, … |
-| `openshift` | OpenShift clusters | OpenShift login, via an oauth-proxy sidecar |
+| `openshift` | OpenShift clusters | OpenShift login, built in (no sidecar) |
 | `header` | An existing auth proxy | oauth2-proxy, Authelia, … sets a user header |
 | `none` *(binary default)* | Local development only | No authentication |
 
@@ -89,15 +89,26 @@ auth:
   mode: openshift
 ```
 
-The chart adds an [oauth-proxy](https://github.com/openshift/oauth-proxy) sidecar in front of the dashboard and registers the ServiceAccount as an OAuth client. Users sign in with their OpenShift account. By default, only users who can update Services in the release namespace get in (for example, holders of the `edit` or `admin` role). Change this with `auth.openshift.sar`, for example:
+Users sign in with their OpenShift account, on the cluster's own login page. Smart Proxy does it itself: there is no sidecar, the pod has a single container (and no CVE to inherit from one).
+
+How it works:
+
+1. **Smart Proxy's ServiceAccount is the OAuth client.** The chart annotates it with the dashboard's Route (or Ingress address), which tells OpenShift where the client may send users back. The client's secret is the ServiceAccount's own token, mounted in the pod.
+2. **Sign-in.** The dashboard sends the browser to the OAuth server (discovered from the API server), which authenticates the user and sends them back to `/auth/callback`. Smart Proxy exchanges the code for a token (scopes `user:info user:check-access`, with PKCE) and reads who the user is.
+3. **Access check.** With that token, Smart Proxy asks the API server whether the user has the required permission (a `SelfSubjectAccessReview`, made as the user). Smart Proxy itself needs no cluster-wide permission. The user's token isn't kept: a signed session cookie follows, valid for `auth.sessionTTL`.
+
+By default, only users who can update Services in the release namespace get in (holders of the `edit` or `admin` role there). Others see who they signed in as and which permission is missing. Change it with `auth.openshift.sar`, in the format of oauth-proxy's `--openshift-sar` (a JSON array for several checks, all required):
 
 ```yaml
 auth:
   openshift:
-    sar: '{"namespace":"smart-proxy","resource":"deployments","verb":"patch"}'
+    sar: '{"namespace":"tools","resource":"deployments","resourceAPIGroup":"apps","verb":"patch"}'
 ```
 
-The dashboard itself then listens on `127.0.0.1` only, so the sidecar cannot be bypassed.
+The permission is checked when users sign in: someone whose role is removed keeps their session until it expires.
+
+!!! note "Certificates"
+    The token exchange goes from the pod to the OAuth server's Route (`oauth-openshift.apps.<cluster>`). Smart Proxy trusts public CAs and the ServiceAccount's CA bundle, which on OpenShift 4 usually includes the cluster's ingress CA. If sign-in fails with a certificate error in the log, put the CA in a ConfigMap of the release namespace and set `auth.openshift.caConfigMap` (and `caKey`, `ca.crt` by default). If the OAuth server can't be discovered, set `auth.openshift.oauthURL`.
 
 ## Header (external auth proxy)
 
@@ -123,7 +134,7 @@ auth:
   existingSecret: smart-proxy-auth
 ```
 
-The keys read from it depend on the mode: `basic-password`, `token`, `oidc-client-secret`, `session-secret` (optional) and `cookie-secret` (openshift: 16, 24 or 32 characters).
+The keys read from it depend on the mode: `basic-password`, `token`, `oidc-client-secret` and `session-secret` (token, oidc and openshift; strongly recommended with more than one replica, so sessions work on all of them). A Secret made for the former oauth-proxy sidecar works as is: its `cookie-secret` signs the sessions.
 
 ## Environment variables
 
@@ -131,7 +142,7 @@ These are set by the Helm chart. Set them yourself when you deploy without it.
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `AUTH_MODE` | `none`, `basic`, `token`, `oidc` or `header` (the chart's `openshift` mode runs as `header` behind the sidecar). | `none` |
+| `AUTH_MODE` | `none`, `basic`, `token`, `oidc`, `openshift` or `header`. | `none` |
 | `AUTH_BASIC_USERNAME` / `AUTH_BASIC_PASSWORD` | Basic credentials. | `admin` / — |
 | `AUTH_TOKEN` | Access token for `token` mode. | — |
 | `AUTH_SESSION_SECRET` | Key signing session cookies. Random if unset, which signs everyone out on restart. | random |
@@ -142,4 +153,11 @@ These are set by the Helm chart. Set them yourself when you deploy without it.
 | `AUTH_OIDC_ALLOWED_EMAILS` / `_DOMAINS` / `_GROUPS` | Comma-separated allow-lists. | — |
 | `AUTH_OIDC_ALLOW_ALL` | Admit every authenticated user. | `false` |
 | `AUTH_HEADER_USER` / `AUTH_HEADER_LOGOUT_URL` | Trusted user header and optional sign-out URL. | `X-Forwarded-User` / — |
+| `AUTH_OPENSHIFT_SAR` | Access review(s) to pass, oauth-proxy's JSON format. | update Services in Smart Proxy's namespace |
+| `AUTH_OPENSHIFT_SAR_NAMESPACE` / `_RESOURCE` / `_VERB` | One access review, without JSON (when `AUTH_OPENSHIFT_SAR` is unset). | Smart Proxy's namespace / `services` / `update` |
+| `AUTH_OPENSHIFT_SERVICE_ACCOUNT` | The OAuth client: a ServiceAccount name, or `system:serviceaccount:<ns>:<name>`. | Smart Proxy's own |
+| `AUTH_OPENSHIFT_REDIRECT_URL` | Callback address (`https://<dashboard>/auth/callback`). | the address the dashboard is reached at |
+| `AUTH_OPENSHIFT_BASE_URL` | The OAuth server, when it can't be discovered. | discovered |
+| `AUTH_OPENSHIFT_API_URL` | The API server. | the cluster's, in a pod |
+| `AUTH_OPENSHIFT_CA_FILE` | More CA certificates to trust (PEM file). | — |
 | `ADMIN_ADDR` | Listen address of the dashboard. | `:8081` |

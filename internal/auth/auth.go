@@ -1,5 +1,5 @@
-// Package auth protects the admin dashboard and API. The mode (none, basic, token, oidc or
-// header) is chosen at install time; see Config.
+// Package auth protects the admin dashboard and API. The mode (none, basic, token, oidc,
+// openshift or header) is chosen at install time; see Config.
 package auth
 
 import (
@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
@@ -19,9 +20,10 @@ import (
 
 // Auth authenticates admin requests according to the configured Mode.
 type Auth struct {
-	cfg    Config
-	signer signer
-	oidc   *oidcClient
+	cfg       Config
+	signer    signer
+	oidc      *oidcClient
+	openshift *openshiftClient
 }
 
 type userKey struct{}
@@ -44,7 +46,7 @@ func New(cfg Config) (*Auth, error) {
 		if _, err := rand.Read(key); err != nil {
 			return nil, err
 		}
-		if cfg.Mode == ModeToken || cfg.Mode == ModeOIDC {
+		if cfg.Mode == ModeToken || cfg.Mode == ModeOIDC || cfg.Mode == ModeOpenShift {
 			logger.Println("Auth: AUTH_SESSION_SECRET not set, using a random one (sessions end on restart)")
 		}
 	}
@@ -57,6 +59,21 @@ func New(cfg Config) (*Auth, error) {
 		logger.Printf("Auth: trusting the %s header; make sure the admin port is only reachable through the auth proxy", cfg.HeaderUser)
 	case ModeOIDC:
 		a.oidc = newOIDCClient(cfg, a.signer)
+	case ModeOpenShift:
+		c, err := newOpenShiftClient(cfg, a.signer)
+		if err != nil {
+			return nil, err
+		}
+		a.openshift = c
+		reviews := make([]string, len(cfg.OpenShiftAccessReviews))
+		for i, r := range cfg.OpenShiftAccessReviews {
+			ns := r.Namespace
+			if ns == "" {
+				ns = c.namespace()
+			}
+			reviews[i] = fmt.Sprintf("%s in %s", r.describe(), ns)
+		}
+		logger.Printf("Auth: OpenShift sign-in; users who can %s get in", strings.Join(reviews, ", "))
 	}
 	logger.Printf("Auth: admin dashboard authentication mode is %q", cfg.Mode)
 	return a, nil
@@ -109,7 +126,7 @@ func (a *Auth) authenticate(r *http.Request) (string, bool) {
 			return "", false
 		}
 		return a.sessionUser(r)
-	case ModeOIDC:
+	case ModeOIDC, ModeOpenShift:
 		return a.sessionUser(r)
 	case ModeHeader:
 		if user := r.Header.Get(a.cfg.HeaderUser); user != "" {
@@ -141,6 +158,8 @@ func (a *Auth) handleLogin(w http.ResponseWriter, r *http.Request) {
 		a.handleTokenLogin(w, r)
 	case ModeOIDC:
 		a.oidc.startLogin(w, r)
+	case ModeOpenShift:
+		a.openshift.startLogin(w, r)
 	default:
 		http.Redirect(w, r, "/", http.StatusFound)
 	}
@@ -164,13 +183,27 @@ func (a *Auth) handleTokenLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Auth) handleCallback(w http.ResponseWriter, r *http.Request) {
-	if a.cfg.Mode != ModeOIDC {
+	var user string
+	var err error
+	switch a.cfg.Mode {
+	case ModeOIDC:
+		user, err = a.oidc.finishLogin(w, r)
+	case ModeOpenShift:
+		user, err = a.openshift.finishLogin(w, r)
+	default:
 		http.NotFound(w, r)
 		return
 	}
-	user, err := a.oidc.finishLogin(w, r)
+	if forbidden := (*forbiddenError)(nil); errors.As(err, &forbidden) {
+		logger.Printf("Auth: %s signed in with OpenShift but was refused: can't %s in namespace %s", forbidden.User, forbidden.Review.describe(), forbidden.Review.Namespace)
+		l := i18n.FromRequest(r)
+		text := strings.NewReplacer("{user}", forbidden.User, "{permission}", forbidden.Review.describe(), "{namespace}", forbidden.Review.Namespace).
+			Replace(l.T("Signed in as {user}, but Smart Proxy's dashboard requires the permission to {permission} in the namespace {namespace}. Ask one of its administrators."))
+		renderPage(w, r, http.StatusForbidden, pageData{Error: text, Retry: true})
+		return
+	}
 	if err != nil {
-		logger.Printf("Auth: OIDC login failed: %v", err)
+		logger.Printf("Auth: %s login failed: %v", a.cfg.Mode, err)
 		renderPage(w, r, http.StatusForbidden, pageData{Error: "Sign-in failed or not allowed.", Retry: true})
 		return
 	}
@@ -184,7 +217,7 @@ func (a *Auth) handleCallback(w http.ResponseWriter, r *http.Request) {
 
 func (a *Auth) handleLogout(w http.ResponseWriter, r *http.Request) {
 	switch a.cfg.Mode {
-	case ModeToken, ModeOIDC:
+	case ModeToken, ModeOIDC, ModeOpenShift:
 		clearCookie(w, r, sessionCookie)
 		renderPage(w, r, http.StatusOK, pageData{Message: "You have been signed out.", Retry: true})
 	case ModeHeader:
@@ -203,7 +236,7 @@ func (a *Auth) handleMe(w http.ResponseWriter, r *http.Request) {
 	user, ok := a.authenticate(r)
 	logoutURL := ""
 	switch a.cfg.Mode {
-	case ModeToken, ModeOIDC:
+	case ModeToken, ModeOIDC, ModeOpenShift:
 		logoutURL = "/auth/logout"
 	case ModeHeader:
 		logoutURL = a.cfg.HeaderLogoutURL
@@ -270,4 +303,8 @@ func renderPage(w http.ResponseWriter, r *http.Request, status int, data pageDat
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	pageTmpl.Execute(w, data)
+}
+
+func logOpenShift(format string, args ...any) {
+	logger.Printf("Auth: OpenShift sign-in: "+format, args...)
 }

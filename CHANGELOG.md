@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+- **OpenShift sign-in is built in: no more oauth-proxy sidecar.** With `auth.mode: openshift`, Smart Proxy signs users in with their OpenShift account itself: its ServiceAccount is the OAuth client (as before), and who gets in is checked with a `SelfSubjectAccessReview` made with the user's own token — no cluster-wide permission. The pod has a single container: the sidecar's image, with its own vulnerabilities, is gone. `auth.openshift.sar` keeps its format and default (update Services in the release namespace); users refused see which permission they lack. New: `auth.openshift.oauthURL` and `auth.openshift.caConfigMap` for clusters where the OAuth server can't be discovered or its certificate isn't trusted. `auth.openshift.image` and `auth.openshift.resources` are ignored.
+
+### Removed
+- framer-motion from the dashboard's dependencies (unused).
+
 ## 2.7.2 — chart 0.9.2
 
 Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
