@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.8.0 — chart 0.10.0
 
 ### Added
 - **Blocked hours.** Hours when requests don't wake sleeping applications (they get 503 with `Retry-After`), e.g. weeknights 22:00–06:00 and the whole weekend; applications are put to sleep when they start, without waiting for their idle timeout. Set globally and per namespace (new **Settings** tab) or per route (its page), with a preview of the week ahead. **Holidays** follow Sunday's rules (one click adds Italy's). **Exceptions** lift them for a while from a route's page: *can be woken* or *kept on*. Always On routes are never blocked. Optionally, browsers get a page saying the application is off outside its hours, with a **Start it now** button and a message of your choice; API calls and monitors still get 503. See [Blocked hours](docs/routes.md#blocked-hours-no-wake-ups-at-night-or-on-weekends).
