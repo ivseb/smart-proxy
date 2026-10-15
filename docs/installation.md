@@ -39,9 +39,9 @@ helm install smart-proxy ./charts/smart-proxy --namespace smart-proxy --create-n
 
 ### Customizing the deployment
 
-All options are documented in [`charts/smart-proxy/values.yaml`](../charts/smart-proxy/values.yaml).
+All options are documented in [`charts/smart-proxy/values.yaml`](https://github.com/ivseb/smart-proxy/blob/main/charts/smart-proxy/values.yaml).
 A ready-to-edit production example (OpenShift Route + persistence) is provided in
-[`charts/smart-proxy/values.example.yaml`](../charts/smart-proxy/values.example.yaml):
+[`charts/smart-proxy/values.example.yaml`](https://github.com/ivseb/smart-proxy/blob/main/charts/smart-proxy/values.example.yaml):
 
 ```bash
 helm install smart-proxy ./charts/smart-proxy \

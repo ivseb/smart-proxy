@@ -25,7 +25,7 @@ var (
 	wakeups = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "wakeups_total",
-		Help:      "Deployments scaled up from zero, by trigger (request or manual).",
+		Help:      "Deployments scaled up from zero, by trigger (request, manual or schedule).",
 	}, []string{"namespace", "deployment", "trigger"})
 
 	wakeDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -38,7 +38,7 @@ var (
 	sleeps = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: namespace,
 		Name:      "sleeps_total",
-		Help:      "Deployments scaled to zero, by reason (idle or manual).",
+		Help:      "Deployments scaled to zero, by reason (idle, blocked or manual).",
 	}, []string{"namespace", "deployment", "reason"})
 
 	ignored = prometheus.NewCounterVec(prometheus.CounterOpts{

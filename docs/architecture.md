@@ -108,13 +108,18 @@ Routes and their dependencies can point at Deployments, StatefulSets (often the 
 
 A route can be kept awake during given hours, regardless of traffic: for example Monday to Friday, 08:00–19:00 in `Europe/Rome`. When the window opens, the deployment and its dependencies are woken up (no cold start for the first visitor of the day) and they are never put to sleep while it lasts. Outside the window the idle timeout applies as usual. Windows may span midnight (`22:00`–`06:00`).
 
+## Blocked hours
+
+Hours when requests don't wake sleeping applications, set globally, per namespace or per route (the most specific wins), in the time zone of the settings (Europe/Rome by default); holidays follow Sunday's rules. During them a request that would wake an application gets 503 with `Retry-After` — or, if configured, browsers get a page whose button starts it (a POST to `/__smart_proxy/start`). An application already running serves as usual. The leader puts applications to sleep when their blocked hours start (checking the last few minutes, so a leader change doesn't miss it), and when an exception ends inside them. Exceptions, pauses and Always On lift them; schedules don't wake applications during them. See [Blocked hours](routes.md#blocked-hours-no-wake-ups-at-night-or-on-weekends).
+
 ## High availability
 
 Patched applications receive their traffic through Smart Proxy, so the chart runs two replicas by default (with a PodDisruptionBudget and spreading across nodes). The replicas work as one:
 
 - **Shared routes.** Route configurations live in the `<release>-routes` ConfigMap; every replica watches it, so a change made through any dashboard reaches all of them within a second. (Older versions kept them in `/data/routes.json`; such a file is imported on the first start.)
+- **Shared settings and history.** Blocked hours, holidays and time zone live in the `<release>-settings` ConfigMap, watched by every replica like the routes. The uptime history is sampled by the leader every minute and saved every 5 minutes in `<release>-uptime` (30 days, hour by hour) and `<release>-uptime-year` (12 months, day by day); the other replicas read it from there.
 - **Shared activity.** Each replica serves only part of the traffic. Every 15 seconds it publishes the last request time it saw for each route, plus its request counts, in a small ConfigMap owned by its pod (deleted with it). Replicas merge each other's activity, so idle timers and dashboard numbers cover all traffic.
-- **One leader.** Replicas elect a leader through the `<release>-leader` Lease. Only the leader puts deployments to sleep and re-applies reverted patches; if it goes away, another replica takes over within seconds. Every replica proxies requests and wakes deployments.
+- **One leader.** Replicas elect a leader through the `<release>-leader` Lease. Only the leader puts deployments to sleep, records the uptime history and re-applies reverted patches; if it goes away, another replica takes over within seconds. Every replica proxies requests and wakes deployments.
 
 Each replica streams only its own logs to the dashboard.
 

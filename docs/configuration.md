@@ -63,14 +63,18 @@ Prometheus metrics are served on a separate port (`METRICS_ADDR`, default `:9090
 | Metric | Description |
 | :--- | :--- |
 | `smart_proxy_requests_total{namespace,route}` | Requests proxied to applications. |
-| `smart_proxy_wakeups_total{namespace,deployment,trigger}` | Deployments scaled up from zero (`request` or `manual`). |
+| `smart_proxy_wakeups_total{namespace,deployment,trigger}` | Deployments scaled up from zero (`request`, `manual` or `schedule`). |
 | `smart_proxy_wake_duration_seconds{namespace,deployment}` | Cold start: from scaling up until a replica is ready. |
-| `smart_proxy_sleeps_total{namespace,deployment,reason}` | Deployments scaled to zero (`idle` or `manual`). |
+| `smart_proxy_sleeps_total{namespace,deployment,reason}` | Deployments scaled to zero (`idle`, `blocked` when blocked hours start, or `manual`). |
 | `smart_proxy_sleeping_deployments{namespace}` | Deployments asleep right now. |
 | `smart_proxy_sleeping_replicas{namespace}` | Replicas those deployments would otherwise run. |
 | `smart_proxy_ignored_requests_total{namespace,route,reason}` | Requests that didn't count as activity (monitors, health checks). |
 | `smart_proxy_asleep_responses_total{namespace,route,code}` | Of those, answered by Smart Proxy while the route slept. |
+| `smart_proxy_wakes_blocked_total{namespace,route}` | Requests that didn't wake an application because of its [blocked hours](routes.md#blocked-hours-no-wake-ups-at-night-or-on-weekends). |
+| `smart_proxy_started_while_blocked_total{namespace,route}` | Applications started from the "Start it now" page during their blocked hours. |
 | `smart_proxy_leader` | 1 on the replica that sleeps deployments and heals patches. |
+
+The dashboard's **Report** tab shows uptime and replica-hours saved per workload without Prometheus (see [Uptime](routes.md#uptime-the-last-30-days)).
 
 Every replica reports the cluster-wide gauges; use `max` over replicas for them, and `sum` for the counters. Useful queries:
 

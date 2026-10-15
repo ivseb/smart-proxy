@@ -42,7 +42,7 @@ Idle environments burn money. Preview, dev, staging and demo namespaces sit runn
 | 📈 **Prometheus metrics** | Cold-start durations, wake-ups, sleeping deployments and replica-hours saved. |
 | 🔀 **Ingress *and* Routes** | One dashboard for both vanilla Kubernetes Ingresses and OpenShift Routes. |
 | 🗂️ **Many namespaces** | Manage a list of namespaces, all of them, or any namespace you label `smart-proxy=enabled`. |
-| 🎛️ **Admin dashboard** | Routes grouped by namespace with search and filters, live status and "sleeps in" timers, one-click patching, wake and sleep. |
+| 🎛️ **Admin dashboard** | Routes grouped by namespace with search and filters, live status and "sleeps in" timers, one-click patching, wake and sleep, and a report of uptime and savings over 30 days or 12 months. |
 | 🔐 **Secure by default** | Dashboard sign-in with basic auth, tokens, SSO via OIDC (Keycloak, Entra ID, Google…) or OpenShift login. |
 | 🛡️ **Built for production** | Two replicas with leader election, WebSockets and streams, gRPC, bursts of requests sharing one wake-up, GitOps-aware self-healing — tested end to end on a real cluster. |
 | 🪶 **Zero app changes** | Fully annotation-based and reversible — nothing to add to your images. Opt in from the dashboard or with annotations in Git. |
@@ -85,9 +85,13 @@ Optional tools on each route's page — routes that don't use them work as befor
   <img src="media/pause-dialog.png" alt="Pausing a route for a while" width="250"/>
 </p>
 
-**How long was it up — and when?** Any period of the last 30 days, for every managed workload: hours up and down, replica-hours and wake-ups, a map of every hour (a night asleep is a dark band) and, to the minute, when it was woken and put to sleep — on each route's page, and for all of them in the **Report** tab, by namespace, downloadable as CSV.
+**How long was it up — and how much did it save?** For every managed workload: hours up and down, replica-hours used and **saved**, and wake-ups — over any period of the last 30 days, with a map of every hour (a night asleep is a dark band) and, to the minute, when it was woken and put to sleep; or over the **last 12 months**, month by month. On each route's page, and for all of them in the **Report** tab, by namespace, downloadable as CSV.
 
 <img src="media/uptime-report.png" alt="The Report tab: hours up and down, replica-hours and wake-ups of every managed workload over the last 30 days, by namespace" width="820"/>
+
+**No wake-ups at night.** A valid request wakes a sleeping application at any hour — a bot, a monitor, a link opened by mistake. **Blocked hours** stop that: weeknights and weekends, holidays included, globally, per namespace or per route. During them requests get 503 — or, if you prefer, browsers get a page with a **Start it now** button for whoever really needs it — and applications are put to sleep when they start. Exceptions lift them for a Saturday release or an evening demo.
+
+<img src="media/blocked-hours.png" alt="A route's blocked hours: the rules it follows, the week ahead, an exception for a Saturday release" width="820"/>
 
 ## 🎬 How it works
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- `smart_proxy_sleeps_total` counts the applications put to sleep when blocked hours start with `reason="blocked"` (was `idle`).
+
 ## 2.8.0 — chart 0.10.0
 
 ### Added

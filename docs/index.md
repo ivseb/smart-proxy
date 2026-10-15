@@ -81,6 +81,18 @@ Idle environments burn money. Preview, dev, staging and demo namespaces run 24/7
 
     Annotation-based and fully reversible. Nothing to add to your images or your code.
 
+-   :material-weather-night:{ .lg .middle } &nbsp; __Blocked hours__
+
+    ---
+
+    No wake-ups at night, on weekends or holidays — globally, per namespace or per route — with exceptions, and optionally a "Start it now" page for whoever really needs it.
+
+-   :material-chart-bar:{ .lg .middle } &nbsp; __Uptime and savings__
+
+    ---
+
+    How long each workload was up and the replica-hours it saved, over any period of the last 30 days (to the minute) or month by month over 12 months. Downloadable as CSV.
+
 -   :material-cash-multiple:{ .lg .middle } &nbsp; __Real cost savings__
 
     ---

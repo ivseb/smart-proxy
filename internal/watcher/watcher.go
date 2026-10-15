@@ -173,12 +173,12 @@ func (w *Watcher) sleepBlocked(settings blackout.Settings, routes []store.RouteC
 	reason := fmt.Sprintf("blocked hours of route %s%s started", route.Host, route.Path)
 	for _, workload := range route.ManagedWorkloads() {
 		if !w.isDeploymentActive(others, route.Namespace, workload) {
-			w.sleep(route.Namespace, workload, 0, reason)
+			w.sleep(route.Namespace, workload, 0, reason, "blocked")
 		}
 	}
 	for _, dep := range route.Dependencies {
 		if dep.StopOnIdle && !w.isDeploymentActive(others, route.Namespace, dep.Name) {
-			w.sleep(route.Namespace, dep.Name, 0, reason)
+			w.sleep(route.Namespace, dep.Name, 0, reason, "blocked")
 		}
 	}
 }
@@ -193,7 +193,8 @@ func (w *Watcher) clearStaleSleepMarks() {
 }
 
 // sleep scales a deployment to zero if it is running, logging only when something happens.
-func (w *Watcher) sleep(namespace, deployment string, minAwake time.Duration, reason string) {
+// cause is the metric's reason: "idle", or "blocked" when blocked hours start.
+func (w *Watcher) sleep(namespace, deployment string, minAwake time.Duration, reason string, cause ...string) {
 	key := namespace + "/" + canonical(deployment)
 	if !w.maySleep(namespace, deployment, key) {
 		return
@@ -212,7 +213,7 @@ func (w *Watcher) sleep(namespace, deployment string, minAwake time.Duration, re
 		logger.Printf("Error putting %s to sleep: %v", key, err)
 	case slept:
 		logger.Printf("Scaled down %s (%s)", key, reason)
-		metrics.Slept(namespace, canonical(deployment), "idle")
+		metrics.Slept(namespace, canonical(deployment), append(cause, "idle")[0])
 	}
 }
 
