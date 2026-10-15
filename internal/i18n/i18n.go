@@ -104,7 +104,7 @@ var italian = map[string]string{
 	"Off outside its hours":                       "Spento fuori orario",
 	"{host} is off outside the hours set for it.": "{host} è spento fuori dagli orari previsti.",
 	"It can be started as usual again {when}.":    "Torna accendibile normalmente {when}.",
-	"Start it now": "Accendi ora",
+	"Start it now":                                "Accendi ora",
 	"Once started, it stays on while it's used and goes back to sleep after {idle} without traffic.": "Una volta acceso, resta acceso finché viene usato e si spegne dopo {idle} senza traffico.",
 	"today at {time}":     "oggi alle {time}",
 	"tomorrow at {time}":  "domani alle {time}",
