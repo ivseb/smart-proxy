@@ -72,7 +72,9 @@ func (h *Handler) serveBlockedPage(w http.ResponseWriter, r *http.Request, route
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Smart-Proxy", "blocked")
-	w.WriteHeader(http.StatusServiceUnavailable)
+	// 200, as the waking page: corporate proxies and CDNs replace the body of 5xx answers with
+	// their own error page, which would hide the button. X-Smart-Proxy still tells it apart.
+	w.WriteHeader(http.StatusOK)
 	blockedTmpl.Execute(w, struct {
 		L                                        i18n.Lang
 		Lead, Message, Note, Action, Path, Query string

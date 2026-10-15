@@ -60,7 +60,7 @@ func TestBlockedHoursPageStartsTheAppOnRequest(t *testing.T) {
 
 	page := get(h, "/orders?id=7", "Mozilla/5.0") // Accept: text/html
 	body := page.Body.String()
-	if page.Code != http.StatusServiceUnavailable || !strings.Contains(body, `action="/orders/__smart_proxy/start"`) ||
+	if page.Code != http.StatusOK || page.Header().Get("X-Smart-Proxy") != "blocked" || !strings.Contains(body, `action="/orders/__smart_proxy/start"`) ||
 		!strings.Contains(body, "Urgent? Call the on-call team.") || !strings.Contains(body, `value="id=7"`) {
 		t.Fatalf("page: %d %s", page.Code, body)
 	}

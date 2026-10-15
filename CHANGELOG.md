@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 2.8.1 — chart 0.10.1
 
 ### Fixed
+- The blocked-hours page with **Start it now** is answered with status 200 (was 503), like the waking page: corporate proxies and CDNs replaced it with their own error page. API calls and monitors still get 503; the page still carries `X-Smart-Proxy: blocked`.
 - `smart_proxy_sleeps_total` counts the applications put to sleep when blocked hours start with `reason="blocked"` (was `idle`).
 
 ## 2.8.0 — chart 0.10.0
