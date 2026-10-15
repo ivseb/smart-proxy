@@ -67,6 +67,9 @@ func (s Settings) Validate() error {
 	return nil
 }
 
+// Location is the settings' time zone.
+func (s Settings) Location() *time.Location { return s.location() }
+
 func (s Settings) location() *time.Location {
 	if loc, err := time.LoadLocation(s.Timezone); err == nil && s.Timezone != "" {
 		return loc

@@ -100,6 +100,28 @@ var italian = map[string]string{
 	"Wrong password.":                                             "Password errata.",
 	"Sign-in is unavailable: Smart Proxy's Secret can't be read.": "Accesso non disponibile: il Secret di Smart Proxy non è leggibile.",
 
+	// Blocked hours: the page offering to start the application
+	"Off outside its hours":                       "Spento fuori orario",
+	"{host} is off outside the hours set for it.": "{host} è spento fuori dagli orari previsti.",
+	"It can be started as usual again {when}.":    "Torna accendibile normalmente {when}.",
+	"Start it now": "Accendi ora",
+	"Once started, it stays on while it's used and goes back to sleep after {idle} without traffic.": "Una volta acceso, resta acceso finché viene usato e si spegne dopo {idle} senza traffico.",
+	"today at {time}":     "oggi alle {time}",
+	"tomorrow at {time}":  "domani alle {time}",
+	"{day} at {time}":     "{day} alle {time}",
+	"on {date} at {time}": "il {date} alle {time}",
+	"Sunday":              "domenica",
+	"Monday":              "lunedì",
+	"Tuesday":             "martedì",
+	"Wednesday":           "mercoledì",
+	"Thursday":            "giovedì",
+	"Friday":              "venerdì",
+	"Saturday":            "sabato",
+	"1 hour":              "1 ora",
+	"{n} hours":           "{n} ore",
+	"1 minute":            "1 minuto",
+	"{n} minutes":         "{n} minuti",
+
 	// Dashboard sign-in
 	"Access token":                   "Token di accesso",
 	"Invalid token":                  "Token non valido",

@@ -3,7 +3,7 @@ import { Ban, CalendarPlus, Power, ShieldCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { BlockedWeek, WindowsEditor } from "@/components/views/BlockedParts";
+import { BlockedWeek, WhenBlockedEditor, WindowsEditor } from "@/components/views/BlockedParts";
 import { useNow } from "@/hooks/useNow";
 import { usePolling } from "@/hooks/usePolling";
 import { apiRequest, errorMessage } from "@/lib/api";
@@ -19,7 +19,7 @@ export function BlockedHoursCard({ route, onSave, onChanged }: { route: RouteSta
     const now = useNow(30_000);
     const { data: view, refetch } = usePolling<BlockedHoursView>(`/api/routes/blocked-hours?${new URLSearchParams({ id: route.id })}`, 30_000);
     const { data: settings } = usePolling<Settings>("/api/settings", 60_000);
-    const [editing, setEditing] = useState<{ choice: Choice; windows: BlackoutWindow[] } | null>(null);
+    const [editing, setEditing] = useState<{ choice: Choice; windows: BlackoutWindow[]; when_blocked?: "refuse" | "ask"; message?: string } | null>(null);
     const [adding, setAdding] = useState(false);
 
     const own = route.blackout?.mode ? route.blackout : null;
@@ -29,10 +29,17 @@ export function BlockedHoursCard({ route, onSave, onChanged }: { route: RouteSta
     const state = route.blocked_hours;
     const status = stateText(state, now);
 
-    const startEditing = () => setEditing({ choice: current, windows: own?.windows?.length ? own.windows : inherited?.windows?.length ? inherited.windows : [{ days: ["mon", "tue", "wed", "thu", "fri"], from: "22:00", to: "06:00" }] });
+    const startEditing = () => {
+        const from = own?.mode === "custom" ? own : inherited;
+        setEditing({
+            choice: current, when_blocked: from?.when_blocked, message: from?.message,
+            windows: own?.windows?.length ? own.windows : inherited?.windows?.length ? inherited.windows : [{ days: ["mon", "tue", "wed", "thu", "fri"], from: "22:00", to: "06:00" }],
+        });
+    };
     const save = async () => {
         if (!editing) return;
-        const blackout: BlackoutPolicy | null = editing.choice === "inherit" ? null : editing.choice === "off" ? { mode: "off" } : { mode: "custom", windows: editing.windows };
+        const blackout: BlackoutPolicy | null = editing.choice === "inherit" ? null : editing.choice === "off" ? { mode: "off" }
+            : { mode: "custom", windows: editing.windows, when_blocked: editing.when_blocked, message: editing.when_blocked === "ask" ? editing.message?.trim() || undefined : undefined };
         if (await onSave({ ...route, blackout })) {
             setEditing(null);
             refetch();
@@ -57,7 +64,7 @@ export function BlockedHoursCard({ route, onSave, onChanged }: { route: RouteSta
             <CardHeader className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
                     <CardTitle>{t("Blocked hours")}</CardTitle>
-                    <p className="text-gray-400 text-sm max-w-2xl">{t("During blocked hours requests don't start the application: they get 503. When blocked hours start, the application is put to sleep.")}</p>
+                    <p className="text-gray-400 text-sm max-w-2xl">{t("During blocked hours requests don't start the application: they get 503 (or, in a browser, a page to start it, if allowed). When blocked hours start, the application is put to sleep.")}</p>
                 </div>
                 {status && (
                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm ${state.blocked ? "bg-slate-600/40 text-slate-200" : state.exception ? "bg-amber-500/15 text-amber-200" : "bg-gray-700/50 text-gray-300"}`}>
@@ -96,7 +103,13 @@ export function BlockedHoursCard({ route, onSave, onChanged }: { route: RouteSta
                                     </label>
                                 ))}
                             </fieldset>
-                            {editing.choice === "custom" && <WindowsEditor windows={editing.windows} onChange={windows => setEditing({ ...editing, windows })} />}
+                            {editing.choice === "custom" && (
+                                <>
+                                    <WindowsEditor windows={editing.windows} onChange={windows => setEditing({ ...editing, windows })} />
+                                    <WhenBlockedEditor policy={{ mode: "custom", when_blocked: editing.when_blocked, message: editing.message }}
+                                        onChange={p => setEditing({ ...editing, when_blocked: p.when_blocked, message: p.message })} />
+                                </>
+                            )}
                             <div className="flex justify-end gap-2">
                                 <Button variant="ghost" onClick={() => setEditing(null)}>{t("Cancel")}</Button>
                                 <Button onClick={save} disabled={editing.choice === "custom" && !windowsValid(editing.windows)}>{t("Save")}</Button>

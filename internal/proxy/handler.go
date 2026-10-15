@@ -168,6 +168,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The page offered during blocked hours starts the application from here.
+	if strings.HasSuffix(r.URL.Path, StartPath) {
+		h.handleStart(w, r)
+		return
+	}
+
 	// Special Endpoint: Status Check
 	if strings.HasSuffix(r.URL.Path, "/__smart_proxy/status") {
 		h.handleStatusCheck(w, r)
@@ -256,10 +262,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Blocked hours: a sleeping application isn't woken (one already running serves as usual).
-	if wake && h.Blackout != nil && h.Blackout.Get().Blocked(route, time.Now()) && !h.serving(route) {
-		rec.set(inspect.OutcomeBlocked)
-		h.answerBlocked(w, route)
-		return
+	if wake {
+		if settings, blocked := h.blockedNow(route); blocked {
+			h.refuseBlocked(w, r, rec, route, settings)
+			return
+		}
 	}
 
 	// 2. Wake what the route needs. While the managed workloads wake up, a running backend
@@ -418,7 +425,7 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	matchedRoutes := []store.RouteConfig{route}
 
-	if h.Blackout != nil && h.Blackout.Get().Blocked(route, time.Now()) && !h.serving(route) {
+	if _, blocked := h.blockedNow(route); blocked {
 		h.answerBlocked(w, route)
 		return
 	}

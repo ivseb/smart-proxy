@@ -167,6 +167,7 @@ func TestValidate(t *testing.T) {
 		"no date":  {Timezone: "UTC", Holidays: []Holiday{{Date: "02-30"}}, Global: store.BlackoutPolicy{Mode: store.BlackoutOff}},
 		"window":   {Timezone: "UTC", Global: store.BlackoutPolicy{Mode: store.BlackoutCustom, Windows: []store.BlackoutWindow{{From: "22:00", To: "22:00"}}}},
 		"empty":    {Timezone: "UTC", Global: store.BlackoutPolicy{Mode: store.BlackoutCustom}},
+		"when":     {Timezone: "UTC", Global: store.BlackoutPolicy{Mode: store.BlackoutCustom, WhenBlocked: "maybe", Windows: nightsAndWeekends.Windows}},
 		"day":      {Timezone: "UTC", Global: store.BlackoutPolicy{Mode: store.BlackoutCustom, Windows: []store.BlackoutWindow{{Days: []string{"lun"}, From: "22:00", To: "06:00"}}}},
 	} {
 		if s.Validate() == nil {

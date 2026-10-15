@@ -59,6 +59,12 @@ var (
 		Help:      "Requests that would have woken a sleeping application during its blocked hours (answered 503).",
 	}, []string{"namespace", "route"})
 
+	startedWhileBlocked = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "started_while_blocked_total",
+		Help:      "Applications started by someone from the page offered during their blocked hours.",
+	}, []string{"namespace", "route"})
+
 	leader = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "leader",
@@ -72,7 +78,7 @@ var (
 )
 
 func init() {
-	registry.MustRegister(requests, wakeups, wakeDuration, sleeps, ignored, asleepResponses, wakesBlocked, leader,
+	registry.MustRegister(requests, wakeups, wakeDuration, sleeps, ignored, asleepResponses, wakesBlocked, startedWhileBlocked, leader,
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 }
 
@@ -94,6 +100,11 @@ func Ignored(namespace, routeID, reason string) {
 // WakeBlocked counts a request that didn't wake a route because of its blocked hours.
 func WakeBlocked(namespace, routeID string) {
 	wakesBlocked.WithLabelValues(namespace, routeID).Inc()
+}
+
+// StartedWhileBlocked counts an application started from the page offered during blocked hours.
+func StartedWhileBlocked(namespace, routeID string) {
+	startedWhileBlocked.WithLabelValues(namespace, routeID).Inc()
 }
 
 // AsleepResponse counts an ignored request answered while the route slept.

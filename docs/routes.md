@@ -93,6 +93,8 @@ Hours are days of the week plus a time range, or the whole day. A range ending e
 
 ![Settings: blocked hours for every route, per namespace, holidays and time zone](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/settings.png)
 
+**What browsers get.** With each set of hours, choose what someone opening the application in a browser gets during them: the `503`, or a page saying it's off outside its hours, with a **Start it now** button and an optional message (who to call, say). The button starts it as if it were outside blocked hours: it stays on while it's used and sleeps after its idle timeout. Anyone reaching the page can use it — the point is to stop accidental wake-ups (bots, monitors, links opened by mistake), not people who need the application; API calls, monitors and scripts still get `503`. Starts are logged with who (on protected routes) and where from, show in the route's recorded requests and count in `smart_proxy_started_while_blocked_total`.
+
 **Holidays** (Settings → Holidays; *Add Italy's holidays* fills in the national ones) follow Sunday's rules. Hours and holidays are in the settings' time zone, Europe/Rome by default.
 
 **Exceptions** lift a route's blocked hours for a while, from its page (*Add an exception*), for up to 31 days:

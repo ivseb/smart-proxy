@@ -3,7 +3,7 @@ import { CalendarHeart, Globe2, Layers, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { WindowsEditor } from "@/components/views/BlockedParts";
+import { WhenBlockedEditor, WindowsEditor } from "@/components/views/BlockedParts";
 import { usePolling } from "@/hooks/usePolling";
 import { apiRequest, errorMessage } from "@/lib/api";
 import { t, tn } from "@/lib/i18n";
@@ -59,7 +59,7 @@ export function SettingsView({ info }: { info: ClusterInfo | null }) {
                 <CardHeader>
                     <CardTitle className="flex items-center gap-2"><Globe2 size={18} /> {t("Blocked hours")}</CardTitle>
                     <p className="text-gray-400 text-sm max-w-3xl">
-                        {t("During blocked hours requests don't start sleeping applications: they get 503. When blocked hours start, applications are put to sleep. These are the defaults: a namespace or a route can have its own, and exceptions lift them for a while (on each route's page). Always On routes are never blocked.")}
+                        {t("During blocked hours requests don't start sleeping applications: they get 503 (or, in a browser, a page to start them, if allowed). When blocked hours start, applications are put to sleep. These are the defaults: a namespace or a route can have its own, and exceptions lift them for a while (on each route's page). Always On routes are never blocked.")}
                     </p>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -68,7 +68,12 @@ export function SettingsView({ info }: { info: ClusterInfo | null }) {
                             onChange={e => change({ ...s, global: e.target.checked ? { mode: "custom", windows: s.global.windows?.length ? s.global.windows : DEFAULT_WINDOWS } : { mode: "off", windows: s.global.windows } })} />
                         {t("Block every route at these hours, unless its namespace or the route says otherwise")}
                     </label>
-                    {s.global.mode === "custom" && <WindowsEditor windows={s.global.windows || []} onChange={windows => change({ ...s, global: { mode: "custom", windows } })} />}
+                    {s.global.mode === "custom" && (
+                        <>
+                            <WindowsEditor windows={s.global.windows || []} onChange={windows => change({ ...s, global: { ...s.global, mode: "custom", windows } })} />
+                            <WhenBlockedEditor policy={s.global} onChange={global => change({ ...s, global })} />
+                        </>
+                    )}
                 </CardContent>
             </Card>
 
@@ -88,7 +93,7 @@ export function SettingsView({ info }: { info: ClusterInfo | null }) {
                                         <div className="flex flex-wrap items-center gap-3">
                                             <span className="font-mono text-sm text-gray-100 min-w-[10rem]">{ns}</span>
                                             <select value={choice} aria-label={t("Blocked hours of {ns}", { ns })}
-                                                onChange={e => setNamespace(ns, e.target.value === "inherit" ? null : e.target.value === "off" ? { mode: "off" } : { mode: "custom", windows: s.global.windows?.length ? s.global.windows : DEFAULT_WINDOWS })}
+                                                onChange={e => setNamespace(ns, e.target.value === "inherit" ? null : e.target.value === "off" ? { mode: "off" } : { mode: "custom", windows: s.global.windows?.length ? s.global.windows : DEFAULT_WINDOWS, when_blocked: s.global.when_blocked, message: s.global.message })}
                                                 className="bg-gray-900 border border-gray-700 rounded-md px-2 py-1 text-sm text-gray-100">
                                                 <option value="inherit">{t("As the global settings")}</option>
                                                 <option value="custom">{t("Its own hours")}</option>
@@ -96,7 +101,12 @@ export function SettingsView({ info }: { info: ClusterInfo | null }) {
                                             </select>
                                             <span className="text-xs text-gray-400">{policyText(choice === "inherit" ? s.global : p)}</span>
                                         </div>
-                                        {p?.mode === "custom" && <WindowsEditor windows={p.windows || []} onChange={windows => setNamespace(ns, { mode: "custom", windows })} />}
+                                        {p?.mode === "custom" && (
+                                            <>
+                                                <WindowsEditor windows={p.windows || []} onChange={windows => setNamespace(ns, { ...p, mode: "custom", windows })} />
+                                                <WhenBlockedEditor policy={p} onChange={next => setNamespace(ns, next)} />
+                                            </>
+                                        )}
                                     </li>
                                 );
                             })}

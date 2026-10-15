@@ -21,6 +21,8 @@ const OUTCOMES: Record<RequestOutcome, { label: string; className: string }> = {
     asleep: { label: msg("Answered while asleep"), className: "bg-gray-700 text-gray-300" },
     unavailable: { label: msg("App didn't start in time"), className: "bg-red-900/40 text-red-300" },
     blocked: { label: msg("Not woken: blocked hours"), className: "bg-slate-700 text-slate-200" },
+    offered: { label: msg("Blocked hours: offered to start it"), className: "bg-slate-700 text-slate-200" },
+    started: { label: msg("Started on request during blocked hours"), className: "bg-amber-900/40 text-amber-200" },
     login: { label: msg("Sent to login"), className: "bg-purple-900/40 text-purple-300" },
     denied: { label: msg("Denied"), className: "bg-orange-900/40 text-orange-300" },
     error: { label: msg("App unreachable"), className: "bg-red-900/40 text-red-300" },

@@ -133,6 +133,8 @@ export interface BlackoutWindow {
 export interface BlackoutPolicy {
     mode: "custom" | "off";
     windows?: BlackoutWindow[];
+    when_blocked?: "refuse" | "ask"; // Browsers: 503, or a page with a button starting it anyway
+    message?: string; // Shown on that page (e.g. who to call)
 }
 
 // An exception to a route's blocked hours: "allow" lets requests wake it as usual, "on" keeps it on.
@@ -268,7 +270,7 @@ export interface StatsData {
 }
 
 // What happened to a request, as recorded by the inspector.
-export type RequestOutcome = "proxied" | "woken" | "waking_page" | "asleep" | "unavailable" | "blocked" | "login" | "denied" | "error";
+export type RequestOutcome = "proxied" | "woken" | "waking_page" | "asleep" | "unavailable" | "blocked" | "offered" | "started" | "login" | "denied" | "error";
 
 export interface InspectedRequest {
     id: string; // Unique (replica and sequence number)

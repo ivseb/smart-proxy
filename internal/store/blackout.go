@@ -23,10 +23,25 @@ const (
 	BlackoutOff    = "off"
 )
 
+// What a browser gets during blocked hours: 503 (WhenBlockedRefuse, the default), or a page
+// saying the application is off outside its hours, with a button to start it anyway
+// (WhenBlockedAsk). Other clients (API calls, monitors, scripts) always get 503.
+const (
+	WhenBlockedRefuse = "refuse"
+	WhenBlockedAsk    = "ask"
+)
+
+// maxBlockedMessage bounds the text shown on the page (a contact, for instance).
+const maxBlockedMessage = 300
+
 // BlackoutPolicy says when a route's application may not be woken.
 type BlackoutPolicy struct {
 	Mode    string           `json:"mode"` // BlackoutCustom or BlackoutOff
 	Windows []BlackoutWindow `json:"windows,omitempty"`
+	// WhenBlocked is what browsers get during blocked hours (WhenBlockedRefuse or WhenBlockedAsk).
+	WhenBlocked string `json:"when_blocked,omitempty"`
+	// Message is shown on the page offering to start the application (e.g. who to call).
+	Message string `json:"message,omitempty"`
 }
 
 // Validate reports an invalid policy.
@@ -35,6 +50,14 @@ func (p BlackoutPolicy) Validate() error {
 	case BlackoutOff:
 		return nil
 	case BlackoutCustom:
+		switch p.WhenBlocked {
+		case "", WhenBlockedRefuse, WhenBlockedAsk:
+		default:
+			return fmt.Errorf("when_blocked must be %q or %q", WhenBlockedRefuse, WhenBlockedAsk)
+		}
+		if len(p.Message) > maxBlockedMessage {
+			return fmt.Errorf("the message is too long (%d characters at most)", maxBlockedMessage)
+		}
 		if len(p.Windows) == 0 {
 			return fmt.Errorf("blocked hours need at least one window")
 		}

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="{{.L}}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>{{.L.T "Off outside its hours"}}</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f172a;color:#e2e8f0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+main{width:100%;max-width:440px;padding:24px;text-align:center}
+.icon{width:88px;height:88px;margin:0 auto 28px;border-radius:50%;background:#334155;display:flex;align-items:center;justify-content:center}
+h1{margin:0 0 10px;font-size:24px}
+.lead{margin:0 0 18px;color:#94a3b8;font-size:15px;line-height:1.5}
+.lead b{color:#e2e8f0;font-weight:600}
+.msg{margin:0 0 22px;padding:12px 14px;background:#1e293b;border:1px solid #334155;border-radius:12px;font-size:14px;line-height:1.5;color:#cbd5e1;text-align:left;white-space:pre-line}
+button{width:100%;padding:12px;background:#2563eb;color:#fff;border:0;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer}
+button:hover{background:#1d4ed8}
+.note{margin:12px 0 0;font-size:13px;color:#64748b;line-height:1.5}
+.by{margin-top:28px;font-size:11px;color:#475569}
+</style>
+</head>
+<body>
+<main>
+  <div class="icon">
+    <svg width="40" height="40" fill="none" stroke="#cbd5e1" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+  </div>
+  <h1>{{.L.T "Off outside its hours"}}</h1>
+  <p class="lead">{{.Lead}}</p>
+  {{if .Message}}<p class="msg">{{.Message}}</p>{{end}}
+  <form method="post" action="{{.Action}}">
+    <input type="hidden" name="path" value="{{.Path}}">
+    <input type="hidden" name="query" value="{{.Query}}">
+    <button type="submit">{{.L.T "Start it now"}}</button>
+  </form>
+  <p class="note">{{.Note}}</p>
+  <p class="by">Smart Proxy</p>
+</main>
+</body>
+</html>

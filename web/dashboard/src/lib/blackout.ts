@@ -28,7 +28,7 @@ export function windowText(w: BlackoutWindow): string {
 
 export function policyText(p?: BlackoutPolicy | null): string {
     if (!p || p.mode !== "custom" || !p.windows?.length) return t("No blocked hours");
-    return p.windows.map(windowText).join(" · ");
+    return p.windows.map(windowText).join(" · ") + (p.when_blocked === "ask" ? ` · ${t("browsers can start it from a page")}` : "");
 }
 
 // whenText renders a coming time: "today 22:00", "tomorrow 06:00", "Mon 06:00", "12 Oct 06:00".
