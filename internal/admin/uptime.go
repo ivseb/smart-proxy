@@ -146,3 +146,44 @@ func (s *Server) handleUptime(w http.ResponseWriter, r *http.Request) {
 	})
 	writeJSON(w, out)
 }
+
+// WorkloadYear is a workload's last 12 months, with the routes it serves now.
+type WorkloadYear struct {
+	uptime.YearReport
+	Routes []RouteRef `json:"routes"`
+}
+
+// YearReport is what /api/uptime/year answers.
+type YearReport struct {
+	Timezone  string         `json:"timezone"`
+	Months    []string       `json:"months"` // YYYY-MM, the last 12
+	Since     *time.Time     `json:"since,omitempty"`
+	Workloads []WorkloadYear `json:"workloads"`
+}
+
+// handleUptimeYear reports every managed workload's last 12 months, month by month: hours up,
+// replica-hours used and saved (days in uptime.YearTimezone).
+func (s *Server) handleUptimeYear(w http.ResponseWriter, r *http.Request) {
+	if s.Uptime == nil {
+		http.Error(w, "No history without Kubernetes", http.StatusServiceUnavailable)
+		return
+	}
+	now := time.Now()
+	managed := managedWorkloads(s.store.GetAllRoutes())
+	out := YearReport{Timezone: uptime.YearTimezone, Months: uptime.LastMonths(now), Workloads: []WorkloadYear{}}
+	for _, y := range s.Uptime.SnapshotYear(now) {
+		rep := uptime.SummarizeYear(y, now)
+		if rep.Observed == 0 {
+			continue
+		}
+		if rep.Since != nil && (out.Since == nil || rep.Since.Before(*out.Since)) {
+			out.Since = rep.Since
+		}
+		routes := managed[y.Namespace+"/"+y.Workload]
+		if routes == nil {
+			routes = []RouteRef{}
+		}
+		out.Workloads = append(out.Workloads, WorkloadYear{YearReport: rep, Routes: routes})
+	}
+	writeJSON(w, out)
+}

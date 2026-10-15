@@ -333,6 +333,7 @@ export interface UptimeTotals {
     observed_minutes: number;
     up_minutes: number;
     replica_minutes: number;
+    baseline_minutes?: number; // Replica minutes it would have used always on (saved = baseline - replica)
     wakes: number;
 }
 
@@ -373,4 +374,18 @@ export interface UptimeReport {
     timezone: string;
     since?: string; // First hour recorded in the period
     workloads: WorkloadUptime[];
+}
+
+// The last 12 months of every managed workload, month by month (/api/uptime/year).
+export interface YearReport {
+    timezone: string;
+    months: string[]; // YYYY-MM
+    since?: string;
+    workloads: (UptimeTotals & {
+        namespace: string;
+        workload: string;
+        since?: string;
+        months: (UptimeTotals & { month: string })[];
+        routes: { id: string; host: string; path: string }[];
+    })[];
 }

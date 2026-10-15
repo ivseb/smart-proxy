@@ -1,12 +1,12 @@
 import { getLang, t, tn } from "@/lib/i18n";
-import type { UptimeChange, UptimeDay, UptimeHour, UptimeReport, UptimeTotals, WorkloadUptime } from "@/types/api";
+import type { UptimeChange, UptimeDay, UptimeHour, UptimeReport, UptimeTotals, WorkloadUptime, YearReport } from "@/types/api";
 
 // The browser's time zone: days are counted in it.
 export const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
 // Period is what the history is shown for: the last 24 hours, 7 or 30 days, or from..to
 // (datetime-local values, whole hours).
-export type Period = { kind: "24h" | "7d" | "30d" } | { kind: "custom"; from: string; to: string };
+export type Period = { kind: "24h" | "7d" | "30d" | "year" } | { kind: "custom"; from: string; to: string };
 
 const HOUR = 3600_000;
 
@@ -15,6 +15,7 @@ const HOUR = 3600_000;
 export function periodParams(p: Period): Record<string, string> {
     switch (p.kind) {
         case "7d": return { days: "7" };
+        case "year": return { days: "30" }; // The year has its own call (/api/uptime/year)
         case "30d": return { days: "30" };
         case "24h": return { from: new Date(Math.floor((Date.now() - 23 * HOUR) / HOUR) * HOUR).toISOString() };
         default: return { from: new Date(p.from).toISOString(), to: new Date(p.to).toISOString() };
@@ -33,6 +34,7 @@ export function periodTitle(p: Period, report?: UptimeReport | null): string {
         case "24h": return t("Last 24 hours");
         case "7d": return t("Last {n} days", { n: 7 });
         case "30d": return t("Last {n} days", { n: 30 });
+        case "year": return t("Last 12 months");
         default: return report ? `${dateTime(report.from)} → ${dateTime(report.to)}` : `${dateTime(p.from)} → ${dateTime(p.to)}`;
     }
 }
@@ -65,8 +67,40 @@ export function sum(items: UptimeTotals[]): UptimeTotals {
         observed_minutes: a.observed_minutes + x.observed_minutes,
         up_minutes: a.up_minutes + x.up_minutes,
         replica_minutes: a.replica_minutes + x.replica_minutes,
+        baseline_minutes: (a.baseline_minutes || 0) + (x.baseline_minutes || 0),
         wakes: a.wakes + x.wakes,
-    }), { observed_minutes: 0, up_minutes: 0, replica_minutes: 0, wakes: 0 });
+    }), { observed_minutes: 0, up_minutes: 0, replica_minutes: 0, baseline_minutes: 0, wakes: 0 });
+}
+
+// savedMinutes are the replica minutes saved: those it would have used always on, minus used.
+export const savedMinutes = (x: UptimeTotals) => Math.max(0, (x.baseline_minutes || 0) - x.replica_minutes);
+export const savedShare = (x: UptimeTotals) => (x.baseline_minutes ? savedMinutes(x) / x.baseline_minutes : null);
+
+// monthLabel renders "YYYY-MM": "Oct 26".
+export function monthLabel(month: string): string {
+    const [y, m] = month.split("-").map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString(getLang(), { month: "short", year: "2-digit" });
+}
+
+export function monthItems(months: (UptimeTotals & { month: string })[]): BarItem[] {
+    return months.map(m => ({
+        key: m.month, totals: m,
+        title: m.observed_minutes === 0 ? `${monthLabel(m.month)}: ${t("no data")}`
+            : `${monthLabel(m.month)}: ${t("up {hours} h ({percent})", { hours: hours(m.up_minutes), percent: percent(upShare(m)) })}, ${t("{hours} replica-hours", { hours: hours(m.replica_minutes) })}, ${t("{hours} saved", { hours: hours(savedMinutes(m)) })}`,
+    }));
+}
+
+// yearCSV is the year as a spreadsheet: one row per workload, totals then each month.
+export function yearCSV(report: YearReport, workloads: YearReport["workloads"]): string {
+    const fixed = (n: number) => (n / 60).toFixed(2);
+    const rows = [["namespace", "workload", "routes", "observed_hours", "up_hours", "replica_hours", "replica_hours_always_on", "replica_hours_saved", "wakes",
+        ...report.months.flatMap(m => [`up_hours_${m}`, `replica_hours_saved_${m}`])]];
+    for (const w of workloads) {
+        rows.push([w.namespace, w.workload, w.routes.map(r => `${r.host || "*"}${r.path || ""}`).join(" "),
+            fixed(w.observed_minutes), fixed(w.up_minutes), fixed(w.replica_minutes), fixed(w.baseline_minutes || 0), fixed(savedMinutes(w)), String(w.wakes),
+            ...w.months.flatMap(m => [fixed(m.up_minutes), fixed(savedMinutes(m))])]);
+    }
+    return rows.map(r => r.map(csvCell).join(",")).join("\n") + "\n";
 }
 
 // hours renders minutes as hours: "0", "0.5", "12.3", "245".
@@ -175,12 +209,12 @@ export function uptimeCSV(report: UptimeReport, hourly: boolean): string {
     const hourKeys = [...new Set(report.workloads.flatMap(w => (w.hours || []).map(h => h.at)))].sort();
     const dates = report.workloads[0]?.days.map(d => d.date) || [];
     const columns = hourly ? hourKeys.map(h => `up_minutes_${localInput(new Date(h))}`) : dates.map(d => `up_hours_${d}`);
-    const rows = [["namespace", "workload", "routes", "observed_hours", "up_hours", "down_hours", "up_percent", "replica_hours", "wakes", ...columns]];
+    const rows = [["namespace", "workload", "routes", "observed_hours", "up_hours", "down_hours", "up_percent", "replica_hours", "replica_hours_saved", "wakes", ...columns]];
     for (const w of report.workloads) {
         const share = upShare(w);
         rows.push([w.namespace, w.workload, w.routes.map(r => `${r.host || "*"}${r.path || ""}`).join(" "),
             fixed(w.observed_minutes), fixed(w.up_minutes), fixed(downMinutes(w)), share === null ? "" : (share * 100).toFixed(1),
-            fixed(w.replica_minutes), String(w.wakes),
+            fixed(w.replica_minutes), fixed(savedMinutes(w)), String(w.wakes),
             ...(hourly ? hourKeys.map(k => String(w.hours?.find(h => h.at === k)?.up_minutes ?? "")) : w.days.map(d => fixed(d.up_minutes)))]);
     }
     return rows.map(r => r.map(csvCell).join(",")).join("\n") + "\n";

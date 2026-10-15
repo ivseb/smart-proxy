@@ -60,4 +60,13 @@ export const uptime: Record<string, string> = {
     "Woken: {n} replicas": "Svegliato: {n} repliche",
     "Put to sleep": "Messo a dormire",
     "Scaled from {from} to {to} replicas": "Scalato da {from} a {to} repliche",
+    "12 months": "12 mesi",
+    "Saved": "Risparmiate",
+    "Recorded since {when}: earlier months have no data.": "Registrato dal {when}: i mesi precedenti non hanno dati.",
+    "Last 12 months": "Ultimi 12 mesi",
+    "Replica-hours saved": "Ore-replica risparmiate",
+    "{percent} of {hours} always on": "{percent} di {hours} se sempre accesi",
+    "Saved: the replica-hours each workload would have used always on (with the replicas it has when awake), minus those it used.": "Risparmiate: le ore-replica che ogni workload avrebbe usato sempre acceso (con le repliche che ha quando è sveglio), meno quelle usate.",
+    "Month by month": "Mese per mese",
+    "{hours} saved": "{hours} risparmiate",
 };

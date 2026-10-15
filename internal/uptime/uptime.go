@@ -19,13 +19,17 @@ const window = Days * 24 // Hours kept
 type Series struct {
 	Namespace string   `json:"ns"`
 	Workload  string   `json:"w"`
-	Start     int64    `json:"start"`   // Unix hour of the first bucket
-	Seen      []byte   `json:"seen"`    // Minutes observed in each hour
-	Up        []byte   `json:"up"`      // Minutes with at least one replica
-	Replicas  []uint32 `json:"rep"`     // Replica minutes (a minute with 3 replicas counts 3)
-	Wakes     []uint16 `json:"wakes"`   // Times it went from no replica to some
-	LastUp    bool     `json:"last_up"` // State at the latest sample, to see wake-ups
-	Sampled   bool     `json:"sampled"` // Sampled at least once
+	Start     int64    `json:"start"` // Unix hour of the first bucket
+	Seen      []byte   `json:"seen"`  // Minutes observed in each hour
+	Up        []byte   `json:"up"`    // Minutes with at least one replica
+	Replicas  []uint32 `json:"rep"`   // Replica minutes (a minute with 3 replicas counts 3)
+	Wakes     []uint16 `json:"wakes"` // Times it went from no replica to some
+	// Baseline is the replica minutes it would have used without Smart Proxy: each minute, the
+	// replicas it has when awake (since 2.8; earlier hours are estimated, see fillBaseline).
+	Baseline []uint32 `json:"base,omitempty"`
+	Full     int32    `json:"full,omitempty"` // Replicas when awake, at the latest sample up
+	LastUp   bool     `json:"last_up"`        // State at the latest sample, to see wake-ups
+	Sampled  bool     `json:"sampled"`        // Sampled at least once
 	// Changes are the minutes its replicas changed, to the minute (since 2.7).
 	Changes []Change `json:"changes,omitempty"`
 	LastAt  int64    `json:"last_at,omitempty"` // Unix time of the latest sample
@@ -59,14 +63,16 @@ func (s *Series) at(hour int64) int {
 	if hour < s.Start {
 		return -1
 	}
+	s.fillBaseline()
 	for int64(len(s.Seen)) <= hour-s.Start {
 		s.Seen = append(s.Seen, 0)
 		s.Up = append(s.Up, 0)
 		s.Replicas = append(s.Replicas, 0)
 		s.Wakes = append(s.Wakes, 0)
+		s.Baseline = append(s.Baseline, 0)
 	}
 	if drop := len(s.Seen) - window; drop > 0 {
-		s.Seen, s.Up, s.Replicas, s.Wakes = s.Seen[drop:], s.Up[drop:], s.Replicas[drop:], s.Wakes[drop:]
+		s.Seen, s.Up, s.Replicas, s.Wakes, s.Baseline = s.Seen[drop:], s.Up[drop:], s.Replicas[drop:], s.Wakes[drop:], s.Baseline[drop:]
 		s.Start += int64(drop)
 		s.trimChanges()
 	}
@@ -88,6 +94,23 @@ func (s *Series) trimChanges() {
 	}
 }
 
+// fillBaseline estimates the baseline of hours recorded before it was (2.6, 2.7): the average
+// replicas while up, carried over the hours it slept.
+func (s *Series) fillBaseline() {
+	if len(s.Baseline) >= len(s.Seen) {
+		return
+	}
+	full := 1.0
+	for i := 0; i < len(s.Seen); i++ {
+		if s.Up[i] > 0 {
+			full = float64(s.Replicas[i]) / float64(s.Up[i])
+		}
+		if i >= len(s.Baseline) {
+			s.Baseline = append(s.Baseline, uint32(float64(s.Seen[i])*full+0.5))
+		}
+	}
+}
+
 // State is a workload's replicas at a sample.
 type State struct {
 	Namespace, Workload string
@@ -98,10 +121,21 @@ type State struct {
 type Recorder struct {
 	mu     sync.Mutex
 	series map[string]*Series
+	year   map[string]*YearSeries
+	loc    *time.Location // Of the days of the year's history
 	dirty  bool
 }
 
-func NewRecorder() *Recorder { return &Recorder{series: map[string]*Series{}} }
+// YearTimezone is the time zone of the days of the year's history.
+const YearTimezone = "Europe/Rome"
+
+func NewRecorder() *Recorder {
+	loc, err := time.LoadLocation(YearTimezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	return &Recorder{series: map[string]*Series{}, year: map[string]*YearSeries{}, loc: loc}
+}
 
 // Sample records one minute of the given workloads.
 func (r *Recorder) Sample(now time.Time, states []State) {
@@ -120,15 +154,21 @@ func (r *Recorder) Sample(now time.Time, states []State) {
 			continue
 		}
 		up := st.Replicas > 0
+		if up {
+			s.Full = st.Replicas
+		}
+		base := uint32(max(s.Full, 1)) // Never seen up yet: one replica
 		if s.Seen[i] < 60 {
 			s.Seen[i]++
+			s.Baseline[i] += base
 			if up {
 				s.Up[i]++
 			}
 		}
+		wake := up && s.Sampled && !s.LastUp
 		if up {
 			s.Replicas[i] += uint32(st.Replicas)
-			if s.Sampled && !s.LastUp {
+			if wake {
 				s.Wakes[i]++
 			}
 		}
@@ -145,6 +185,7 @@ func (r *Recorder) Sample(now time.Time, states []State) {
 			}
 		}
 		s.LastUp, s.Sampled, s.LastAt, s.LastN = up, true, at, st.Replicas
+		r.sampleYear(now, st, base, wake)
 	}
 	r.dirty = true
 }
@@ -165,6 +206,7 @@ func (r *Recorder) Snapshot(now time.Time) []Series {
 		c.Up = append([]byte(nil), s.Up...)
 		c.Replicas = append([]uint32(nil), s.Replicas...)
 		c.Wakes = append([]uint16(nil), s.Wakes...)
+		c.Baseline = append([]uint32(nil), s.Baseline...)
 		c.Changes = append([]Change(nil), s.Changes...)
 		out = append(out, c)
 	}
@@ -181,6 +223,7 @@ func (r *Recorder) Replace(series []Series) {
 	r.series = make(map[string]*Series, len(series))
 	for i := range series {
 		s := series[i]
+		s.fillBaseline()
 		r.series[key(s.Namespace, s.Workload)] = &s
 	}
 	r.dirty = false
@@ -200,6 +243,8 @@ type Totals struct {
 	Observed int64 `json:"observed_minutes"`
 	Up       int64 `json:"up_minutes"`
 	Replicas int64 `json:"replica_minutes"`
+	// Baseline is the replica minutes it would have used always on: Baseline - Replicas were saved.
+	Baseline int64 `json:"baseline_minutes"`
 	Wakes    int64 `json:"wakes"`
 }
 
@@ -208,6 +253,9 @@ func (t *Totals) add(s Series, i int) {
 	t.Up += int64(s.Up[i])
 	t.Replicas += int64(s.Replicas[i])
 	t.Wakes += int64(s.Wakes[i])
+	if i < len(s.Baseline) {
+		t.Baseline += int64(s.Baseline[i])
+	}
 }
 
 // Day is one calendar day of a series, in a time zone.

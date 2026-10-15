@@ -5,7 +5,7 @@ import { workloadLabel } from "@/lib/format";
 import { t, tn } from "@/lib/i18n";
 import {
     changeText, clock, dateTime, dayLabel, dayRange, downMinutes, hourItems, hours, hourTitle, hoursByDate, localDate, localInput, percent,
-    segments, upShare, type BarItem, type Period, type Segment,
+    savedMinutes, savedShare, segments, upShare, type BarItem, type Period, type Segment,
 } from "@/lib/uptime";
 import type { UptimeTotals, WorkloadUptime } from "@/types/api";
 
@@ -147,7 +147,7 @@ export function Changes({ w, from, to, showName }: { w: WorkloadUptime; from: nu
     );
 }
 
-export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+export function PeriodPicker({ value, onChange, withYear }: { value: Period; onChange: (p: Period) => void; withYear?: boolean }) {
     const [custom, setCustom] = useState(() => value.kind === "custom" ? value : (() => {
         const to = new Date(Math.ceil(Date.now() / HOUR) * HOUR);
         return { kind: "custom" as const, from: localInput(new Date(to.getTime() - 24 * HOUR)), to: localInput(to) };
@@ -155,8 +155,9 @@ export function PeriodPicker({ value, onChange }: { value: Period; onChange: (p:
     const [editing, setEditing] = useState(false);
     const now = useNow(60_000);
     const invalid = !custom.from || !custom.to || new Date(custom.to) <= new Date(custom.from) || new Date(custom.from).getTime() < now - 30 * 24 * HOUR - HOUR;
-    const presets: { kind: "24h" | "7d" | "30d"; label: string }[] = [
+    const presets: { kind: "24h" | "7d" | "30d" | "year"; label: string }[] = [
         { kind: "24h", label: t("24 hours") }, { kind: "7d", label: tn(7, "{n} day", "{n} days") }, { kind: "30d", label: tn(30, "{n} day", "{n} days") },
+        ...(withYear ? [{ kind: "year" as const, label: t("12 months") }] : []),
     ];
     const button = (active: boolean) => `px-3 py-1 text-xs rounded-md whitespace-nowrap ${active ? "bg-blue-600 text-white" : "text-gray-400 hover:text-white"}`;
     return (
@@ -188,6 +189,7 @@ export function Facts({ w }: { w: UptimeTotals }) {
             <Fact label={t("Up")} value={`${hours(w.up_minutes)} h`} extra={percent(upShare(w))} className="text-green-300" />
             <Fact label={t("Down")} value={`${hours(downMinutes(w))} h`} className="text-gray-200" />
             <Fact label={t("Replica-hours")} value={hours(w.replica_minutes)} className="text-gray-200" />
+            {(w.baseline_minutes || 0) > 0 && <Fact label={t("Saved")} value={hours(savedMinutes(w))} extra={percent(savedShare(w))} className="text-emerald-300" />}
             <Fact label={t("Wake-ups")} value={String(w.wakes)} className="text-gray-200" />
         </span>
     );

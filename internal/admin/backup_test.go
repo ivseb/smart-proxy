@@ -259,6 +259,11 @@ func TestUptimeReportsManagedWorkloads(t *testing.T) {
 	if rep.Days != uptime.Days || len(rep.Workloads) != 1 || len(rep.Workloads[0].Hours) == 0 {
 		t.Fatalf("route report %+v", rep)
 	}
+	var year YearReport
+	if code, body := f.call(t, "GET", "/api/uptime/year", nil); code != 200 || json.Unmarshal([]byte(body), &year) != nil || len(year.Months) != 12 || len(year.Workloads) != 2 ||
+		year.Workloads[0].Workload != "web" || year.Workloads[0].Replicas != 3 || year.Workloads[0].Baseline != 1+3 {
+		t.Fatalf("year: %d %s", code, body)
+	}
 	if code, _ := f.call(t, "GET", "/api/uptime?route=nope", nil); code != http.StatusNotFound {
 		t.Fatalf("unknown route: %d", code)
 	}

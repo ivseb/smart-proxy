@@ -88,6 +88,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/routes/import", s.handleImport)
 	mux.HandleFunc("/api/routes/deleted", s.handleDeleted)
 	mux.HandleFunc("/api/uptime", s.handleUptime)
+	mux.HandleFunc("/api/uptime/year", s.handleUptimeYear)
 	mux.HandleFunc("/api/settings", s.handleSettings)
 	mux.HandleFunc("/api/routes/blocked-hours", s.handleBlockedHours)
 	mux.HandleFunc("/api/routes/exceptions", s.handleExceptions)

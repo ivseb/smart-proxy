@@ -133,7 +133,12 @@ The **Report** tab gathers every managed workload by namespace for the same peri
 - Days and hours are in the browser's time zone.
 - Minutes without data don't count, neither up nor down: before Smart Proxy was installed or upgraded, while it wasn't running, before a workload was managed. They show as hatched; the page says from when the history starts. The times of the changes are recorded from 2.7 on: earlier days show hour by hour.
 - A workload no longer managed keeps its history until it is older than 30 days.
-- The history is kept in the ConfigMap `<release>-uptime` (compressed, a few kilobytes per workload), written by the leader every 5 minutes and removed with Smart Proxy. `GET /api/uptime` answers it as JSON: `days=7` or `from=…&to=…` (RFC 3339), `tz=Europe/Rome`, `route=<id>` or `workload=<namespace>/<name>`, `hours=1` and `changes=1` for the hours and the changes.
+- **Last 12 months.** The Report tab also covers the last year, month by month (*12 months*): Smart Proxy keeps a day-by-day summary for 366 days (days in Europe/Rome), besides the hour-by-hour last 30 days. Minutes and changes aren't kept that long.
+- **Saved replica-hours.** Every period shows the replica-hours saved: those each workload would have used always on — with the replicas it has when awake — minus those it used. Hours recorded before 2.8 are estimated from the average replicas while up.
+
+![The Report tab over the last 12 months: hours up, replica-hours used and saved, month by month](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/uptime-year.png)
+
+- The history is kept in the ConfigMaps `<release>-uptime` and `<release>-uptime-year` (compressed, a few kilobytes per workload), written by the leader every 5 minutes and removed with Smart Proxy. `GET /api/uptime` answers it as JSON: `days=7` or `from=…&to=…` (RFC 3339), `tz=Europe/Rome`, `route=<id>` or `workload=<namespace>/<name>`, `hours=1` and `changes=1` for the hours and the changes.
 
 ## Access: require sign-in or a token
 
