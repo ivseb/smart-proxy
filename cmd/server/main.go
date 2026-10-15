@@ -20,6 +20,7 @@ import (
 
 	"smart-proxy/internal/admin"
 	"smart-proxy/internal/auth"
+	"smart-proxy/internal/blackout"
 	"smart-proxy/internal/guard"
 	"smart-proxy/internal/ha"
 	"smart-proxy/internal/history"
@@ -103,6 +104,10 @@ func main() {
 
 	// 4. Admin Server
 	adminServer := admin.NewServer(k8sClient, configStore, proxyHandler.Metrics, serviceName, authn)
+	// Blocked hours, holidays, time zone: in memory until the cluster is reached (below).
+	settings := &blackout.Keeper{}
+	settings.Load(context.Background())
+	adminServer.Blackout, proxyHandler.Blackout = settings, settings
 	adminServer.Replica = podName
 	adminServer.GlobalRules = globalRules
 	adminServer.Traffic = func(routeID string) []traffic.SourceStats {
@@ -208,7 +213,15 @@ func main() {
 		if v := secrets.Load(); v != nil {
 			proxyHandler.Guard = &guard.Guard{Vault: v} // Read by requests only once ready (below)
 		}
+		// Installation-wide settings, shared by the replicas (see replica.OnConfigMap).
+		settings.Namespace, settings.Name, settings.Owner = k8s.OwnNamespace(), serviceName+"-settings", ownDeployment(k8sClient)
+		settings.Labels = map[string]string{store.LabelInstance: serviceName, store.LabelComponent: "settings"}
+		settings.Client = k8sClient.Clientset
+		if err := settings.Load(ctx); err != nil {
+			log.Printf("Warning: reading the settings (blocked hours, holidays): %v", err)
+		}
 		replica := &ha.Replica{
+			OnConfigMap:   settings.Adopt,
 			Client:        k8sClient.Clientset,
 			Namespace:     k8s.OwnNamespace(),
 			Instance:      serviceName,
@@ -243,6 +256,7 @@ func main() {
 
 		// Only the leader puts deployments to sleep and heals patches; every replica proxies and wakes.
 		w := watcher.NewWatcher(k8sClient, configStore, serviceName)
+		w.Blackout = settings
 		var leading atomic.Bool
 		go replica.RunLeaderElection(ctx, func(leadCtx context.Context) {
 			metrics.SetLeader(true)

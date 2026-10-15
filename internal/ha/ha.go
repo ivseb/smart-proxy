@@ -66,6 +66,9 @@ type Replica struct {
 
 	// ActivityInterval is how often local activity is published (and others' merged).
 	ActivityInterval time.Duration
+	// OnConfigMap, when set, gets every version of the installation's ConfigMaps (e.g. its
+	// settings, changed by another replica).
+	OnConfigMap func(*corev1.ConfigMap)
 
 	configMaps corelisters.ConfigMapNamespaceLister
 }
@@ -93,6 +96,9 @@ func (r *Replica) Start(ctx context.Context) error {
 
 	onRoutes := func(obj interface{}) {
 		cm, ok := obj.(*corev1.ConfigMap)
+		if ok && r.OnConfigMap != nil {
+			r.OnConfigMap(cm)
+		}
 		if !ok || cm.Name != RoutesConfigMap(r.Instance) {
 			return
 		}

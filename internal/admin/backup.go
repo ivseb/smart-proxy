@@ -32,7 +32,7 @@ type Export struct {
 
 // portable is a route as exported: configuration only, without runtime state.
 func portable(r store.RouteConfig) store.RouteConfig {
-	r.LastActivity, r.InspectUntil, r.Pause, r.Declarative = time.Time{}, nil, nil, false
+	r.LastActivity, r.InspectUntil, r.Pause, r.Exceptions, r.Declarative = time.Time{}, nil, nil, nil, false
 	return r
 }
 
@@ -127,7 +127,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 				item.Result = strings.Join(item.Problems, "; ")
 			} else {
 				if existing, ok := s.store.GetRoute(route.ID); ok && route.ID != "" {
-					route.InspectUntil, route.Pause = existing.InspectUntil, existing.Pause
+					route.InspectUntil, route.Pause, route.Exceptions = existing.InspectUntil, existing.Pause, existing.Exceptions
 				}
 				if _, err := s.saveRoute(&route); err != nil {
 					item.Result = err.Error()

@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"smart-proxy/internal/blackout"
 	"smart-proxy/internal/guard"
 	"smart-proxy/internal/i18n"
 	"smart-proxy/internal/inspect"
@@ -50,6 +51,8 @@ type Handler struct {
 	// WakeTimeout is how long requests other than page loads wait for a sleeping app
 	// (default 2 minutes).
 	WakeTimeout time.Duration
+	// Blackout holds the blocked hours, when sleeping applications aren't woken (nil: never).
+	Blackout *blackout.Keeper
 
 	inflight inflight
 	index    atomic.Pointer[routeIndex]
@@ -252,6 +255,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Blocked hours: a sleeping application isn't woken (one already running serves as usual).
+	if wake && h.Blackout != nil && h.Blackout.Get().Blocked(route, time.Now()) && !h.serving(route) {
+		rec.set(inspect.OutcomeBlocked)
+		h.answerBlocked(w, route)
+		return
+	}
+
 	// 2. Wake what the route needs. While the managed workloads wake up, a running backend
 	// Smart Proxy doesn't manage takes the traffic, as the OpenShift router would. Browsers get
 	// the "waking up" page; other requests (API calls, form posts, WebSockets) wait for the app.
@@ -407,6 +417,11 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 		route = routeTo(route, *b) // The backend the page's client was sent to
 	}
 	matchedRoutes := []store.RouteConfig{route}
+
+	if h.Blackout != nil && h.Blackout.Get().Blocked(route, time.Now()) && !h.serving(route) {
+		h.answerBlocked(w, route)
+		return
+	}
 
 	// Keep waking: with StartInOrder, each poll of the waiting page advances the chain.
 	details, allReady := h.ensureAwake(matchedRoutes)

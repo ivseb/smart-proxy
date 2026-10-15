@@ -117,6 +117,68 @@ export interface RouteConfig {
     inspect_until?: string | null; // Requests are recorded until then
     pause?: Pause | null; // Only forwarding requests (no sleep, no other backends) while active
     protection?: Protection | null;
+    blackout?: BlackoutPolicy | null; // Its own blocked hours; null follows the namespace's or the global ones
+    exceptions?: RouteException[] | null; // Lift the blocked hours for a while
+}
+
+// Hours when sleeping applications aren't woken. On the given days (none: every day), from
+// "HH:MM" to "HH:MM"; a "to" earlier than "from" means the night hours of those days
+// (22:00-06:00: 00:00-06:00 and 22:00-24:00); 00:00-24:00 is the whole day.
+export interface BlackoutWindow {
+    days?: string[]; // mon..sun
+    from: string;
+    to: string;
+}
+
+export interface BlackoutPolicy {
+    mode: "custom" | "off";
+    windows?: BlackoutWindow[];
+}
+
+// An exception to a route's blocked hours: "allow" lets requests wake it as usual, "on" keeps it on.
+export interface RouteException {
+    id: string;
+    kind: "allow" | "on";
+    from: string;
+    to: string;
+    reason?: string;
+    by?: string;
+    at: string;
+}
+
+export interface BlockedState {
+    source: "route" | "namespace" | "global";
+    policy: BlackoutPolicy;
+    blocked: boolean; // Requests can't wake it now
+    exception?: RouteException; // In force now
+    change?: string; // When "blocked" changes next (within a week)
+    holiday?: string; // Today's holiday
+}
+
+export interface BlockedSegment {
+    from: string;
+    to: string;
+    blocked: boolean;
+    exception?: "allow" | "on";
+}
+
+export interface BlockedHoursView {
+    state: BlockedState;
+    week: { date: string; holiday?: string; segments: BlockedSegment[] }[];
+    timezone: string;
+}
+
+export interface Holiday {
+    date: string; // "MM-DD" every year, or "YYYY-MM-DD"
+    name?: string;
+}
+
+// Installation-wide settings.
+export interface Settings {
+    timezone: string;
+    holidays: Holiday[];
+    global: BlackoutPolicy;
+    namespaces: Record<string, BlackoutPolicy>;
 }
 
 // Require a login (browsers) or an access token (scripts) before requests reach the app.
@@ -154,6 +216,7 @@ export interface RouteStatus extends RouteConfig {
     protection_users: Credential[];
     protection_tokens: Credential[];
     protection_available: boolean; // Smart Proxy's Secret is usable
+    blocked_hours: BlockedState;
 }
 
 export interface DeploymentSummary {
@@ -205,7 +268,7 @@ export interface StatsData {
 }
 
 // What happened to a request, as recorded by the inspector.
-export type RequestOutcome = "proxied" | "woken" | "waking_page" | "asleep" | "unavailable" | "login" | "denied" | "error";
+export type RequestOutcome = "proxied" | "woken" | "waking_page" | "asleep" | "unavailable" | "blocked" | "login" | "denied" | "error";
 
 export interface InspectedRequest {
     id: string; // Unique (replica and sequence number)

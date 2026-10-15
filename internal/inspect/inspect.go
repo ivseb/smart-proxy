@@ -25,6 +25,7 @@ const (
 	OutcomeWakingPage  = "waking_page" // A browser got the "waking up" page
 	OutcomeAsleep      = "asleep"      // Ignored (monitor) and answered by Smart Proxy while asleep
 	OutcomeUnavailable = "unavailable" // The application didn't start in time, or couldn't be woken
+	OutcomeBlocked     = "blocked"     // Not woken: the route's blocked hours (answered 503)
 	OutcomeLogin       = "login"       // Sent to the route's login page
 	OutcomeDenied      = "denied"      // Rejected: no valid credentials
 	OutcomeError       = "error"       // The application couldn't be reached

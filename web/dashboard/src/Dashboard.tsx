@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Activity as ActivityIcon, CalendarClock, Languages, Layers, LayoutDashboard, LogOut, ScrollText, Shield, User } from "lucide-react";
+import { Activity as ActivityIcon, CalendarClock, Languages, Settings as SettingsIcon, Layers, LayoutDashboard, LogOut, ScrollText, Shield, User } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { usePolling } from "@/hooks/usePolling";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,14 +12,15 @@ import { RouteModal } from "@/components/views/RouteModal";
 import { RouteDetailView } from "@/components/views/RouteDetailView";
 import { StatsView } from "@/components/views/StatsView";
 import { UptimeView } from "@/components/views/UptimeView";
+import { SettingsView } from "@/components/views/SettingsView";
 import { Button } from "@/components/ui/Button";
 import { apiRequest, errorMessage } from "@/lib/api";
 import { LANGS, setLang, t, tn, useLang } from "@/lib/i18n";
 
-type Tab = "stats" | "routes" | "uptime" | "patching" | "logs";
+type Tab = "stats" | "routes" | "uptime" | "patching" | "logs" | "settings";
 
-// Tabs can be linked to: #overview, #routes, #report, #patching, #logs.
-const TAB_HASH: Record<Tab, string> = { stats: "overview", routes: "routes", uptime: "report", patching: "patching", logs: "logs" };
+// Tabs can be linked to: #overview, #routes, #report, #patching, #logs, #settings.
+const TAB_HASH: Record<Tab, string> = { stats: "overview", routes: "routes", uptime: "report", patching: "patching", logs: "logs", settings: "settings" };
 
 function tabFromHash(): Tab | null {
     const hash = window.location.hash.replace(/^#/, "");
@@ -117,6 +118,7 @@ export function Dashboard() {
     };
 
     const wakeRoute = (route: RouteStatus) =>
+        (!route.blocked_hours?.blocked || confirm(t("{name} is in its blocked hours. Start it anyway? It goes back to sleep when idle. To allow it for a while, add an exception on its page.", { name: route.host || route.deployment }))) &&
         run(
             () => apiRequest(`/api/k8s/wake-deployment?${query({ namespace: route.namespace, deployment: route.deployment })}`, { method: "POST" }),
             t("Waking up {name}", { name: route.deployment }),
@@ -175,6 +177,10 @@ export function Dashboard() {
                     </nav>
 
                     <div className="flex items-center gap-2 text-sm text-gray-400">
+                        <button onClick={() => goTo("settings")} title={t("Settings")} aria-label={t("Settings")} aria-current={activeTab === "settings" && !selectedRouteId ? "page" : undefined}
+                            className={`p-1.5 rounded-md transition-colors ${activeTab === "settings" && !selectedRouteId ? "bg-blue-600 text-white" : "hover:text-white hover:bg-white/5"}`}>
+                            <SettingsIcon size={18} />
+                        </button>
                         <label className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:text-white hover:bg-white/5 transition-colors cursor-pointer" title={t("Language")}>
                             <Languages size={16} />
                             <select value={lang} onChange={e => setLang(e.target.value as typeof lang)} aria-label={t("Language")}
@@ -235,6 +241,7 @@ export function Dashboard() {
                             {activeTab === "uptime" && <UptimeView onSelect={setSelectedRouteId} />}
                             {activeTab === "patching" && <PatchingView info={info} onChanged={refetch} />}
                             {activeTab === "logs" && <LogsView replica={info?.replica} />}
+                            {activeTab === "settings" && <SettingsView info={info} />}
                         </>
                     )}
                 </main>

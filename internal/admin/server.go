@@ -10,6 +10,7 @@ import (
 	"net/url"
 
 	"smart-proxy/internal/auth"
+	"smart-proxy/internal/blackout"
 	"smart-proxy/internal/history"
 	"smart-proxy/internal/inspect"
 	"smart-proxy/internal/k8s"
@@ -55,6 +56,8 @@ type Server struct {
 	Trash trash.Bin
 	// Uptime holds how long the managed workloads were up (nil without Kubernetes).
 	Uptime *uptime.Recorder
+	// Blackout holds the blocked hours' settings (time zone, holidays, defaults).
+	Blackout *blackout.Keeper
 }
 
 // NewServer creates a new instance of the admin Server.
@@ -85,6 +88,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/routes/import", s.handleImport)
 	mux.HandleFunc("/api/routes/deleted", s.handleDeleted)
 	mux.HandleFunc("/api/uptime", s.handleUptime)
+	mux.HandleFunc("/api/settings", s.handleSettings)
+	mux.HandleFunc("/api/routes/blocked-hours", s.handleBlockedHours)
+	mux.HandleFunc("/api/routes/exceptions", s.handleExceptions)
 	mux.HandleFunc("/api/routes/inspect", s.handleInspect)
 	mux.HandleFunc("/api/routes/requests", s.handleRequests)
 	mux.HandleFunc("/api/routes/protection/users", s.handleProtectionUsers)

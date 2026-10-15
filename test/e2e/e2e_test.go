@@ -78,6 +78,7 @@ func TestE2E(t *testing.T) {
 	t.Run("ConditionsSendRequestsToAnotherBackend", testConditions)
 	t.Run("ProtectionRequiresSignInOrToken", testProtection)
 	t.Run("PausedRouteStaysAwake", testPause)
+	t.Run("BlockedHoursKeepTheAppAsleep", testBlockedHours)
 	t.Run("DeletedRouteIsRestored", testRestore)
 	t.Run("LongStreamKeepsTheAppAwake", testLongStream)
 	t.Run("NewLeaderPutsTheIdleAppToSleep", testFailover)
@@ -268,6 +269,38 @@ func testPause(t *testing.T) {
 
 // A deleted route goes to the trash: its Ingress gets its own backend back, and restoring the
 // route points the Ingress at Smart Proxy again, with the same settings.
+// Blocked hours starting put the app to sleep, and requests don't wake it (503) until an
+// exception allows it.
+func testBlockedHours(t *testing.T) {
+	get(t, "/echo", "application/json") // Awake
+	if replicas(t) == 0 {
+		t.Fatal("the app didn't wake")
+	}
+	now := time.Now().UTC()
+	settings := map[string]any{"timezone": "UTC", "holidays": []any{}, "namespaces": map[string]any{},
+		"global": map[string]any{"mode": "custom", "windows": []any{map[string]any{"from": now.Add(-time.Minute).Format("15:04"), "to": now.Add(30 * time.Minute).Format("15:04")}}}}
+	adminJSON(t, "PUT", "/api/settings", settings, nil)
+	t.Cleanup(func() {
+		adminJSON(t, "PUT", "/api/settings", map[string]any{"timezone": "Europe/Rome", "global": map[string]any{"mode": "off"}}, nil)
+	})
+	eventually(t, 90*time.Second, "blocked hours started but the app wasn't put to sleep", func() bool { return replicas(t) == 0 })
+
+	resp, _ := get(t, "/echo", "application/json")
+	if resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("X-Smart-Proxy") != "blocked" || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("during blocked hours: %d %v", resp.StatusCode, resp.Header)
+	}
+	time.Sleep(2 * time.Second)
+	if replicas(t) != 0 {
+		t.Fatal("a request woke the app during its blocked hours")
+	}
+
+	exception := map[string]any{"kind": "allow", "from": time.Now().UTC().Format(time.RFC3339), "to": time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339), "reason": "e2e"}
+	adminJSON(t, "POST", "/api/routes/exceptions?id="+url.QueryEscape(routeID), exception, nil)
+	if resp, body := get(t, "/echo", "application/json"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("with an exception the request didn't wake the app: %d %s", resp.StatusCode, truncate(body))
+	}
+}
+
 func testRestore(t *testing.T) {
 	ingressBackend := func() string {
 		ing, err := kube.NetworkingV1().Ingresses(appNS).Get(context.TODO(), "echo", metav1.GetOptions{})

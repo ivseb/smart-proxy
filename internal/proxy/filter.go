@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
+	"time"
 
 	"smart-proxy/internal/metrics"
 	"smart-proxy/internal/store"
@@ -76,4 +78,18 @@ func (h *Handler) answerAsleep(w http.ResponseWriter, route store.RouteConfig) b
 	w.WriteHeader(status)
 	fmt.Fprintf(w, "%s is asleep (Smart Proxy); it wakes up on the next visit.\n", route.Deployment)
 	return true
+}
+
+// answerBlocked tells a request that the route's application can't be woken now (its blocked
+// hours), and when it can again.
+func (h *Handler) answerBlocked(w http.ResponseWriter, route store.RouteConfig) {
+	metrics.WakeBlocked(route.Namespace, route.ID)
+	msg := "Smart Proxy: the application is not available at this time (blocked hours)"
+	if st := h.Blackout.Get().State(route, time.Now()); st.Change != nil {
+		w.Header().Set("Retry-After", strconv.Itoa(int(time.Until(*st.Change).Seconds())+1))
+		msg += "; it can be started again from " + st.Change.Format(time.RFC3339)
+	}
+	w.Header().Set("X-Smart-Proxy", "blocked")
+	w.Header().Set("Cache-Control", "no-store")
+	http.Error(w, msg, http.StatusServiceUnavailable)
 }

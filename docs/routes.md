@@ -77,6 +77,33 @@ Requests from uptime monitors and health checks shouldn't keep an application aw
 
 Rules are also added from **Who keeps it awake** (*Ignore*) and from a recorded request (*Don't count as activity*), for the cases nothing detects by itself. While the application sleeps, matching requests get `200` from Smart Proxy, `503`, or wake it (the route's settings).
 
+## Blocked hours: no wake-ups at night or on weekends
+
+A request to a valid address wakes a sleeping application, at any hour. **Blocked hours** prevent that when nobody should need it: during them, requests don't start the application (they get `503 Service Unavailable`, with `Retry-After` saying when it can be started again), and when they start the application is put to sleep right away, without waiting for its idle timeout. An application already running (started by hand, say) keeps serving until it's idle.
+
+They are set in three places, the most specific winning:
+
+- **Settings** (the gear in the header) **→ Blocked hours**: for every route (off until you turn it on).
+- **Settings → By namespace**: a namespace follows the global hours, has its own, or none.
+- **The route's page → Blocked hours**: the same three choices, for one route.
+
+![A route's blocked hours: the rules it follows, the week ahead, an exception for a Saturday release](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/blocked-hours.png)
+
+Hours are days of the week plus a time range, or the whole day. A range ending earlier than it starts is the night hours of those days: *Mon–Fri 22:00–06:00* blocks each weekday from 00:00 to 06:00 and from 22:00 to 24:00 — Monday morning included. Add *Sat–Sun all day* for the weekend. The route's page shows the week ahead, hour by hour.
+
+![Settings: blocked hours for every route, per namespace, holidays and time zone](https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/settings.png)
+
+**Holidays** (Settings → Holidays; *Add Italy's holidays* fills in the national ones) follow Sunday's rules. Hours and holidays are in the settings' time zone, Europe/Rome by default.
+
+**Exceptions** lift a route's blocked hours for a while, from its page (*Add an exception*), for up to 31 days:
+
+- **Can be woken**: requests start the application as usual (a release on Saturday, someone on call);
+- **Kept on**: it is started when the exception begins and stays on until it ends, even without traffic (a demo in the evening).
+
+When an exception ends inside blocked hours, the application is put to sleep. *End now* ends one early; who added it, when and why are kept. *Wake now* from the dashboard starts an application during blocked hours too, after a confirmation. A pause also lifts them, and **Always On routes are never blocked**; a schedule keeping a route awake doesn't apply during blocked hours.
+
+The requests turned away show in the route's recorded requests (*Not woken: blocked hours*) and in the `smart_proxy_wakes_blocked_total` metric. The settings are kept in the ConfigMap `<release>-settings`.
+
 ## Export, import, restore
 
 - **Export** (above the list of routes, or on a route's page) downloads routes as a JSON file: all of them, or those you tick. Every setting is in it — dependencies, idle timeout, schedule, ignore rules, backends, access settings — but not the people and access tokens of protected routes. Routes defined by annotations are left out: they live in Git already.

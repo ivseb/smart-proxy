@@ -66,6 +66,8 @@ func (w *Watcher) declared(kind, namespace, name, host, path string, backend k8s
 		desired.InspectUntil = existing.InspectUntil
 		desired.Pause = existing.Pause
 		desired.Protection = existing.Protection // Set from the dashboard: annotations don't know it
+		desired.Blackout = existing.Blackout     // Same
+		desired.Exceptions = existing.Exceptions
 	}
 	desired.Deployment, _ = w.k8sClient.ResolveDeploymentForService(namespace, backend.Service)
 	settings.Apply(desired) // smart-proxy/workload, when set, overrides the resolved workload

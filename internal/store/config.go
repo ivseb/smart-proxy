@@ -60,6 +60,11 @@ type RouteConfig struct {
 	// Backends are the Services traffic is balanced across, by weight (from an OpenShift Route's
 	// alternate backends). Empty means the single TargetService. See WeightedBackend.Managed.
 	Backends []WeightedBackend `json:"backends,omitempty"`
+	// Blackout says when the application may not be woken; nil follows the namespace's or the
+	// global setting (see package blackout).
+	Blackout *BlackoutPolicy `json:"blackout,omitempty"`
+	// Exceptions lift the blocked hours for a while (runtime state, like Pause).
+	Exceptions []Exception `json:"exceptions,omitempty"`
 }
 
 // WeightedBackend is one of the Services a route balances traffic across.
@@ -208,12 +213,17 @@ const (
 	WhenAsleepWake        = "wake"        // Wake the app (the request still doesn't count as activity)
 )
 
-// ValidateTraffic reports invalid ignore rules or WhenAsleep values.
+// ValidateTraffic reports invalid ignore rules, WhenAsleep values or blocked hours.
 func (r RouteConfig) ValidateTraffic() error {
 	switch r.WhenAsleep {
 	case "", WhenAsleepRespond, WhenAsleepUnavailable, WhenAsleepWake:
 	default:
 		return fmt.Errorf("when_asleep must be %s, %s or %s", WhenAsleepRespond, WhenAsleepUnavailable, WhenAsleepWake)
+	}
+	if r.Blackout != nil {
+		if err := r.Blackout.Validate(); err != nil {
+			return err
+		}
 	}
 	if r.Ignore != nil {
 		return r.Ignore.Validate()
@@ -295,15 +305,28 @@ func (r RouteConfig) Paused(now time.Time) bool { return r.Pause.Active(now) }
 // IdleSince is when the route was last active, for its idle timeout: a pause counts as activity
 // until it ends, so a route doesn't go to sleep the moment its pause expires.
 func (r RouteConfig) IdleSince(now time.Time) time.Time {
+	since := r.LastActivity
 	if r.Pause != nil {
 		if r.Pause.Active(now) {
 			return now
 		}
-		if r.Pause.Until != nil && r.Pause.Until.After(r.LastActivity) {
-			return *r.Pause.Until
+		if r.Pause.Until != nil && r.Pause.Until.After(since) {
+			since = *r.Pause.Until
 		}
 	}
-	return r.LastActivity
+	// Same for an exception keeping the route awake.
+	for _, e := range r.Exceptions {
+		if e.Kind != ExceptionOn || e.From.After(now) {
+			continue
+		}
+		if e.Active(now) {
+			return now
+		}
+		if e.To.After(since) {
+			since = e.To
+		}
+	}
+	return since
 }
 
 // Idle reports whether the route has been idle longer than its idle timeout (scheduled hours

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"smart-proxy/internal/blackout"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/metrics"
@@ -31,6 +32,10 @@ type Watcher struct {
 	paused map[string]time.Time   // Resource or workload -> left alone until
 
 	released map[string]time.Time // Routes of unwatched namespaces restored (or tried) -> when
+
+	// Blackout holds the blocked hours: applications are put to sleep when they start, and
+	// schedules don't wake them (nil: no blocked hours).
+	Blackout *blackout.Keeper
 }
 
 func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *Watcher {
@@ -77,10 +82,22 @@ func (w *Watcher) checkIdleRoutes() {
 	}
 	routes := w.store.GetAllRoutes()
 	now := time.Now()
+	settings := blackout.Defaults()
+	if w.Blackout != nil {
+		settings = w.Blackout.Get()
+	}
 
-	// Scheduled hours: keep those routes (and their dependencies) awake.
+	// Blocked hours just started: put those applications to sleep now.
 	for _, route := range routes {
-		if route.ScheduledAwake(now) && w.k8sClient.Watches(route.Namespace) {
+		if settings.JustBlocked(route, now) && w.k8sClient.Watches(route.Namespace) {
+			w.sleepBlocked(settings, routes, route, now)
+		}
+	}
+
+	// Scheduled hours (unless blocked) and exceptions keeping a route on: keep those routes (and
+	// their dependencies) awake.
+	for _, route := range routes {
+		if ((route.ScheduledAwake(now) && !settings.Blocked(route, now)) || route.KeptOn(now)) && w.k8sClient.Watches(route.Namespace) {
 			chain := make([]string, 0, len(route.Dependencies)+1)
 			for _, dep := range route.Dependencies {
 				chain = append(chain, dep.Name)
@@ -140,6 +157,32 @@ func (w *Watcher) checkIdleRoutes() {
 	}
 }
 
+// sleepBlocked puts a route's workloads to sleep as its blocked hours start, without waiting for
+// its idle timeout: its own workloads, and its dependencies that sleep with it, unless another
+// route that isn't blocked needs them.
+func (w *Watcher) sleepBlocked(settings blackout.Settings, routes []store.RouteConfig, route store.RouteConfig, now time.Time) {
+	if _, _, _, ok := route.Resource(); !ok || !w.routedThroughUs(route) {
+		return
+	}
+	others := make([]store.RouteConfig, 0, len(routes))
+	for _, r := range routes {
+		if r.ID != route.ID && !settings.Blocked(r, now) {
+			others = append(others, r)
+		}
+	}
+	reason := fmt.Sprintf("blocked hours of route %s%s started", route.Host, route.Path)
+	for _, workload := range route.ManagedWorkloads() {
+		if !w.isDeploymentActive(others, route.Namespace, workload) {
+			w.sleep(route.Namespace, workload, 0, reason)
+		}
+	}
+	for _, dep := range route.Dependencies {
+		if dep.StopOnIdle && !w.isDeploymentActive(others, route.Namespace, dep.Name) {
+			w.sleep(route.Namespace, dep.Name, 0, reason)
+		}
+	}
+}
+
 func (w *Watcher) clearStaleSleepMarks() {
 	if w.k8sClient == nil {
 		return
@@ -173,7 +216,7 @@ func (w *Watcher) sleep(namespace, deployment string, minAwake time.Duration, re
 	}
 }
 
-// wake scales a sleeping deployment up for its schedule.
+// wake scales a sleeping deployment up for its schedule, or an exception keeping it on.
 func (w *Watcher) wake(namespace, deployment string) {
 	target, err := w.k8sClient.WakeDeployment(namespace, deployment)
 	if err != nil {
@@ -181,7 +224,7 @@ func (w *Watcher) wake(namespace, deployment string) {
 		return
 	}
 	if target > 0 {
-		logger.Printf("Woke %s/%s with %d replica(s): scheduled hours started", namespace, deployment, target)
+		logger.Printf("Woke %s/%s with %d replica(s): scheduled hours, or an exception keeping it on, started", namespace, deployment, target)
 		metrics.WakeStarted(namespace, canonical(deployment), "schedule")
 	}
 }

@@ -7,6 +7,8 @@ import type { Condition, IgnoreKind, LogEntry, RouteConfig, RouteStatus, StatsDa
 import { TrafficSources } from "@/components/views/TrafficSources";
 import { RequestsChart } from "@/components/views/RequestsChart";
 import { UptimeCard } from "@/components/views/UptimeCard";
+import { BlockedHoursCard } from "@/components/views/BlockedHoursCard";
+import { stateText } from "@/lib/blackout";
 import { RequestInspector } from "@/components/views/RequestInspector";
 import { BackendsCard } from "@/components/views/BackendsCard";
 import { BackendsEditor } from "@/components/views/BackendsEditor";
@@ -121,6 +123,7 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                                         : t("Wakes on the next request")}
                         </div>
                         <div className="text-xs text-gray-500">{t("Idle timeout {duration}", { duration: formatDuration(route.effective_idle_timeout) })}</div>
+                        {stateText(route.blocked_hours, now) && <div className="text-xs text-slate-300">{stateText(route.blocked_hours, now)}</div>}
                         {route.schedule && (
                             <div className="text-xs text-gray-400">
                                 {t("Awake")} {formatSchedule(route.schedule)}{route.schedule.timezone ? ` (${route.schedule.timezone})` : " (UTC)"}
@@ -191,6 +194,8 @@ export function RouteDetailView({ route, stats, logs, onBack, onEdit, onDelete, 
                     <RequestsChart routeId={route.id} height={180} />
                 </CardContent>
             </Card>
+
+            <BlockedHoursCard route={route} onSave={onSave} onChanged={onChanged} />
 
             <UptimeCard route={route} />
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"smart-proxy/internal/auth"
+	"smart-proxy/internal/blackout"
 	"smart-proxy/internal/k8s"
 	"smart-proxy/internal/logger"
 	"smart-proxy/internal/store"
@@ -56,6 +57,8 @@ type RouteStatus struct {
 	ProtectionUsers     []Credential `json:"protection_users"`
 	ProtectionTokens    []Credential `json:"protection_tokens"`
 	ProtectionAvailable bool         `json:"protection_available"`
+	// BlockedHours is the state of the route's blocked hours (when it may not be woken).
+	BlockedHours blackout.State `json:"blocked_hours"`
 }
 
 // BackendState is a backend of a route with its live state.
@@ -100,14 +103,34 @@ func (s *Server) routeStatus(r store.RouteConfig) RouteStatus {
 	rs.BackendStatus = s.backendStates(r)
 	rs.ProtectionUsers, rs.ProtectionTokens = s.credentials(r.ID)
 	rs.ProtectionAvailable = s.vault().Ready()
+	now := time.Now()
+	rs.BlockedHours = s.blackoutSettings().State(r, now)
 	if kind, ns, name, ok := r.Resource(); ok {
 		rs.Source = &ResourceRef{Kind: kind, Namespace: ns, Name: name}
-		if now := time.Now(); !r.AlwaysOn && !rs.ScheduleActive && !r.Paused(now) && rs.Status != StatusSleep {
-			at := r.IdleSince(now).Add(rs.EffectiveIdleTimeout)
-			rs.SleepsAt = &at
+		if !r.AlwaysOn && !r.Paused(now) && rs.Status != StatusSleep {
+			if e := r.ActiveException(now); e != nil && e.Kind == store.ExceptionOn {
+				at := e.To.Add(rs.EffectiveIdleTimeout) // Kept on until it ends, then its idle timeout
+				rs.SleepsAt = &at
+			} else if !rs.ScheduleActive {
+				at := r.IdleSince(now).Add(rs.EffectiveIdleTimeout)
+				rs.SleepsAt = &at
+			}
+			// Its blocked hours starting earlier put it to sleep then.
+			if b := rs.BlockedHours; !b.Blocked && b.Change != nil && (rs.SleepsAt == nil || b.Change.Before(*rs.SleepsAt)) {
+				at := *b.Change
+				rs.SleepsAt = &at
+			}
 		}
 	}
 	return rs
+}
+
+// blackoutSettings are the blocked hours' settings in force.
+func (s *Server) blackoutSettings() blackout.Settings {
+	if s.Blackout == nil {
+		return blackout.Defaults()
+	}
+	return s.Blackout.Get()
 }
 
 func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
@@ -132,11 +155,11 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		// Recording and pauses are runtime state with their own calls: a form saved from a
-		// stale page must not bring an old one back.
-		route.InspectUntil, route.Pause = nil, nil
+		// Recording, pauses and exceptions are runtime state with their own calls: a form saved
+		// from a stale page must not bring an old one back.
+		route.InspectUntil, route.Pause, route.Exceptions = nil, nil, nil
 		if existing, ok := s.store.GetRoute(route.ID); ok && route.ID != "" {
-			route.InspectUntil, route.Pause = existing.InspectUntil, existing.Pause
+			route.InspectUntil, route.Pause, route.Exceptions = existing.InspectUntil, existing.Pause, existing.Exceptions
 		}
 		if status, err := s.saveRoute(&route); err != nil {
 			http.Error(w, err.Error(), status)

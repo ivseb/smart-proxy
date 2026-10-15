@@ -53,6 +53,12 @@ var (
 		Help:      "Ignored requests answered by Smart Proxy because the route was asleep, by status code.",
 	}, []string{"namespace", "route", "code"})
 
+	wakesBlocked = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: namespace,
+		Name:      "wakes_blocked_total",
+		Help:      "Requests that would have woken a sleeping application during its blocked hours (answered 503).",
+	}, []string{"namespace", "route"})
+
 	leader = prometheus.NewGauge(prometheus.GaugeOpts{
 		Namespace: namespace,
 		Name:      "leader",
@@ -66,7 +72,7 @@ var (
 )
 
 func init() {
-	registry.MustRegister(requests, wakeups, wakeDuration, sleeps, ignored, asleepResponses, leader,
+	registry.MustRegister(requests, wakeups, wakeDuration, sleeps, ignored, asleepResponses, wakesBlocked, leader,
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 }
 
@@ -83,6 +89,11 @@ func Request(namespace, routeID string) {
 // Ignored counts a request that didn't count as activity.
 func Ignored(namespace, routeID, reason string) {
 	ignored.WithLabelValues(namespace, routeID, reason).Inc()
+}
+
+// WakeBlocked counts a request that didn't wake a route because of its blocked hours.
+func WakeBlocked(namespace, routeID string) {
+	wakesBlocked.WithLabelValues(namespace, routeID).Inc()
 }
 
 // AsleepResponse counts an ignored request answered while the route slept.

@@ -38,6 +38,7 @@ Idle environments burn money. Preview, dev, staging and demo namespaces sit runn
 | 🧪 **Try a new version with some users** | Send requests matching a condition (a header, cookie, path, client IP…) to another backend and keep those users there — e.g. the beta of your mobile app on the next version of the API. |
 | 🔒 **Built-in sign-in** | Put any app behind a sign-in page or access tokens, without an identity provider and without touching the app. |
 | 🗓️ **Schedules** | Keep apps awake during office hours (any timezone) and let them sleep the rest of the time. |
+| 🌙 **Blocked hours** | No wake-ups at night, on weekends or holidays — globally, per namespace or per route — with exceptions for the odd Saturday release. |
 | 📈 **Prometheus metrics** | Cold-start durations, wake-ups, sleeping deployments and replica-hours saved. |
 | 🔀 **Ingress *and* Routes** | One dashboard for both vanilla Kubernetes Ingresses and OpenShift Routes. |
 | 🗂️ **Many namespaces** | Manage a list of namespaces, all of them, or any namespace you label `smart-proxy=enabled`. |

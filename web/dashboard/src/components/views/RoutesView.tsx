@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArchiveRestore, CalendarClock, Circle, Download, Upload, FileCode2, Lock, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, Trash2 } from "lucide-react";
+import { ArchiveRestore, Ban, CalendarClock, Circle, Download, Upload, FileCode2, Lock, ChevronDown, ChevronRight, Edit2, Globe, Hand, Octagon, Pin, Plus, Power, Route as RouteIcon, Search, ShieldCheck, Trash2 } from "lucide-react";
 import type { ClusterInfo, DeletedRoute, RouteStatus, StatsData } from "@/types/api";
 import { Button } from "@/components/ui/Button";
 import { Copyable } from "@/components/ui/Copyable";
@@ -10,6 +10,7 @@ import { useStoredState } from "@/hooks/useStoredState";
 import { msg, t, tn } from "@/lib/i18n";
 import { pauseActive } from "@/lib/pause";
 import { PauseBadge, PauseButton } from "@/components/views/PauseControl";
+import { stateText } from "@/lib/blackout";
 import { ExportDialog, ImportDialog, TrashDialog } from "@/components/views/BackupDialogs";
 import { usePolling } from "@/hooks/usePolling";
 
@@ -323,6 +324,8 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                         <span title={t("Idle timeout {duration}", { duration: formatDuration(route.effective_idle_timeout) })}>
                             {t("Sleeps {time}", { time: formatRelative(route.sleeps_at, now) })}
                         </span>
+                    ) : route.blocked_hours?.blocked ? (
+                        <span className="inline-flex items-center gap-1 text-slate-300"><Ban size={11} /> {stateText(route.blocked_hours, now)}</span>
                     ) : (
                         <span>{t("Wakes on next request")}</span>
                     )}
@@ -336,6 +339,11 @@ function RouteRow({ route, requests, now, showNamespace, onSelect, onEdit, onDel
                         <span className="inline-flex items-center gap-1 ml-2 text-red-300" title={t("Requests are being recorded")}>
                             <Circle size={8} className="fill-red-500 text-red-500" /> {t("recording")}
                         </span>
+                    )}
+                    {stateText(route.blocked_hours, now) && !(route.blocked_hours.blocked && !route.sleeps_at && !pauseActive(route.pause, now) && !route.always_on && !(route.schedule_active && route.schedule) && route.source) && (
+                        <div className={`flex items-center gap-1 ${route.blocked_hours.blocked ? "text-slate-300" : route.blocked_hours.exception ? "text-amber-200" : "text-gray-500"}`}>
+                            {route.blocked_hours.exception?.kind === "on" ? <Power size={11} /> : route.blocked_hours.exception ? <ShieldCheck size={11} /> : <Ban size={11} />} {stateText(route.blocked_hours, now)}
+                        </div>
                     )}
                     {route.schedule && !route.schedule_active && (
                         <div className="inline-flex items-center gap-1 text-gray-500" title={`${t("Kept awake {schedule}", { schedule: formatSchedule(route.schedule) })}${route.schedule.timezone ? ` (${route.schedule.timezone})` : ""}`}>
