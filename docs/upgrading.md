@@ -1,5 +1,9 @@
 # Upgrading
 
+## 2.8.2: pauses
+
+A drop-in upgrade (chart 0.10.2). One change in behaviour: **pausing a route no longer wakes its application.** A sleeping application stays asleep during the pause — requests get 503 until someone starts it with **Wake now** — and a running one is still never put to sleep while paused.
+
 ## From 2.7 to 2.8
 
 A drop-in upgrade with the chart (`helm upgrade … --version 0.10.0 -f my-values.yaml`): no values to change, no new permission, nothing changes for existing routes. Blocked hours are off until you set them (Settings, the gear in the dashboard's header). New ConfigMaps, removed with Smart Proxy: `<release>-settings` (blocked hours, holidays, time zone) and `<release>-uptime-year` (the year's history, built from the days already recorded).

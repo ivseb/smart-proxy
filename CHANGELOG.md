@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.8.2 — chart 0.10.2
 
 ### Changed
 - **A pause leaves the application as it is.** Pausing a route no longer wakes its application: Smart Proxy neither starts nor stops anything while the pause lasts, and only forwards requests. A sleeping application stays asleep — requests get 503 (`X-Smart-Proxy: paused`) until someone starts it with **Wake now**; a running one is never put to sleep.
