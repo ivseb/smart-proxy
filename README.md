@@ -32,7 +32,7 @@ Idle environments burn money. Preview, dev, staging and demo namespaces sit runn
 | 💤 **Auto-sleep & instant wake** | Scale idle deployments to zero; the next request transparently wakes them back up. |
 | 🔗 **Dependency chains** | Keep `app → api → db` awake together, optionally starting them in order, and let them sleep together. |
 | 🩺 **Monitor-aware** | Uptime monitors and health checks never keep apps awake or wake them; they get a 200 while apps sleep. See who keeps an app awake, ignore it in one click, and how often each rule matches. |
-| ⏸️ **Pause** | Turn a route into a plain reverse proxy for an hour, until tomorrow, or until you resume it — the app stays up meanwhile. |
+| ⏸️ **Pause** | Turn a route into a plain reverse proxy for an hour, until tomorrow, or until you resume it — Smart Proxy leaves the app as it is meanwhile, neither starting nor stopping it. |
 | 💾 **Export, import, restore** | Download routes as a file and import them back, with a preview of what changes; deleted routes stay restorable for 30 days. |
 | 🔍 **Requests inspector** | Record what reaches a route for a few minutes: headers (credentials masked), cookies, and what Smart Proxy did with each request. |
 | 🧪 **Try a new version with some users** | Send requests matching a condition (a header, cookie, path, client IP…) to another backend and keep those users there — e.g. the beta of your mobile app on the next version of the API. |
@@ -78,7 +78,7 @@ Optional tools on each route's page — routes that don't use them work as befor
   <img src="media/sign-in.png" alt="Sign-in page served by Smart Proxy on the application's address" width="250"/>
 </p>
 
-**Day to day.** Pause a route for an hour or until tomorrow — Smart Proxy then only forwards its requests. Keep the rules that hide monitors and health checks in a list, each with how often it matched. Export routes to a file, import them back with a preview of what changes, and restore deleted ones for 30 days.
+**Day to day.** Pause a route for an hour or until tomorrow — Smart Proxy then only forwards its requests, and leaves the application as it is. Keep the rules that hide monitors and health checks in a list, each with how often it matched. Export routes to a file, import them back with a preview of what changes, and restore deleted ones for 30 days.
 
 <p>
   <img src="media/route-ignored.png" alt="A route's ignore rules, each with the requests it matched in the last 24 hours" width="560"/>

@@ -138,7 +138,7 @@ func (s *Server) handleExceptions(w http.ResponseWriter, r *http.Request) {
 		}
 		logger.Printf("Route %s: exception to its blocked hours (%s) from %s to %s, by %s", id, e.Kind, e.From.Format(time.RFC3339), e.To.Format(time.RFC3339), orSomeone(user))
 		if e.Kind == store.ExceptionOn && e.Active(now) {
-			s.wakeForPause(*route) // Kept on from now: up now
+			s.wakeKeptOn(*route) // Kept on from now: up now
 		}
 	case http.MethodDelete:
 		exception := r.URL.Query().Get("exception")

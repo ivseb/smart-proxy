@@ -11,7 +11,7 @@ export const operations: Record<string, string> = {
     "Until…": "Fino a…",
     "Until I resume it": "Finché non la riattivo",
     "Pause {name}": "Metti in pausa {name}",
-    "While paused, Smart Proxy only forwards requests to {workload}: it is woken now and isn't put to sleep. Other backends, the waking page and the answers to monitors are off. Sign-in, if required, stays on.": "In pausa, Smart Proxy inoltra solo le richieste a {workload}: viene svegliato subito e non va a dormire. Backend alternativi, pagina di risveglio e risposte ai monitor sono disattivati. L'accesso con login, se richiesto, resta attivo.",
+    "While paused, Smart Proxy leaves {workload} as it is — it neither starts nor stops it — and only forwards its requests. If it's asleep, it stays asleep: start it with Wake now. Other backends, the waking page and the answers to monitors are off. Sign-in, if required, stays on.": "In pausa, Smart Proxy lascia {workload} com'è — non lo accende né lo spegne — e inoltra soltanto le richieste. Se è spento resta spento: per accenderlo usa Sveglia ora. Backend alternativi, pagina di risveglio e risposte ai monitor sono disattivati. L'accesso con login, se richiesto, resta attivo.",
     "For how long": "Per quanto tempo",
     "Until": "Fino a",
     "It stays paused until you resume it, here or from the list of routes.": "Resta in pausa finché non la riattivi, da qui o dalla lista delle route.",
@@ -134,4 +134,5 @@ export const operations: Record<string, string> = {
     "A route with the same ID exists again: delete it first, or import this one from a file": "Esiste di nuovo una route con lo stesso ID: eliminala prima, o importa questa da un file",
     "Restore": "Ripristina",
     "Delete for good": "Elimina definitivamente",
+    "Paused, app not running": "In pausa, app spenta",
 };

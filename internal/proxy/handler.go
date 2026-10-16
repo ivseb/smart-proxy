@@ -228,11 +228,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	why := ""
 	paused := route.Paused(time.Now())
 	if paused {
-		// Paused: a plain reverse proxy to the application.
+		// Paused: a plain reverse proxy to the application, left as it is. Asleep, it stays so
+		// (the dashboard's Wake now starts it).
 		if len(route.Backends) > 0 {
 			why = WhyPaused
 		}
 		route.Backends = nil
+		if !h.serving(route) {
+			rec.set(inspect.OutcomePaused)
+			w.Header().Set("X-Smart-Proxy", "paused")
+			w.Header().Set("Cache-Control", "no-store")
+			msg := "Smart Proxy: this route is paused and its application isn't running; start it from Smart Proxy's dashboard (Wake now)"
+			if h.awake(route) {
+				w.Header().Set("Retry-After", "10")
+				msg = "Smart Proxy: this route is paused and its application is starting"
+			}
+			http.Error(w, msg, http.StatusServiceUnavailable)
+			return
+		}
 	} else if b, reason := h.explicitBackend(r, client, route); b != nil {
 		why = reason
 		if reason == WhyCondition {
@@ -246,7 +259,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		route = routeTo(route, *b)
 	}
-	wake := true
+	wake := !paused // Paused: nothing is woken (it serves, see above)
 	if reason == "" {
 		h.store.UpdateActivity(route.ID)
 		// Long requests (WebSockets, streams, downloads) keep the route active until they end.
@@ -255,7 +268,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		metrics.Ignored(route.Namespace, route.ID, reason)
 		if h.serving(route) {
 			wake = false
-		} else if !paused && h.answerAsleep(w, route) { // Paused: monitors wake it like anyone
+		} else if !paused && h.answerAsleep(w, route) {
 			rec.set(inspect.OutcomeAsleep)
 			return
 		}

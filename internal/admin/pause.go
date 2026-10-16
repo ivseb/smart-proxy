@@ -10,8 +10,8 @@ import (
 )
 
 // handlePause pauses a route (POST, until=<RFC 3339 time>, or no until: until resumed) or
-// resumes it (DELETE). While paused Smart Proxy only forwards its requests to the application:
-// it is woken now and doesn't sleep until the pause ends.
+// resumes it (DELETE). While paused Smart Proxy leaves the application as it is — it neither
+// starts nor stops it — and only forwards its requests (Wake now starts it).
 func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	route, ok := s.store.GetRoute(id)
@@ -35,7 +35,6 @@ func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		s.wakeForPause(*route)
 		if pause.Until != nil {
 			logger.Printf("Route %s paused until %s by %s", id, pause.Until.Format(time.RFC3339), orSomeone(pause.By))
 		} else {
@@ -59,17 +58,16 @@ func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"pause": route.Pause})
 }
 
-// wakeForPause wakes a paused route's application and dependencies: a plain reverse proxy needs
-// them up.
-func (s *Server) wakeForPause(route store.RouteConfig) {
+// wakeKeptOn wakes a route's application and dependencies as an exception keeping it on begins.
+func (s *Server) wakeKeptOn(route store.RouteConfig) {
 	if s.k8sClient == nil {
 		return
 	}
 	for _, name := range append([]string{route.Deployment}, dependencyNames(route.Dependencies)...) {
 		if target, err := s.k8sClient.WakeDeployment(route.Namespace, name); err != nil {
-			logger.Printf("Warning: waking %s/%s for its paused route: %v", route.Namespace, name, err)
+			logger.Printf("Warning: waking %s/%s, kept on by an exception: %v", route.Namespace, name, err)
 		} else if target > 0 {
-			logger.Printf("Woke %s/%s with %d replica(s): its route is paused", route.Namespace, name, target)
+			logger.Printf("Woke %s/%s with %d replica(s): an exception keeps it on", route.Namespace, name, target)
 		}
 	}
 }

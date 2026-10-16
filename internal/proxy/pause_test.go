@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"smart-proxy/internal/k8s/fakecluster"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
 )
@@ -19,13 +20,28 @@ func pauseRoute(t *testing.T, h *Handler, id string, until *time.Time) {
 	}
 }
 
-// Paused, a route only forwards: a monitor reaching it while asleep wakes it like anyone.
-func TestPausedRouteDoesntAnswerForTheApp(t *testing.T) {
+// Paused, a route is left as it is: asleep, nothing wakes it (503, the dashboard's Wake now
+// starts it); running, it is a plain reverse proxy.
+func TestPausedRouteLeavesTheAppAsItIs(t *testing.T) {
 	h, c, id := monitorHandler(t, "")
 	pauseRoute(t, h, id, nil)
-	w := get(h, "/healthz", "curl/8")
-	if w.Header().Get("X-Smart-Proxy") == "asleep" || replicas(t, c, "web") == 0 {
-		t.Fatalf("paused route answered for the app (%d) or didn't wake it", w.Code)
+	for _, ua := range []string{"curl/8", "Mozilla/5.0"} { // A monitor, a browser
+		w := get(h, "/healthz", ua)
+		if w.Code != http.StatusServiceUnavailable || w.Header().Get("X-Smart-Proxy") != "paused" || replicas(t, c, "web") != 0 {
+			t.Fatalf("%s: %d %v, replicas %d", ua, w.Code, w.Header(), replicas(t, c, "web"))
+		}
+	}
+	// Woken from the dashboard: forwarded.
+	if _, err := h.k8sClient.WakeDeployment(ns, "web"); err != nil {
+		t.Fatal(err)
+	}
+	fakecluster.Eventually(t, func() bool { r, _, _ := c.GetDeploymentStatus(ns, "web"); return r > 0 }, "wake not in cache")
+	if w := get(h, "/", "Mozilla/5.0"); w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") == "" {
+		t.Fatalf("starting: %d %v", w.Code, w.Header())
+	}
+	markReady(t, c, "web")
+	if w := get(h, "/", "Mozilla/5.0"); w.Header().Get("X-Smart-Proxy") == "paused" {
+		t.Fatalf("running and paused: %d %v", w.Code, w.Header())
 	}
 }
 

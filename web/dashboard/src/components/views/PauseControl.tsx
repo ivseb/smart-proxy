@@ -116,7 +116,7 @@ function PauseDialog({ route, onClose, onDone }: { route: RouteStatus; onClose: 
                 </div>
                 <div className="p-6 space-y-4">
                     <p className="text-sm text-gray-300">
-                        {t("While paused, Smart Proxy only forwards requests to {workload}: it is woken now and isn't put to sleep. Other backends, the waking page and the answers to monitors are off. Sign-in, if required, stays on.", { workload: workloadLabel(route.deployment) })}
+                        {t("While paused, Smart Proxy leaves {workload} as it is — it neither starts nor stops it — and only forwards its requests. If it's asleep, it stays asleep: start it with Wake now. Other backends, the waking page and the answers to monitors are off. Sign-in, if required, stays on.", { workload: workloadLabel(route.deployment) })}
                     </p>
                     <fieldset className="space-y-1.5">
                         <legend className="text-xs text-gray-400 mb-1">{t("For how long")}</legend>

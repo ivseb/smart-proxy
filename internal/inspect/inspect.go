@@ -28,6 +28,7 @@ const (
 	OutcomeBlocked     = "blocked"     // Not woken: the route's blocked hours (answered 503)
 	OutcomeOffered     = "offered"     // Blocked hours: a browser got the page offering to start it
 	OutcomeStarted     = "started"     // Started from that page during blocked hours
+	OutcomePaused      = "paused"      // Paused route whose application isn't running (answered 503)
 	OutcomeLogin       = "login"       // Sent to the route's login page
 	OutcomeDenied      = "denied"      // Rejected: no valid credentials
 	OutcomeError       = "error"       // The application couldn't be reached

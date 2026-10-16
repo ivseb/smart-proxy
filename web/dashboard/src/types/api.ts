@@ -270,7 +270,7 @@ export interface StatsData {
 }
 
 // What happened to a request, as recorded by the inspector.
-export type RequestOutcome = "proxied" | "woken" | "waking_page" | "asleep" | "unavailable" | "blocked" | "offered" | "started" | "login" | "denied" | "error";
+export type RequestOutcome = "proxied" | "woken" | "waking_page" | "asleep" | "unavailable" | "blocked" | "offered" | "started" | "paused" | "login" | "denied" | "error";
 
 export interface InspectedRequest {
     id: string; // Unique (replica and sequence number)

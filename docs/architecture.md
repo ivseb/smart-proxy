@@ -110,7 +110,7 @@ A route can be kept awake during given hours, regardless of traffic: for example
 
 ## Blocked hours
 
-Hours when requests don't wake sleeping applications, set globally, per namespace or per route (the most specific wins), in the time zone of the settings (Europe/Rome by default); holidays follow Sunday's rules. During them a request that would wake an application gets 503 with `Retry-After` — or, if configured, browsers get a page whose button starts it (a POST to `/__smart_proxy/start`). An application already running serves as usual. The leader puts applications to sleep when their blocked hours start (checking the last few minutes, so a leader change doesn't miss it), and when an exception ends inside them. Exceptions, pauses and Always On lift them; schedules don't wake applications during them. See [Blocked hours](routes.md#blocked-hours-no-wake-ups-at-night-or-on-weekends).
+Hours when requests don't wake sleeping applications, set globally, per namespace or per route (the most specific wins), in the time zone of the settings (Europe/Rome by default); holidays follow Sunday's rules. During them a request that would wake an application gets 503 with `Retry-After` — or, if configured, browsers get a page whose button starts it (a POST to `/__smart_proxy/start`). An application already running serves as usual. The leader puts applications to sleep when their blocked hours start (checking the last few minutes, so a leader change doesn't miss it), and when an exception ends inside them. Exceptions, pauses (which leave the application as it is) and Always On lift them; schedules don't wake applications during them. See [Blocked hours](routes.md#blocked-hours-no-wake-ups-at-night-or-on-weekends).
 
 ## High availability
 

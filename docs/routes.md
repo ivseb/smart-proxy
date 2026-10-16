@@ -54,9 +54,9 @@ The same works for anything a request carries: a tenant header, an office networ
 
 ## Pause: just forward, for a while
 
-**Pause** on a route's page (or in the list of routes) turns Smart Proxy into a plain reverse proxy for that route: for 1 hour, 4 hours, until tomorrow morning, until a date and time, or until you resume it.
+**Pause** on a route's page (or in the list of routes) turns Smart Proxy into a plain reverse proxy for that route, and leaves its application as it is: for 1 hour, 4 hours, until tomorrow morning, until a date and time, or until you resume it.
 
-- The application and its dependencies are woken at once, and nothing is put to sleep while the pause lasts.
+- Smart Proxy neither starts nor stops anything while the pause lasts: a running application keeps running, a sleeping one stays asleep — requests then get `503` (`X-Smart-Proxy: paused`) until you start it with **Wake now**.
 - Requests go to the route's main backend: no other backend, no condition, no pinned browser.
 - Monitors and health checks reach the application like anyone else; nothing is answered for it.
 - Sign-in, if the route requires it, stays on: a pause doesn't open an application to everyone.

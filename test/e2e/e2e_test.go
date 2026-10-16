@@ -77,7 +77,7 @@ func TestE2E(t *testing.T) {
 	t.Run("InspectorRecordsRequestsOfEveryReplica", testInspector)
 	t.Run("ConditionsSendRequestsToAnotherBackend", testConditions)
 	t.Run("ProtectionRequiresSignInOrToken", testProtection)
-	t.Run("PausedRouteStaysAwake", testPause)
+	t.Run("PausedRouteIsLeftAsItIs", testPause)
 	t.Run("BlockedHoursKeepTheAppAsleep", testBlockedHours)
 	t.Run("DeletedRouteIsRestored", testRestore)
 	t.Run("LongStreamKeepsTheAppAwake", testLongStream)
@@ -253,7 +253,22 @@ func testPause(t *testing.T) {
 	sleepApp(t)
 	until := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	adminJSON(t, "POST", "/api/routes/pause?id="+url.QueryEscape(routeID)+"&until="+until, nil, nil)
-	eventually(t, time.Minute, "pausing didn't wake the app", func() bool { return replicas(t) > 0 })
+	// Paused, it's left as it is: asleep, requests don't wake it.
+	if resp, _ := get(t, "/echo", "application/json"); resp.StatusCode != http.StatusServiceUnavailable || resp.Header.Get("X-Smart-Proxy") != "paused" {
+		t.Fatalf("paused and asleep: %d %v", resp.StatusCode, resp.Header)
+	}
+	time.Sleep(3 * time.Second)
+	if replicas(t) != 0 {
+		t.Fatal("pausing or a request woke the app")
+	}
+	// Started from the dashboard, it isn't put to sleep while paused.
+	if resp, err := admin("POST", "/api/k8s/wake-deployment?namespace=e2e&deployment=echo", nil); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("waking: %v %v", resp, err)
+	}
+	eventually(t, time.Minute, "the paused app didn't answer once started", func() bool {
+		resp, _ := get(t, "/echo", "application/json")
+		return resp.StatusCode == http.StatusOK
+	})
 	time.Sleep(idleLimit + 30*time.Second)
 	if replicas(t) == 0 {
 		t.Fatal("the paused route's app was put to sleep")
