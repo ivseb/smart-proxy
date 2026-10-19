@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.8.3 — chart 0.10.3
+
+Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
+
+- Bump github.com/go-jose/go-jose/v4
+
 ## 2.8.2 — chart 0.10.2
 
 ### Changed
