@@ -26,6 +26,11 @@ updates:
   - package-ecosystem: npm
     directory: /web/dashboard
     schedule: { interval: weekly }
+    # typescript-eslint 8 supports TypeScript < 6.1: a major TypeScript update breaks npm ci (and
+    # would hold back the rest of the group). Drop this once typescript-eslint supports it.
+    ignore:
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
     groups:
       dashboard:
         patterns: ["*"]
