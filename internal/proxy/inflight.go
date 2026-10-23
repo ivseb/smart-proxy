@@ -63,7 +63,7 @@ func (h *Handler) markInflightActive() {
 }
 
 // waitAwake wakes a route and waits until it can serve, the request is cancelled or the wake
-// timeout expires.
+// timeout expires. Paused meanwhile, it stops waking it.
 func (h *Handler) waitAwake(ctx context.Context, route store.RouteConfig) bool {
 	timeout := h.WakeTimeout
 	if timeout <= 0 {
@@ -74,6 +74,9 @@ func (h *Handler) waitAwake(ctx context.Context, route store.RouteConfig) bool {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
+		if current, ok := h.store.GetRoute(route.ID); ok && current.Paused(time.Now()) {
+			return false
+		}
 		if _, ready := h.ensureAwake([]store.RouteConfig{route}); ready || h.hasServingPassThrough(route) {
 			return true
 		}

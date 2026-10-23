@@ -423,6 +423,22 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if route.Paused(time.Now()) {
+		// Paused: nothing is woken, not even by a "waking up" page left open in some browser
+		// (it polls every second, and would start again an application scaled down by hand).
+		// Started from the dashboard, the page follows it; otherwise it reloads into the 503.
+		route.Backends = nil
+		status, details := "paused", []workloadState{}
+		switch {
+		case h.serving(route):
+			status = "ready"
+		case h.awake(route):
+			status, details = "waiting", []workloadState{{Name: route.Deployment, Status: stateScaling}}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"status": status, "details": details})
+		return
+	}
 	if b, _ := h.explicitBackend(r, h.TrustedProxies.ClientIP(r), route); b != nil {
 		if !b.Managed {
 			// Never woken by Smart Proxy: it serves or it doesn't.

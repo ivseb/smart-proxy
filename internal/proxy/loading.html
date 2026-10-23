@@ -61,6 +61,10 @@ async function check() {
     const res = await fetch(`${base}/__smart_proxy/status?path=${encodeURIComponent(path)}&host=${encodeURIComponent(location.host)}`);
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
+    if (data.status === "paused") { // Nothing starts it now: the page itself says why
+      location.reload();
+      return;
+    }
     if (data.status === "ready") {
       document.querySelector("main").replaceChildren(el("div", "done", "🚀 " + T["Ready! Opening…"]));
       setTimeout(() => location.reload(), 500);

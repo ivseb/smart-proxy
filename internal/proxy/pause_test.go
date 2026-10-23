@@ -1,6 +1,8 @@
 package proxy
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,6 +11,8 @@ import (
 	"smart-proxy/internal/k8s/fakecluster"
 	"smart-proxy/internal/store"
 	"smart-proxy/internal/traffic"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func pauseRoute(t *testing.T, h *Handler, id string, until *time.Time) {
@@ -78,5 +82,49 @@ func TestIgnoredRequestsAreCountedByRule(t *testing.T) {
 	now := time.Now()
 	if len(hits) != 2 || hits[0].Rule != "/healthz" || hits[0].Total(now) != 2 || hits[1].Rule != "UptimeRobot" {
 		t.Fatalf("hits = %+v", hits)
+	}
+}
+
+// The "waking up" page left open polls the status every second: paused, that doesn't start
+// the application again (scaled down by hand, it stays down) and the page reloads into the 503.
+func TestPausedRouteStatusDoesntWake(t *testing.T) {
+	h, c, id := monitorHandler(t, "")
+	status := func() string {
+		t.Helper()
+		w := get(h, "/__smart_proxy/status?path=%2F", "Mozilla/5.0")
+		var res map[string]any
+		if err := json.NewDecoder(w.Body).Decode(&res); err != nil {
+			t.Fatalf("%d: %v", w.Code, err)
+		}
+		return res["status"].(string)
+	}
+	if status() != "waiting" { // Not paused: the page wakes it
+		t.Fatal("not woken")
+	}
+	waitScaled(t, c, "web")
+
+	pauseRoute(t, h, id, nil)
+	setReady(t, c, "web", 0) // Scaled down by hand, from the console
+	fakecluster.Eventually(t, func() bool { r, _, _ := c.GetDeploymentStatus(ns, "web"); return r == 0 }, "scale-down not in cache")
+	for range 3 {
+		if s := status(); s != "paused" || replicas(t, c, "web") != 0 {
+			t.Fatalf("paused: %q, replicas %d", s, replicas(t, c, "web"))
+		}
+	}
+
+	// Started again (from the dashboard, or by hand): the page follows it.
+	d, _ := c.Kube.AppsV1().Deployments(ns).Get(context.TODO(), "web", metav1.GetOptions{})
+	one := int32(1)
+	d.Spec.Replicas = &one
+	if _, err := c.Kube.AppsV1().Deployments(ns).Update(context.TODO(), d, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	waitScaled(t, c, "web")
+	if s := status(); s != "waiting" {
+		t.Fatalf("starting: %q", s)
+	}
+	markReady(t, c, "web")
+	if s := status(); s != "ready" {
+		t.Fatalf("running: %q", s)
 	}
 }
