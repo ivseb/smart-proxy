@@ -2,6 +2,9 @@
 
 ## 2.8.4 — chart 0.10.4
 
+### Security
+- Built with Go 1.27.3: fixes [GO-2026-6809](https://pkg.go.dev/vuln/GO-2026-6809) in `crypto/x509` (compromised intermediate certificates are distrusted).
+
 ### Fixed
 - **A waking page left open no longer keeps restarting the application.** The page polls Smart Proxy every second, and each poll woke the application: one that never got ready, scaled down by hand or paused, was scaled back up within a second for as long as some browser kept the page open. A paused route now wakes nothing from there either: the page follows a start made with **Wake now**, or reloads into the 503. Requests waiting for a wake-up stop too when the route is paused.
 

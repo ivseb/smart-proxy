@@ -8,7 +8,7 @@ RUN npm run build
 
 # Build Stage for Backend. The Go version is pinned (Dependabot keeps it current): security
 # fixes of the standard library arrive with patch releases.
-FROM golang:1.27.2-alpine AS backend-builder
+FROM golang:1.27.3-alpine AS backend-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
