@@ -210,7 +210,7 @@ export interface RouteStatus extends RouteConfig {
     ready_replicas: number;
     dependency_status: Record<string, DeploymentStatus>;
     source: ResourceRef | null; // null for manually configured routes
-    sleeps_at: string | null; // null when it never sleeps (Always On, manual, asleep)
+    sleeps_at: string | null; // null when it never sleeps (Always On, manual, asleep) or is starting
     effective_idle_timeout: number; // nanoseconds
     schedule_active: boolean;
     resources: (ResourceRef & { host: string })[]; // Patched for this route; restored when it is deleted

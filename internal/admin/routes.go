@@ -41,7 +41,8 @@ type RouteStatus struct {
 	// Source is the patched Ingress/Route, or null for manually configured routes.
 	Source *ResourceRef `json:"source"`
 	// SleepsAt is when the deployment will be scaled down without new traffic (null when it
-	// never sleeps: Always On, manual routes, or already asleep).
+	// never sleeps: Always On, manual routes, or already asleep; and while it starts, as its idle
+	// timeout starts once it serves).
 	SleepsAt *time.Time `json:"sleeps_at"`
 	// EffectiveIdleTimeout is the timeout in force, in nanoseconds (idle_timeout may be 0).
 	EffectiveIdleTimeout time.Duration `json:"effective_idle_timeout"`
@@ -107,7 +108,8 @@ func (s *Server) routeStatus(r store.RouteConfig) RouteStatus {
 	rs.BlockedHours = s.blackoutSettings().State(r, now)
 	if kind, ns, name, ok := r.Resource(); ok {
 		rs.Source = &ResourceRef{Kind: kind, Namespace: ns, Name: name}
-		if !r.AlwaysOn && !r.Paused(now) && rs.Status != StatusSleep {
+		starting := rs.Replicas > 0 && rs.ReadyReplicas == 0
+		if !r.AlwaysOn && !r.Paused(now) && rs.Status != StatusSleep && !starting {
 			if e := r.ActiveException(now); e != nil && e.Kind == store.ExceptionOn {
 				at := e.To.Add(rs.EffectiveIdleTimeout) // Kept on until it ends, then its idle timeout
 				rs.SleepsAt = &at

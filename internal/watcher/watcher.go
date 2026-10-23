@@ -33,6 +33,8 @@ type Watcher struct {
 
 	released map[string]time.Time // Routes of unwatched namespaces restored (or tried) -> when
 
+	wakes map[string]time.Time // Routes whose woken stack is still starting -> when it was woken
+
 	// Blackout holds the blocked hours: applications are put to sleep when they start, and
 	// schedules don't wake them (nil: no blocked hours).
 	Blackout *blackout.Keeper
@@ -49,6 +51,7 @@ func NewWatcher(k8sClient *k8s.Client, store *store.Store, serviceName string) *
 		sleeps:      make(map[string]sleepRecord),
 		paused:      make(map[string]time.Time),
 		released:    make(map[string]time.Time),
+		wakes:       make(map[string]time.Time),
 	}
 }
 
@@ -125,7 +128,8 @@ func (w *Watcher) checkIdleRoutes() {
 		if !w.routedThroughUs(route) {
 			continue
 		}
-		if !route.Idle(now) {
+		// Woken and still starting: left alone, its idle timeout starts once it serves.
+		if w.starting(route, now) || !route.Idle(now) {
 			continue
 		}
 
