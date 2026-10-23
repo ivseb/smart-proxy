@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.8.4 — chart 0.10.4
+
+### Fixed
+- **A waking page left open no longer keeps restarting the application.** The page polls Smart Proxy every second, and each poll woke the application: one that never got ready, scaled down by hand or paused, was scaled back up within a second for as long as some browser kept the page open. A paused route now wakes nothing from there either: the page follows a start made with **Wake now**, or reloads into the 503. Requests waiting for a wake-up stop too when the route is paused.
+
+### Changed
+- **The idle timeout starts once the application is ready, not when it was woken.** A stack slower to start than its idle timeout was put back to sleep halfway. Now Smart Proxy leaves a woken stack alone until every dependency and workload has a ready pod, then starts its idle timeout; one still not ready 30 minutes after its wake-up (crash loop, missing image) sleeps when idle, as before. The dashboard shows no sleep time while the application starts.
+
 ## 2.8.3 — chart 0.10.3
 
 Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:

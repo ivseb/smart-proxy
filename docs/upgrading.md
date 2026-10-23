@@ -1,5 +1,9 @@
 # Upgrading
 
+## 2.8.4: slow starts
+
+A drop-in upgrade (chart 0.10.4). One change in behaviour: **the idle timeout of a woken application starts once it is ready**, not when it was woken, so a slow start no longer eats into it (a stack still not ready after 30 minutes sleeps when idle, as before). Fixed: a waking page left open in a browser no longer starts again an application that was paused or scaled down by hand.
+
 ## 2.8.2: pauses
 
 A drop-in upgrade (chart 0.10.2). One change in behaviour: **pausing a route no longer wakes its application.** A sleeping application stays asleep during the pause — requests get 503 until someone starts it with **Wake now** — and a running one is still never put to sleep while paused.
