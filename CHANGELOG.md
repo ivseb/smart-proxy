@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.8.6 — chart 0.10.6
 
 ### Fixed
 - **Start it now** led back to the blocked-hours page instead of the waking page whenever the request after it reached a replica whose cache didn't show the start yet (or the start had failed). The browser that pressed it now gets the waking page for the next 2 minutes, which follows the start and shows a workload that couldn't be started.
