@@ -7,6 +7,45 @@ entries:
           description: Bump the dashboard group in /web/dashboard with 6 updates
       artifacthub.io/images: |
         - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.8.6
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.8.6
+    created: "2026-10-26T10:00:47.528551032Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: 840b98d83ff2924c1bdabf398b9e2a703dc3bc5e7b6b546df0c4accf1e1714d3
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.10.6/smart-proxy-0.10.6.tgz
+    version: 0.10.6
+  - annotations:
+      artifacthub.io/changes: |
+        - kind: security
+          description: Bump the dashboard group in /web/dashboard with 6 updates
+      artifacthub.io/images: |
+        - name: smart-proxy
           image: docker.io/isebben/smart-proxy:2.8.5
       artifacthub.io/license: MIT
       artifacthub.io/links: |
@@ -858,4 +897,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-23T13:21:23.333024622Z"
+generated: "2026-10-26T10:00:47.528701497Z"
