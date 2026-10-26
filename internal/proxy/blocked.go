@@ -3,9 +3,11 @@ package proxy
 import (
 	_ "embed"
 	"fmt"
+	"hash/fnv"
 	"html/template"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -132,6 +134,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request) {
 		}
 		h.store.UpdateActivity(route.ID)
 		h.ensureAwake([]store.RouteConfig{route})
+		markStarted(w, r, route)
 		metrics.StartedWhileBlocked(route.Namespace, route.ID)
 		who := client.String()
 		if user != "" {
@@ -144,6 +147,40 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request) {
 		target += "?" + q
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+// startedFor is how long the browser that pressed "Start it now" is let through the blocked hours.
+// Right after the start the caches may not show the application starting yet, and the request
+// may reach another replica: without this it would get the page again instead of the waking one
+// (which also shows a start that failed).
+const startedFor = 2 * time.Minute
+
+func startedCookie(routeID string) string {
+	h := fnv.New32a()
+	h.Write([]byte(routeID))
+	return fmt.Sprintf("sp_started_%08x", h.Sum32())
+}
+
+// markStarted remembers, in the browser, that it started the route's application.
+func markStarted(w http.ResponseWriter, r *http.Request, route store.RouteConfig) {
+	cookie := &http.Cookie{Name: startedCookie(route.ID), Value: strconv.FormatInt(time.Now().Unix(), 10),
+		Path: cookiePath(route), HttpOnly: true, MaxAge: int(startedFor.Seconds()), SameSite: http.SameSiteLaxMode}
+	cookie.Secure = isHTTPS(r)
+	http.SetCookie(w, cookie)
+}
+
+// justStarted reports whether the request comes from a browser that started the route's
+// application from the blocked-hours page moments ago (only while the page offers the start).
+func justStarted(r *http.Request, route store.RouteConfig, settings blackout.Settings) bool {
+	if p, _ := settings.Policy(route); p.WhenBlocked != store.WhenBlockedAsk {
+		return false
+	}
+	c, err := r.Cookie(startedCookie(route.ID))
+	if err != nil {
+		return false
+	}
+	at, err := strconv.ParseInt(c.Value, 10, 64)
+	return err == nil && time.Since(time.Unix(at, 0)) < startedFor
 }
 
 // sameSite reports whether a browser request comes from a page of the same host (forms posted

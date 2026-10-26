@@ -276,7 +276,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Blocked hours: a sleeping application isn't woken (one already running serves as usual).
 	if wake {
-		if settings, blocked := h.blockedNow(route); blocked {
+		if settings, blocked := h.blockedNow(route); blocked && !justStarted(r, route, settings) {
 			h.refuseBlocked(w, r, rec, route, settings)
 			return
 		}
@@ -454,7 +454,7 @@ func (h *Handler) handleStatusCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	matchedRoutes := []store.RouteConfig{route}
 
-	if _, blocked := h.blockedNow(route); blocked {
+	if settings, blocked := h.blockedNow(route); blocked && !justStarted(r, route, settings) {
 		h.answerBlocked(w, route)
 		return
 	}

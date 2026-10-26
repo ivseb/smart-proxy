@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -10,7 +11,11 @@ import (
 	"time"
 
 	"smart-proxy/internal/blackout"
+	"smart-proxy/internal/k8s/fakecluster"
 	"smart-proxy/internal/store"
+
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
 )
 
 func TestBlockedHoursDontWakeTheApp(t *testing.T) {
@@ -95,5 +100,81 @@ func TestBlockedHoursPageStartsTheAppOnRequest(t *testing.T) {
 	// Starting: the page is no longer offered, the waking page is.
 	if again := get(h, "/orders?id=7", "Mozilla/5.0"); again.Header().Get("X-Smart-Proxy") == "blocked" {
 		t.Fatalf("after starting: %d %v", again.Code, again.Header())
+	}
+}
+
+// askHandler is monitorHandler with blocked hours now, offering the "Start it now" page.
+func askHandler(t *testing.T) (*Handler, *fakecluster.Cluster) {
+	t.Helper()
+	h, c, _ := monitorHandler(t, "")
+	now := time.Now().UTC()
+	s := blackout.Defaults()
+	s.Timezone = "UTC"
+	s.Global = store.BlackoutPolicy{Mode: store.BlackoutCustom, WhenBlocked: store.WhenBlockedAsk, Windows: []store.BlackoutWindow{
+		{From: now.Add(-time.Hour).Format("15:04"), To: now.Add(2 * time.Hour).Format("15:04")},
+	}}
+	h.Blackout = &blackout.Keeper{}
+	if err := h.Blackout.Save(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	return h, c
+}
+
+func pressStart(t *testing.T, h *Handler) []*http.Cookie {
+	t.Helper()
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "http://web.example.com/__smart_proxy/start", strings.NewReader("path=%2F"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("start: %d %s", w.Code, w.Body.String())
+	}
+	return w.Result().Cookies()
+}
+
+func followStart(h *Handler, cookies []*http.Cookie) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("GET", "http://web.example.com/", nil)
+	r.Header.Set("User-Agent", "Mozilla/5.0")
+	r.Header.Set("Accept", "text/html,*/*")
+	for _, c := range cookies {
+		r.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	return w
+}
+
+// After "Start it now" the browser gets the waking page, even from a replica whose cache doesn't
+// show the start yet; without having pressed it, the blocked-hours page.
+func TestStartedBrowserGetsTheWakingPage(t *testing.T) {
+	a, _ := askHandler(t)
+	b, _ := askHandler(t) // Another replica, its cache still showing the app asleep
+	cookies := pressStart(t, a)
+	if w := followStart(b, nil); w.Header().Get("X-Smart-Proxy") != "blocked" {
+		t.Fatalf("without starting: %d %v", w.Code, w.Header())
+	}
+	if w := followStart(b, cookies); w.Header().Get("X-Smart-Proxy") == "blocked" || !strings.Contains(w.Body.String(), "__smart_proxy/status") {
+		t.Fatalf("after starting: %d %v", w.Code, w.Header())
+	}
+}
+
+// A start that fails (refused by the cluster) shows on the waking page, not as the blocked page again.
+func TestFailedStartShowsOnTheWakingPage(t *testing.T) {
+	h, c := askHandler(t)
+	c.Kube.PrependReactor("patch", "deployments", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("admission webhook denied the request")
+	})
+	cookies := pressStart(t, h)
+	if w := followStart(h, cookies); w.Header().Get("X-Smart-Proxy") == "blocked" {
+		t.Fatalf("after a failed start: %d %v", w.Code, w.Header())
+	}
+	r := httptest.NewRequest("GET", "http://web.example.com/__smart_proxy/status?path=%2F", nil)
+	for _, c := range cookies {
+		r.AddCookie(c)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if !strings.Contains(w.Body.String(), `"status":"Error"`) {
+		t.Fatalf("status: %d %s", w.Code, w.Body.String())
 	}
 }
