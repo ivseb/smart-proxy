@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.8.7 — chart 0.10.7
+
+Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
+
+- Bump the dashboard group in /web/dashboard with 2 updates
+
 ## 2.8.6 — chart 0.10.6
 
 ### Fixed
