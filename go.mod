@@ -10,9 +10,9 @@ require (
 	github.com/openshift/client-go v0.0.0-20260810202730-ddca5e0b7146
 	github.com/prometheus/client_golang v1.25.0
 	golang.org/x/oauth2 v0.37.0
-	k8s.io/api v0.37.1
-	k8s.io/apimachinery v0.37.1
-	k8s.io/client-go v0.37.1
+	k8s.io/api v0.37.2
+	k8s.io/apimachinery v0.37.2
+	k8s.io/client-go v0.37.2
 )
 
 require (
