@@ -44,45 +44,6 @@ entries:
     version: 0.10.9
   - annotations:
       artifacthub.io/changes: |
-        - kind: fixed
-          description: Unpatching one of two Routes serving the same host now sticks (it was patched again right away)
-      artifacthub.io/images: |
-        - name: smart-proxy
-          image: docker.io/isebben/smart-proxy:2.8.8
-      artifacthub.io/license: MIT
-      artifacthub.io/links: |
-        - name: source
-          url: https://github.com/ivseb/smart-proxy
-        - name: documentation
-          url: https://ivseb.github.io/smart-proxy/
-      artifacthub.io/maintainers: |
-        - name: ivseb
-          email: ivan.sebben.dati@gmail.com
-    apiVersion: v2
-    appVersion: 2.8.8
-    created: "2026-11-12T14:41:22.344840602Z"
-    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
-      Routes — auto-sleep, dependency chains and unified route patching.
-    digest: ffca1f62a29ac23ca69722912884a667c41381840ab56e4c108850730f137436
-    home: https://ivseb.github.io/smart-proxy/
-    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
-    keywords:
-    - proxy
-    - kubernetes
-    - openshift
-    - ingress
-    - autoscaling
-    maintainers:
-    - name: ivseb
-    name: smart-proxy
-    sources:
-    - https://github.com/ivseb/smart-proxy
-    type: application
-    urls:
-    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.10.8/smart-proxy-0.10.8.tgz
-    version: 0.10.8
-  - annotations:
-      artifacthub.io/changes: |
         - kind: security
           description: Bump the dashboard group in /web/dashboard with 2 updates
       artifacthub.io/images: |
