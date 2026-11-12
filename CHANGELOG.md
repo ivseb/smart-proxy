@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.8.8 — chart 0.10.8
 
 ### Fixed
 - **Unpatching one of two Routes serving the same host now sticks.** Smart Proxy patches every Route of the namespace serving a route's host and path, so a second Route for the host (on another router shard, say) was patched again right after being unpatched by hand: it was all of them or none. The unpatched Route is now remembered and left alone, while the other stays behind Smart Proxy; patching it again from the dashboard puts it back.
