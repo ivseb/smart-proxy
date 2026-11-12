@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.8.9 — chart 0.10.9
+
+### Security
+- Built with Go 1.27.4: fixes [GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859) in `net/http` (an HTTP/1 server could crash when a request body exceeded its `MaxBytesReader` limit).
+- `golang.org/x/net` 0.62.0: fixes [GO-2026-6866](https://pkg.go.dev/vuln/GO-2026-6866) and [GO-2026-6860](https://pkg.go.dev/vuln/GO-2026-6860) in `x/net/html`, which Smart Proxy doesn't call.
+
+### Fixed
+- Includes 2.8.8's fix. The 2.8.8 image was never published, as these vulnerabilities failed its scan: chart 0.10.8 can't be installed, use 0.10.9.
+
 ## 2.8.8 — chart 0.10.8
 
 ### Fixed
