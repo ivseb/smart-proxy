@@ -178,6 +178,14 @@ func (s *Server) handlePatchIngress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, k8s.ErrNoServiceBackend.Error(), http.StatusBadRequest)
 		return
 	}
+	if rejoined, err := s.rejoin(store.KindIngress, ns, name); rejoined {
+		if err != nil {
+			http.Error(w, "Failed to save the route: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
 	deployment, _ := s.k8sClient.ResolveDeploymentForService(ns, original.Service)
 	config := newRouteConfig(store.IngressID(ns, name), ns, k8s.IngressHost(ing), k8s.IngressPath(ing),
@@ -249,6 +257,14 @@ func (s *Server) handlePatchRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := k8s.RoutePatchable(rt); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if rejoined, err := s.rejoin(store.KindRoute, ns, name); rejoined {
+		if err != nil {
+			http.Error(w, "Failed to save the route: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -329,7 +345,7 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 	if routes, err := s.k8sClient.ListRoutes(); err == nil {
 		for _, rt := range routes {
 			bound := boundKind == store.KindRoute && boundNs == rt.Namespace && boundName == rt.Name
-			if rt.Namespace != config.Namespace || k8s.RoutePatchedByOther(rt, s.ServiceName) ||
+			if rt.Namespace != config.Namespace || k8s.RoutePatchedByOther(rt, s.ServiceName) || config.Excludes(store.KindRoute, rt.Namespace, rt.Name) ||
 				!(bound || (containsFold(hosts, k8s.RouteHost(rt)) && samePath(k8s.RoutePath(rt), config.Path))) {
 				continue
 			}
@@ -355,7 +371,7 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 	if ings, err := s.k8sClient.ListIngresses(); err == nil {
 		for _, ing := range ings {
 			bound := boundKind == store.KindIngress && boundNs == ing.Namespace && boundName == ing.Name
-			if ing.Namespace != config.Namespace || k8s.PatchedByOther(ing, s.ServiceName) ||
+			if ing.Namespace != config.Namespace || k8s.PatchedByOther(ing, s.ServiceName) || config.Excludes(store.KindIngress, ing.Namespace, ing.Name) ||
 				!(bound || (containsFold(hosts, k8s.IngressHost(ing)) && samePath(k8s.IngressPath(ing), config.Path))) {
 				continue
 			}

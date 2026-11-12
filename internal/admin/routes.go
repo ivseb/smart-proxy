@@ -157,11 +157,11 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		// Recording, pauses and exceptions are runtime state with their own calls: a form saved
-		// from a stale page must not bring an old one back.
-		route.InspectUntil, route.Pause, route.Exceptions = nil, nil, nil
+		// Recording, pauses, exceptions and exclusions are runtime state with their own calls: a
+		// form saved from a stale page must not bring an old one back.
+		route.InspectUntil, route.Pause, route.Exceptions, route.Excluded = nil, nil, nil, nil
 		if existing, ok := s.store.GetRoute(route.ID); ok && route.ID != "" {
-			route.InspectUntil, route.Pause, route.Exceptions = existing.InspectUntil, existing.Pause, existing.Exceptions
+			route.InspectUntil, route.Pause, route.Exceptions, route.Excluded = existing.InspectUntil, existing.Pause, existing.Exceptions, existing.Excluded
 		}
 		if status, err := s.saveRoute(&route); err != nil {
 			http.Error(w, err.Error(), status)

@@ -50,6 +50,32 @@ func TestHealLeavesSiblingRoutesOfOtherPathsAlone(t *testing.T) {
 	}
 }
 
+// Self-healing leaves alone a Route for the host that was unpatched by hand (excluded).
+func TestHealLeavesExcludedRoutesAlone(t *testing.T) {
+	a := osRoute("team-a", "web", "app.example.com", "/", "web-svc")
+	b := osRoute("team-a", "web-ext", "app.example.com", "/", "web-svc")
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{}, a, b)
+	st := store.NewStore(filepath.Join(t.TempDir(), "routes.json"))
+	w := NewWatcher(c.Client, st, proxyService)
+	cfg := &store.RouteConfig{ID: store.RouteID("team-a", "web"), Namespace: "team-a", Host: "app.example.com", Path: "/",
+		Deployment: "web", TargetService: "web-svc", TargetPort: 8080, Excluded: []string{store.RouteID("team-a", "web-ext")}}
+	st.AddRoute(cfg)
+	rt, _ := c.Routes.RouteV1().Routes("team-a").Get(context.TODO(), "web", metav1.GetOptions{})
+	k8s.PatchRoute(rt, proxyService, k8s.Backend{Service: "web-svc", Port: 8080}, cfg.AnnotationJSON())
+	c.Routes.RouteV1().Routes("team-a").Update(context.TODO(), rt, metav1.UpdateOptions{})
+	fakecluster.Eventually(t, func() bool {
+		r, err := c.GetRoute("team-a", "web")
+		return err == nil && k8s.IsRoutePatched(r, proxyService)
+	}, "cache")
+
+	w.healUnpatchedRoutes()
+
+	ext, _ := c.Routes.RouteV1().Routes("team-a").Get(context.TODO(), "web-ext", metav1.GetOptions{})
+	if k8s.IsRoutePatched(ext, proxyService) {
+		t.Error("excluded Route web-ext was patched again by self-healing")
+	}
+}
+
 // An idle route must not put to sleep a workload an Always On route shares.
 func TestAlwaysOnRouteKeepsASharedWorkloadUp(t *testing.T) {
 	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{}, dep("team-a", "web", 1))

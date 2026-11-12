@@ -363,6 +363,64 @@ func TestUnpatchingThePrimaryRebindsTheRoute(t *testing.T) {
 	}
 }
 
+// Two Routes for one host (internal and external router shards): unpatching one keeps it out,
+// through saves of the route, until it is patched again.
+func TestUnpatchingOneOfTwoRoutesForAHostSticks(t *testing.T) {
+	objs := append(app("team-a", "web", 1),
+		routeObj("team-a", "web", "web.example.com", "web-svc"),
+		routeObj("team-a", "web-ext", "web.example.com", "web-svc"))
+	f := newFixture(t, objs...)
+	cfg := store.RouteConfig{Host: "web.example.com", Namespace: "team-a", Deployment: "web", TargetService: "web-svc", TargetPort: 8080}
+	if code, body := f.call(t, "POST", "/api/routes", cfg); code != http.StatusCreated {
+		t.Fatalf("create: %d %s", code, body)
+	}
+	waitPatched := func(name string, patched bool) {
+		fakecluster.Eventually(t, func() bool {
+			rt, err := f.cluster.GetRoute("team-a", name)
+			return err == nil && k8s.IsRoutePatched(rt, proxyService) == patched
+		}, name+" cache not updated")
+	}
+	waitPatched("web", true)
+	waitPatched("web-ext", true)
+	id := f.store.GetAllRoutes()[0].ID
+
+	if code, body := f.call(t, "POST", "/api/unpatch-route?namespace=team-a&name=web-ext", nil); code != 200 {
+		t.Fatalf("unpatch: %d %s", code, body)
+	}
+	r, ok := f.store.GetRoute(id)
+	if !ok || r.Host != "web.example.com" || !r.Excludes(store.KindRoute, "team-a", "web-ext") {
+		t.Fatalf("route = %+v, %v (want web-ext excluded)", r, ok)
+	}
+	if k8s.IsRoutePatched(f.osRoute(t, "team-a", "web-ext"), proxyService) {
+		t.Fatal("web-ext patched again right after being unpatched")
+	}
+	waitPatched("web-ext", false)
+
+	// Saved from the dashboard, whose form doesn't carry the exclusion.
+	form := *r
+	form.Excluded = nil
+	if code, body := f.call(t, "POST", "/api/routes", form); code != http.StatusCreated {
+		t.Fatalf("save: %d %s", code, body)
+	}
+	if k8s.IsRoutePatched(f.osRoute(t, "team-a", "web-ext"), proxyService) {
+		t.Fatal("web-ext patched again when the route was saved")
+	}
+	if !k8s.IsRoutePatched(f.osRoute(t, "team-a", "web"), proxyService) {
+		t.Fatal("web unpatched")
+	}
+
+	// Patched again by hand: back in the same route, not a second one for the host.
+	if code, body := f.call(t, "POST", "/api/patch-route?namespace=team-a&name=web-ext", nil); code != 200 {
+		t.Fatalf("patch: %d %s", code, body)
+	}
+	if routes := f.store.GetAllRoutes(); len(routes) != 1 || len(routes[0].Excluded) != 0 {
+		t.Fatalf("routes = %+v (want one, excluding nothing)", routes)
+	}
+	if !k8s.IsRoutePatched(f.osRoute(t, "team-a", "web-ext"), proxyService) {
+		t.Fatal("web-ext not patched again")
+	}
+}
+
 func TestRemovingAHostRestoresItsResource(t *testing.T) {
 	f, id := multiHostFixture(t)
 	r, _ := f.store.GetRoute(id)

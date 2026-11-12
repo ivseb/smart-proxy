@@ -6,6 +6,7 @@ import (
 
 	"fmt"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -220,8 +221,31 @@ func (s *Server) releaseStale(route store.RouteConfig) {
 	}
 }
 
+// rejoin patches a resource that was unpatched by hand again for the route it was excluded from
+// (see RouteConfig.Excluded), rather than giving it a route of its own for the same host.
+func (s *Server) rejoin(kind, namespace, name string) (bool, error) {
+	id := store.ResourceID(kind, namespace, name)
+	for _, route := range s.store.GetAllRoutes() {
+		if !route.Excludes(kind, namespace, name) {
+			continue
+		}
+		route.Excluded = slices.DeleteFunc(slices.Clone(route.Excluded), func(x string) bool { return x == id })
+		if len(route.Excluded) == 0 {
+			route.Excluded = nil
+		}
+		if err := s.store.AddRoute(&route); err != nil {
+			return true, err
+		}
+		s.autoPatchResourcesForConfig(&route)
+		logger.Printf("%s %s/%s is patched for route %s again", kind, namespace, name, route.ID)
+		return true, nil
+	}
+	return false, nil
+}
+
 // afterUnpatch updates the route owning a resource that was just unpatched by hand: its host
-// is dropped (or self-healing would patch it again), the route is re-bound to another of its
+// is dropped, or the resource excluded when another resource still serves that host (either
+// way, or self-healing would patch it again), the route is re-bound to another of its
 // resources if it was bound to this one, and removed when nothing is left.
 func (s *Server) afterUnpatch(owner string, res patchedResource) {
 	route, ok := s.store.GetRoute(owner)
@@ -267,6 +291,9 @@ func (s *Server) afterUnpatch(owner string, res patchedResource) {
 	}
 	updated := *route
 	updated.Host = strings.Join(hosts, ", ")
+	if containsFold(hosts, res.Host) && !route.Excludes(res.Kind, res.Namespace, res.Name) {
+		updated.Excluded = append(slices.Clone(route.Excluded), store.ResourceID(res.Kind, res.Namespace, res.Name))
+	}
 	if _, ns, name, _ := route.Resource(); ns == res.Namespace && name == res.Name {
 		next := remaining[0]
 		updated.ID = store.IngressID(next.Namespace, next.Name)

@@ -296,6 +296,9 @@ func (w *Watcher) healUnpatchedRoutes() {
 				if rt.Namespace != ns || (rt.Name != name && !(containsFold(hosts, k8s.RouteHost(rt)) && samePath(k8s.RoutePath(rt), config.Path))) {
 					continue
 				}
+				if config.Excludes(store.KindRoute, rt.Namespace, rt.Name) {
+					continue // Unpatched by hand while another Route still serves the host
+				}
 				if k8s.IsRoutePatched(rt, w.serviceName) {
 					if err := k8s.RoutePatchable(rt); err != nil {
 						logger.Every("tls "+rt.Namespace+"/"+rt.Name, time.Hour, "Warning: Route %s/%s points at Smart Proxy but its TLS termination changed: %v. Unpatch it.", rt.Namespace, rt.Name, err)

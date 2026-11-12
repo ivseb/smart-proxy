@@ -6,6 +6,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -65,6 +66,16 @@ type RouteConfig struct {
 	Blackout *BlackoutPolicy `json:"blackout,omitempty"`
 	// Exceptions lift the blocked hours for a while (runtime state, like Pause).
 	Exceptions []Exception `json:"exceptions,omitempty"`
+	// Excluded are Ingresses/Routes serving the route's host and path that were unpatched by
+	// hand (IngressID/RouteID): they are left alone until patched again from the dashboard.
+	// Two Routes for one host on different router shards can so be split: one through Smart
+	// Proxy, the other straight to the application.
+	Excluded []string `json:"excluded,omitempty"`
+}
+
+// Excludes reports whether a resource was unpatched by hand from the route (see Excluded).
+func (r RouteConfig) Excludes(kind, namespace, name string) bool {
+	return slices.Contains(r.Excluded, ResourceID(kind, namespace, name))
 }
 
 // WeightedBackend is one of the Services a route balances traffic across.
@@ -242,6 +253,14 @@ func IngressID(namespace, name string) string { return "ing-" + namespace + "/" 
 
 // RouteID is the route ID for a patched OpenShift Route.
 func RouteID(namespace, name string) string { return "route-" + namespace + "/" + name }
+
+// ResourceID is IngressID or RouteID, by kind.
+func ResourceID(kind, namespace, name string) string {
+	if kind == KindRoute {
+		return RouteID(namespace, name)
+	}
+	return IngressID(namespace, name)
+}
 
 // Resource returns the Ingress or Route a route was created by patching. IDs are
 // "ing-<namespace>/<name>" or "route-<namespace>/<name>"; older versions stored
