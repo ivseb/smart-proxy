@@ -3,6 +3,47 @@ entries:
   smart-proxy:
   - annotations:
       artifacthub.io/changes: |
+        - kind: security
+          description: Built with Go 1.27.4 (GO-2026-6859 in net/http) and golang.org/x/net 0.62.0
+        - kind: fixed
+          description: Unpatching one of two Routes serving the same host now sticks (it was patched again right away)
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.8.9
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.8.9
+    created: "2026-11-12T15:06:34.109674172Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: a750904fc85215f0df75de0a301928900eba1c72f9792a51b706c57030c16020
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.10.9/smart-proxy-0.10.9.tgz
+    version: 0.10.9
+  - annotations:
+      artifacthub.io/changes: |
         - kind: fixed
           description: Unpatching one of two Routes serving the same host now sticks (it was patched again right away)
       artifacthub.io/images: |
@@ -975,4 +1016,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-12T14:41:22.345006499Z"
+generated: "2026-11-12T15:06:34.109817626Z"
