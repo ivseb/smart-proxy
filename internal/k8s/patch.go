@@ -252,6 +252,16 @@ func OriginalRouteTargets(rt *routev1.Route) ([]RouteTarget, *routev1.RoutePort)
 	return targets, port
 }
 
+// RouteServices are the names of the Services the Route sends traffic to, as before patching.
+func RouteServices(rt *routev1.Route) []string {
+	targets, _ := OriginalRouteTargets(rt)
+	services := make([]string, 0, len(targets))
+	for _, t := range targets {
+		services = append(services, t.Service)
+	}
+	return services
+}
+
 // RoutePath is the Route's path ("/" when unset).
 func RoutePath(rt *routev1.Route) string {
 	if rt.Spec.Path == "" {

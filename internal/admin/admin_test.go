@@ -421,6 +421,35 @@ func TestUnpatchingOneOfTwoRoutesForAHostSticks(t *testing.T) {
 	}
 }
 
+// Two Routes for one host pointing at two versions of the application (internal shard: the old
+// one, external: the new one): a route for the new version patches only the Route pointing at it.
+func TestRoutesForTheHostPointingElsewhereAreLeftAlone(t *testing.T) {
+	objs := append(app("team-a", "web", 1), app("team-a", "web-next", 1)...)
+	objs = append(objs,
+		routeObj("team-a", "web", "web.example.com", "web-svc"),
+		routeObj("team-a", "web-ext", "web.example.com", "web-next-svc"))
+	f := newFixture(t, objs...)
+	fakecluster.Eventually(t, func() bool {
+		routes, err := f.cluster.ListRoutes()
+		return err == nil && len(routes) == 2
+	}, "routes not cached")
+
+	cfg := store.RouteConfig{Host: "web.example.com", Namespace: "team-a", Deployment: "web-next", TargetService: "web-next-svc", TargetPort: 8080}
+	if code, body := f.call(t, "POST", "/api/routes", cfg); code != http.StatusCreated {
+		t.Fatalf("create: %d %s", code, body)
+	}
+	routes := f.store.GetAllRoutes()
+	if len(routes) != 1 || routes[0].ID != store.RouteID("team-a", "web-ext") {
+		t.Fatalf("routes = %+v (want one, bound to web-ext)", routes)
+	}
+	if !k8s.IsRoutePatched(f.osRoute(t, "team-a", "web-ext"), proxyService) {
+		t.Fatal("web-ext not patched")
+	}
+	if rt := f.osRoute(t, "team-a", "web"); rt.Spec.To.Name != "web-svc" || rt.Annotations[k8s.AnnotationPatched] != "" {
+		t.Fatalf("web, pointing at the old version, was patched: to=%s annotations=%v", rt.Spec.To.Name, rt.Annotations)
+	}
+}
+
 func TestRemovingAHostRestoresItsResource(t *testing.T) {
 	f, id := multiHostFixture(t)
 	r, _ := f.store.GetRoute(id)

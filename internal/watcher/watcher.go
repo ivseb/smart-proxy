@@ -308,6 +308,11 @@ func (w *Watcher) healUnpatchedRoutes() {
 				if k8s.RoutePatchedByOther(rt, w.serviceName) || !w.stillExists(config.ID) {
 					continue
 				}
+				if services := k8s.RouteServices(rt); rt.Name != name && !k8s.IsProxyService(rt.Spec.To.Name, w.serviceName) && !config.SendsTo(services...) {
+					logger.Every("other service "+rt.Namespace+"/"+rt.Name, time.Hour, "Not patching Route %s/%s for route %s: it serves its host but points at %s, which the route doesn't send traffic to",
+						rt.Namespace, rt.Name, config.ID, strings.Join(services, ", "))
+					continue
+				}
 				if k8s.RoutePatchable(rt) != nil || !w.mayHeal("Route "+rt.Namespace+"/"+rt.Name) {
 					continue // Switched to passthrough/re-encrypt since: Smart Proxy can't serve it
 				}

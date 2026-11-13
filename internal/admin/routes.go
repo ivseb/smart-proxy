@@ -197,25 +197,35 @@ func (s *Server) handleRoutes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// resourceIDForHosts finds an Ingress or Route in the namespace serving one of the hosts
-// (comma-separated) and returns the matching route ID, or "" if none does.
-func (s *Server) resourceIDForHosts(namespace, hostList string) string {
-	hosts := splitHosts(hostList)
-	if routes, err := s.k8sClient.ListRoutes(); err == nil {
-		for _, rt := range routes {
-			if rt.Namespace == namespace && containsFold(hosts, k8s.RouteHost(rt)) {
+// resourceIDForHosts finds an Ingress or Route in the route's namespace serving one of its
+// hosts and returns the matching route ID, or "" if none does. One pointing at a Service of the
+// route comes first: two Routes for a host may point at two versions of the application.
+func (s *Server) resourceIDForHosts(route *store.RouteConfig) string {
+	hosts := splitHosts(route.Host)
+	routes, _ := s.k8sClient.ListRoutes()
+	ings, _ := s.k8sClient.ListIngresses()
+	fallback := ""
+	for _, rt := range routes {
+		if rt.Namespace == route.Namespace && containsFold(hosts, k8s.RouteHost(rt)) {
+			if route.SendsTo(k8s.RouteServices(rt)...) {
 				return store.RouteID(rt.Namespace, rt.Name)
 			}
-		}
-	}
-	if ings, err := s.k8sClient.ListIngresses(); err == nil {
-		for _, ing := range ings {
-			if ing.Namespace == namespace && len(ing.Spec.Rules) > 0 && containsFold(hosts, ing.Spec.Rules[0].Host) {
-				return store.IngressID(ing.Namespace, ing.Name)
+			if fallback == "" {
+				fallback = store.RouteID(rt.Namespace, rt.Name)
 			}
 		}
 	}
-	return ""
+	for _, ing := range ings {
+		if ing.Namespace == route.Namespace && len(ing.Spec.Rules) > 0 && containsFold(hosts, ing.Spec.Rules[0].Host) {
+			if b, ok := k8s.OriginalIngressBackend(ing); ok && route.SendsTo(b.Service) {
+				return store.IngressID(ing.Namespace, ing.Name)
+			}
+			if fallback == "" {
+				fallback = store.IngressID(ing.Namespace, ing.Name)
+			}
+		}
+	}
+	return fallback
 }
 
 func splitHosts(hostList string) []string {
@@ -286,7 +296,7 @@ func (s *Server) saveRoute(route *store.RouteConfig) (int, error) {
 	}
 	// A new route for a host served by an Ingress/Route in its namespace becomes bound to it.
 	if route.ID == "" && s.k8sClient != nil {
-		route.ID = s.resourceIDForHosts(route.Namespace, route.Host)
+		route.ID = s.resourceIDForHosts(route)
 	}
 	// Bound to an OpenShift Route balancing several Services: record them, managing the one
 	// chosen as target and leaving the others alone.

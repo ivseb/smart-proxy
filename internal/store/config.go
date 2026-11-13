@@ -73,6 +73,36 @@ type RouteConfig struct {
 	Excluded []string `json:"excluded,omitempty"`
 }
 
+// Services are the Services the route sends traffic to: its target and its backends.
+func (r RouteConfig) Services() []string {
+	var services []string
+	if r.TargetService != "" {
+		services = append(services, r.TargetService)
+	}
+	for _, b := range r.Backends {
+		if !slices.Contains(services, b.Service) {
+			services = append(services, b.Service)
+		}
+	}
+	return services
+}
+
+// SendsTo reports whether the route sends traffic to every one of these Services. An Ingress or
+// Route serving its host but pointing elsewhere (another version of the application behind
+// another router shard, say) is not patched for it: its traffic would reach the wrong Service.
+func (r RouteConfig) SendsTo(services ...string) bool {
+	own := r.Services()
+	if len(own) == 0 {
+		return true
+	}
+	for _, s := range services {
+		if !slices.Contains(own, s) {
+			return false
+		}
+	}
+	return true
+}
+
 // Excludes reports whether a resource was unpatched by hand from the route (see Excluded).
 func (r RouteConfig) Excludes(kind, namespace, name string) bool {
 	return slices.Contains(r.Excluded, ResourceID(kind, namespace, name))

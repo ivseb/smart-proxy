@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	routev1 "github.com/openshift/api/route/v1"
@@ -355,6 +356,11 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 				}
 				rt.Annotations[k8s.AnnotationConfig] = annotation
 			} else {
+				if services := k8s.RouteServices(rt); !bound && !k8s.IsProxyService(rt.Spec.To.Name, s.ServiceName) && !config.SendsTo(services...) {
+					logger.Printf("Not patching Route %s/%s for host %s: it points at %s, which route %s doesn't send traffic to",
+						rt.Namespace, rt.Name, k8s.RouteHost(rt), strings.Join(services, ", "), config.ID)
+					continue
+				}
 				if err := k8s.RoutePatchable(rt); err != nil {
 					logger.Printf("Not patching Route %s/%s for host %s: %v", rt.Namespace, rt.Name, k8s.RouteHost(rt), err)
 					continue
@@ -383,6 +389,11 @@ func (s *Server) autoPatchResourcesForConfig(config *store.RouteConfig) {
 			} else {
 				original, ok := k8s.IngressBackend(ing)
 				if !ok {
+					continue
+				}
+				if !bound && !k8s.IsProxyService(original.Service, s.ServiceName) && !config.SendsTo(original.Service) {
+					logger.Printf("Not patching Ingress %s/%s for host %s: it points at %s, which route %s doesn't send traffic to",
+						ing.Namespace, ing.Name, k8s.IngressHost(ing), original.Service, config.ID)
 					continue
 				}
 				logger.Printf("Auto-patching Ingress %s/%s for host %s", ing.Namespace, ing.Name, k8s.IngressHost(ing))

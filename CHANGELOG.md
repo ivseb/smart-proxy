@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+- **A Route for the same host pointing at another Service is no longer patched.** Two Routes can serve one host on different router shards and point at two versions of the application (a WAF choosing between them). Smart Proxy patched both for the same route, so the traffic of one reached the other's Service. Now only Ingresses/Routes pointing at a Service of the route (its target or one of its backends) are patched with it, when saving and when self-healing, and a new route is bound to the one pointing at its Service; the others are left alone, with a line in the log.
+
 ## 2.8.10 — chart 0.10.10
 
 Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:

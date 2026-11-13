@@ -76,6 +76,36 @@ func TestHealLeavesExcludedRoutesAlone(t *testing.T) {
 	}
 }
 
+// Self-healing leaves alone a Route for the host pointing at another Service (another version of
+// the application): patched, its traffic would reach the route's Service instead.
+func TestHealLeavesRoutesPointingElsewhereAlone(t *testing.T) {
+	a := osRoute("team-a", "web", "app.example.com", "/", "web-svc")
+	b := osRoute("team-a", "web-ext", "app.example.com", "/", "web-next-svc")
+	same := osRoute("team-a", "web-int2", "app.example.com", "/", "web-svc")
+	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{}, a, b, same)
+	st := store.NewStore(filepath.Join(t.TempDir(), "routes.json"))
+	w := NewWatcher(c.Client, st, proxyService)
+	cfg := &store.RouteConfig{ID: store.RouteID("team-a", "web"), Namespace: "team-a", Host: "app.example.com", Path: "/",
+		Deployment: "web", TargetService: "web-svc", TargetPort: 8080}
+	st.AddRoute(cfg)
+	rt, _ := c.Routes.RouteV1().Routes("team-a").Get(context.TODO(), "web", metav1.GetOptions{})
+	k8s.PatchRoute(rt, proxyService, k8s.Backend{Service: "web-svc", Port: 8080}, cfg.AnnotationJSON())
+	c.Routes.RouteV1().Routes("team-a").Update(context.TODO(), rt, metav1.UpdateOptions{})
+	fakecluster.Eventually(t, func() bool {
+		r, err := c.GetRoute("team-a", "web")
+		return err == nil && k8s.IsRoutePatched(r, proxyService)
+	}, "cache")
+
+	w.healUnpatchedRoutes()
+
+	if ext, _ := c.Routes.RouteV1().Routes("team-a").Get(context.TODO(), "web-ext", metav1.GetOptions{}); k8s.IsRoutePatched(ext, proxyService) {
+		t.Error("web-ext, pointing at web-next-svc, was patched for a route sending to web-svc")
+	}
+	if int2, _ := c.Routes.RouteV1().Routes("team-a").Get(context.TODO(), "web-int2", metav1.GetOptions{}); !k8s.IsRoutePatched(int2, proxyService) {
+		t.Error("web-int2, pointing at web-svc too, was not patched")
+	}
+}
+
 // An idle route must not put to sleep a workload an Always On route shares.
 func TestAlwaysOnRouteKeepsASharedWorkloadUp(t *testing.T) {
 	c := fakecluster.New(t, k8s.Scope{Namespaces: []string{"team-a"}}, fakecluster.Options{}, dep("team-a", "web", 1))
