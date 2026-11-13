@@ -97,8 +97,17 @@ func TestBlockedHoursPageStartsTheAppOnRequest(t *testing.T) {
 	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/orders?id=7" || replicas(t, c, "web") == 0 {
 		t.Fatalf("start: %d %v replicas %d", w.Code, w.Header(), replicas(t, c, "web"))
 	}
-	// Starting: the page is no longer offered, the waking page is.
-	if again := get(h, "/orders?id=7", "Mozilla/5.0"); again.Header().Get("X-Smart-Proxy") == "blocked" {
+	// Starting: the browser that pressed it (its cookie) is no longer offered the page, but the
+	// waking page, whether or not the cache shows the start yet.
+	again := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "http://web.example.com/orders?id=7", nil)
+	r.Header.Set("User-Agent", "Mozilla/5.0")
+	r.Header.Set("Accept", "text/html,*/*")
+	for _, c := range w.Result().Cookies() {
+		r.AddCookie(c)
+	}
+	h.ServeHTTP(again, r)
+	if again.Header().Get("X-Smart-Proxy") == "blocked" {
 		t.Fatalf("after starting: %d %v", again.Code, again.Header())
 	}
 }
