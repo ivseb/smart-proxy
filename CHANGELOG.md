@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.8.10 — chart 0.10.10
+
+Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
+
+- Bump the go-modules group across 1 directory with 2 updates
+
 ## 2.8.9 — chart 0.10.9
 
 ### Security
