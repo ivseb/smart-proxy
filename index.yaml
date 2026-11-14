@@ -3,6 +3,45 @@ entries:
   smart-proxy:
   - annotations:
       artifacthub.io/changes: |
+        - kind: security
+          description: Bump the kubernetes group across 1 directory with 3 updates
+      artifacthub.io/images: |
+        - name: smart-proxy
+          image: docker.io/isebben/smart-proxy:2.8.12
+      artifacthub.io/license: MIT
+      artifacthub.io/links: |
+        - name: source
+          url: https://github.com/ivseb/smart-proxy
+        - name: documentation
+          url: https://ivseb.github.io/smart-proxy/
+      artifacthub.io/maintainers: |
+        - name: ivseb
+          email: ivan.sebben.dati@gmail.com
+    apiVersion: v2
+    appVersion: 2.8.12
+    created: "2026-11-14T12:35:45.091652568Z"
+    description: Intelligent request handling for Kubernetes Ingresses and OpenShift
+      Routes — auto-sleep, dependency chains and unified route patching.
+    digest: e26a0bb07aa1735a6a2656815d4962e7333910edf6b6e6ab0f8f47d735a4ff2f
+    home: https://ivseb.github.io/smart-proxy/
+    icon: https://raw.githubusercontent.com/ivseb/smart-proxy/main/media/logo.png
+    keywords:
+    - proxy
+    - kubernetes
+    - openshift
+    - ingress
+    - autoscaling
+    maintainers:
+    - name: ivseb
+    name: smart-proxy
+    sources:
+    - https://github.com/ivseb/smart-proxy
+    type: application
+    urls:
+    - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.10.12/smart-proxy-0.10.12.tgz
+    version: 0.10.12
+  - annotations:
+      artifacthub.io/changes: |
         - kind: fixed
           description: A Route for the same host pointing at another Service is no longer patched (its traffic reached the route's Service)
       artifacthub.io/images: |
@@ -1055,4 +1094,4 @@ entries:
     urls:
     - https://github.com/ivseb/smart-proxy/releases/download/smart-proxy-0.1.0/smart-proxy-0.1.0.tgz
     version: 0.1.0
-generated: "2026-11-13T13:47:20.263536292Z"
+generated: "2026-11-14T12:35:45.091844683Z"
