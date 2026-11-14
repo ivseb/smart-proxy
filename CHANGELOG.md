@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.8.12 — chart 0.10.12
+
+Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
+
+- Bump the kubernetes group across 1 directory with 3 updates
+
 ## 2.8.11 — chart 0.10.11
 
 ### Fixed
