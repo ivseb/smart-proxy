@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.8.13 — chart 0.10.13
+
+Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
+
+- Bump the dashboard group across 1 directory with 11 updates
+
 ## 2.8.12 — chart 0.10.12
 
 Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
