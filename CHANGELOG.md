@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.8.14 — chart 0.10.14
+
+Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
+
+- Bump helm/chart-releaser-action from 1.7.0 to 1.9.0
+- Bump the dashboard group in /web/dashboard with 6 updates
+
 ## 2.8.13 — chart 0.10.13
 
 Dependency updates, released automatically after the tests, the end-to-end suite and the vulnerability scan passed:
