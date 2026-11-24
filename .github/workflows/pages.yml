@@ -34,6 +34,23 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5
 
+      # Artifact Hub scans the image named in the chart as soon as it sees a new chart version, and
+      # a release pushes the chart and the tag together while the image takes minutes to build and
+      # scan: publish the chart only once that image is on Docker Hub (at once when it is already).
+      - name: Wait for the chart's image on Docker Hub
+        run: |
+          image=$(yq '.annotations."artifacthub.io/images"' charts/smart-proxy/Chart.yaml | yq '.[0].image')
+          ref=${image#docker.io/}
+          repo=${ref%:*}
+          tag=${ref##*:}
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null "https://hub.docker.com/v2/repositories/${repo}/tags/${tag}"; then
+              echo "${image} is published"; exit 0
+            fi
+            echo "${image} not published yet"; sleep 30
+          done
+          echo "${image} still missing after 30 minutes: chart not published"; exit 1
+
       - name: Run chart-releaser
         uses: helm/chart-releaser-action@v1.7.0
         with:
